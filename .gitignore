@@ -1,0 +1,34 @@
+# Dependencies
+web/node_modules/
+api/.venv/
+
+# Build / cache
+web/.next/
+web/out/
+web/build/
+**/__pycache__/
+*.py[cod]
+*.tsbuildinfo
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+!api/.env.sample
+web/.env.local
+api/.env.dev
+
+# Logs & local data
+*.log
+api/example.log
+.DS_Store
+
+# Tooling
+.vercel
+.pnp.*
+web/.env.sentry-build-plugin
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json

@@ -1,0 +1,19 @@
+[project]
+name = "fastapi-neo4j"
+version = "0.1.0"
+description = "A simple starter for building RESTful APIs with FastAPI and NEO4J."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "config>=0.5.1",
+    "fastapi>=0.115.13",
+    "jwt>=1.3.1",
+    "neontology>=2.1.0",
+    "numpy>=2.3.0",
+    "passlib>=1.7.4",
+    "pydantic-settings>=2.9.1",
+    "pydantic[email]>=2.11.7",
+    "pyjwt>=2.10.1",
+    "python-multipart>=0.0.20",
+    "uvicorn>=0.34.3",
+]
