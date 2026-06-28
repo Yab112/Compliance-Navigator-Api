@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
+  <rect width="400" height="240" fill="#f4f4f5"/>
+  <rect x="40" y="60" width="320" height="120" fill="#e4e4e7" stroke="#71717a"/>
+  <text x="200" y="130" text-anchor="middle" font-family="system-ui,sans-serif" font-size="14" fill="#52525b">Kebele office — reference</text>
+</svg>

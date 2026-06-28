@@ -10,7 +10,7 @@ const envSchema = z.object({
 
 export const env = envSchema.parse({
   NEXT_PUBLIC_API_BASE_URL:
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080",
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1",
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
   SENTRY_ORG: process.env.SENTRY_ORG,

@@ -1,7 +1,10 @@
 import time
 from typing import Dict
+
+import jwt
+from jwt import PyJWTError
+
 from config.config import settings
-from jwt import encode, decode
 
 
 def token_response(token: str):
@@ -9,16 +12,20 @@ def token_response(token: str):
 
 
 secret_key = settings.secret_key
-
 algorithm = settings.algorithm
 
 
 def sign_jwt(email: str) -> Dict[str, str]:
-    # Set the expiry time.
     payload = {"email": email, "expires": time.time() + 2400}
-    return token_response(encode(payload, secret_key, algorithm=algorithm))
+    token = jwt.encode(payload, secret_key, algorithm=algorithm)
+    return token_response(token)
 
 
 def decode_jwt(token: str) -> dict:
-    decoded_token = decode(token.encode(), secret_key, algorithms=[algorithm])
-    return decoded_token if decoded_token["expires"] >= time.time() else {}
+    try:
+        decoded_token = jwt.decode(token, secret_key, algorithms=[algorithm])
+    except PyJWTError:
+        return {}
+    if decoded_token.get("expires", 0) >= time.time():
+        return decoded_token
+    return {}

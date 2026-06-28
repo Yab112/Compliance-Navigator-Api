@@ -1,11 +1,9 @@
 import axios from "axios";
 import { env } from "@/config/env";
 import { getAccessToken } from "@/lib/auth-token";
+import { MOCK_TOKEN } from "@/lib/mock-auth";
 
-export interface APIResponse<T> {
-  message: string;
-  payload: T;
-}
+export type { APIResponse } from "@/types/global";
 
 export interface TokenResponse {
   access_token: string;

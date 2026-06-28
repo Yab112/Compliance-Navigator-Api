@@ -47,10 +47,10 @@ docker run \
 
 You need to set up your local environment for the application to connect to Neo4j.
 
-1. Create a `.env.dev` file based on the sample provided:
+1. Create a `.env` file based on the sample provided:
 
 ```bash
-cp .env.sample .env.dev
+cp .env.sample .env
 ```
 
 

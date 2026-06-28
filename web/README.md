@@ -1,6 +1,6 @@
-# Webapp Template
+# Compliance Navigator (Web)
 
-A production-ready Next.js 16 template by **Ravix Studio** with built-in authentication, state management, API layer, and a curated component library.
+Next.js frontend for Ethiopian government process navigation — Hari-Tech–style API hooks, TanStack Query, and feature modules.
 
 ---
 
@@ -25,57 +25,29 @@ A production-ready Next.js 16 template by **Ravix Studio** with built-in authent
 
 ```
 src/
-├── app/                    # Next.js App Router pages
-│   ├── layout.tsx          # Root layout with providers
-│   ├── page.tsx            # Home page
-│   ├── providers.tsx       # Client-side providers (React Query, Auth)
-│   ├── globals.css         # Global styles & CSS variables
-│   └── login/              # Login route
-│       └── page.tsx
-│
-├── assets/                 # Static assets (images, fonts, etc.)
-│
+├── app/                    # Thin routes → modules
+├── api/                    # Domain React Query hooks (useLogin, useCreateRoadmap, …)
+├── hooks/                  # useFetchData, useMutationFunc, useAxiosAuth
 ├── components/
-│   └── ui/                 # Reusable UI components (shadcn-based)
-│       ├── button.tsx
-│       ├── input.tsx
-│       ├── card.tsx
-│       ├── select.tsx
-│       └── ...
-│
-├── config/
-│   ├── index.ts            # Config barrel export
-│   ├── endpoints.ts        # API endpoint definitions
-│   └── env.ts              # Environment variable schema (Zod validated)
-│
+│   ├── layout/             # SiteHeader, SiteFooter, Logo
+│   └── ui/
+├── config/                 # env.ts, apiPaths
+├── content/                # landing.ts, about.ts, stock-images.ts
 ├── lib/
-│   ├── api.ts              # Axios instance & API types
-│   └── utils.ts            # Utility functions (cn, etc.)
-│
-├── modules/                # Feature modules (domain-driven)
+│   ├── api.ts              # Axios + APIResponse types
+│   ├── constants/api-paths.ts
+│   └── queryClient.ts
+├── modules/
+│   ├── landing/            # Home page sections
 │   ├── auth/
-│   │   └── pages/
-│   │       └── login.tsx   # Login page component
-│   └── landing/
-│       └── pages/
-│           └── landing.tsx # Landing page component
-│
+│   ├── roadmap/
+│   ├── about/
+│   └── how-it-works/
 ├── providers/
-│   └── auth-provider.tsx   # Authentication context provider
-│
-├── services/
-│   ├── index.ts            # Services barrel export
-│   └── auth/
-│       └── auth-services.ts # Auth API calls
-│
-├── store/
-│   ├── index.ts            # Store barrel export
-│   └── user-store.ts       # User state (Zustand)
-│
-└── types/
-    ├── index.ts            # Types barrel export
-    └── user-types.ts       # User type definitions
+└── store/
 ```
+
+API base URL: `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api/v1`
 
 ---
 
@@ -105,7 +77,7 @@ npm install
 Create a `.env.local` file in the project root:
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api/v1
 NEXT_PUBLIC_SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0
 SENTRY_ORG=ravix-studio
 SENTRY_PROJECT=javascript-nextjs
