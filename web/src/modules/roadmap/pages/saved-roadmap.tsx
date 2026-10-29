@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useGetRoadmap } from "@/api/roadmap";
-import { LoadingState } from "@/modules/guday/components/shared";
+import { LoadingState } from "@cn/ui/guday/shared";
 import { RoadmapView } from "@/modules/roadmap/pages/roadmap-view";
 import { useRoadmapStore } from "@/store/roadmap-store";
 import { useUserStore } from "@/store";

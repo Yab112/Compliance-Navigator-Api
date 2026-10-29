@@ -13,33 +13,33 @@ import {
   useMyProviderReviews,
   useRemoveProviderPhoto,
   useUploadProviderFile,
-} from "@/api/providers";
+} from "@cn/core/api/providers";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Pager, useUrlPage } from "@/components/ui/pager";
-import { Textarea } from "@/components/ui/textarea";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { MTD } from "@/lib/constants/methods";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import { AgentStatusBadge, EmptyState, ErrorState, LoadingState, formatDate, formatDateTime } from "@/modules/guday/components/shared";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Textarea } from "@cn/ui/textarea";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { MTD } from "@cn/core/lib/constants/methods";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import { AgentStatusBadge, EmptyState, ErrorState, LoadingState, formatDate, formatDateTime } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
-import { formatBirr, priceBreakdown, priceRules, usePaymentsConfig, type JobPriceBody } from "@/api/payments";
-import type { ClientRecord, Hire, MyProvider, Review } from "@/types/provider";
-import { PhotoUploader } from "../components/photo-uploader";
-import { ProviderAvatar, verifiedLevel } from "../components/provider-avatar";
-import { ProviderForm, cleanForm, providerToForm } from "../components/provider-form";
-import { RatingSummary, StarInput, Stars, ScoreBadge, ScoreBreakdown, TypeBadge, VerificationBadges } from "../components/trust";
-import { TYPE_META } from "../constants";
-import { ContactActions } from "../components/telegram-link";
-import { PriceLine } from "../components/payment-badge";
-import { PayoutCard } from "../components/payout-card";
-import { EarningsPanel } from "../components/earnings-panel";
-import { ReviewItem } from "./provider-profile";
+import { formatBirr, priceBreakdown, priceRules, usePaymentsConfig, type JobPriceBody } from "@cn/core/api/payments";
+import type { ClientRecord, Hire, MyProvider, Review } from "@cn/core/types/provider";
+import { PhotoUploader } from "@/modules/marketplace/components/photo-uploader";
+import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
+import { ProviderForm, cleanForm, providerToForm } from "@/modules/marketplace/components/provider-form";
+import { RatingSummary, StarInput, Stars, ScoreBadge, ScoreBreakdown, TypeBadge, VerificationBadges } from "@cn/ui/marketplace/trust";
+import { TYPE_META } from "@cn/ui/marketplace/constants";
+import { ContactActions } from "@/modules/marketplace/components/telegram-link";
+import { PriceLine } from "@cn/ui/marketplace/payment-badge";
+import { PayoutCard } from "@/modules/marketplace/components/payout-card";
+import { EarningsPanel } from "@/modules/marketplace/components/earnings-panel";
+import { ReviewItem } from "@/modules/marketplace/pages/provider-profile";
 import { usePayoutPromptStore } from "@/store/payout-prompt-store";
 import { autoCloseDate, hireStage, providerNext, STAGE_LABEL } from "@/lib/hire-stage";
-import { HireTimeline } from "../components/hire-timeline";
+import { HireTimeline } from "@/modules/marketplace/components/hire-timeline";
 
 const TABS = [
   { key: "overview", label: "Overview" },

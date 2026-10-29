@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ReportIssue } from "@/components/feedback/report-issue";
-import { formatDate } from "@/modules/guday/components/shared";
-import { ConfirmedBadge, formatFee, formatMinutes } from "@/modules/organizations/components/shared";
+import { formatDate } from "@cn/ui/guday/shared";
+import { ConfirmedBadge, formatFee, formatMinutes } from "@cn/ui/organizations/shared";
 import { FeeTable } from "@/modules/organizations/pages/service-page";
-import { PROXY_LABEL } from "@/types/organizations";
+import { PROXY_LABEL } from "@cn/core/types/organizations";
 import type { OrgStepService } from "@/types/roadmap";
 
 /** The issuing organization's own published data for a path step, shown before older catalog data. */

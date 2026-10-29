@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { CatalogMatch } from "@/types/catalog";
+import type { CatalogMatch } from "@cn/core/types/catalog";
 import type { ChatMessage, AccumulatedSlots, ConversationMessage } from "@/types/chat";
 
 const INITIAL_SLOTS: AccumulatedSlots = {

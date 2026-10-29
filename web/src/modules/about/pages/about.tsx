@@ -3,8 +3,8 @@ import Link from "next/link";
 import { aboutSections, projectCredit } from "@/content/about";
 import { photoCredits } from "@/content/photo-credits";
 import { stockImages } from "@/content/stock-images";
-import { AboutHero } from "../components/about-hero";
-import { BuiltForGrid } from "../components/built-for-grid";
+import { AboutHero } from "@/modules/about/components/about-hero";
+import { BuiltForGrid } from "@/modules/about/components/built-for-grid";
 
 function SectionHeading({ title, am }: { title: string; am: string }) {
   return (

@@ -5,9 +5,9 @@ import {
   SamplePath,
   WhatItIs,
   WhoItsFor,
-} from "../components/landing-explainer";
-import { LandingHero } from "../components/landing-hero";
-import { CentersList, HowItWorks, InstitutionsStrip, PopularServices } from "../components/landing-sections";
+} from "@/modules/landing/components/landing-explainer";
+import { LandingHero } from "@/modules/landing/components/landing-hero";
+import { CentersList, HowItWorks, InstitutionsStrip, PopularServices } from "@/modules/landing/components/landing-sections";
 
 export function LandingPage() {
   return (

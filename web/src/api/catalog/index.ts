@@ -1,8 +1,8 @@
 "use client";
 
-import { useFetchData } from "@/hooks/use-query";
-import { apiPaths } from "@/lib/constants/api-paths";
-import type { APIResponse } from "@/types/global";
+import { useFetchData } from "@cn/core/hooks/use-query";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import type { APIResponse } from "@cn/core/types/global";
 import type {
   CatalogInstitution,
   CatalogService,
@@ -10,10 +10,10 @@ import type {
   DirectoryResult,
   DirectorySource,
   MesobCenter,
-} from "@/types/catalog";
-import type { Paged } from "@/types/guday";
-import type { PublicProvider } from "@/types/provider";
-import { withQuery } from "./with-query";
+} from "@cn/core/types/catalog";
+import type { Paged } from "@cn/core/types/guday";
+import type { PublicProvider } from "@cn/core/types/provider";
+import { withQuery } from "@cn/core/api/catalog/with-query";
 
 export { withQuery };
 

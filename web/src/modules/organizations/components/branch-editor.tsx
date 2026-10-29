@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useOrgAction } from "@/api/organizations";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { MTD } from "@/lib/constants/methods";
-import { getErrorMessage } from "@/lib/errors";
-import { Field, NativeSelect, SubCityOptions } from "@/modules/guday/components/shared";
-import type { Branch, BranchInput, HoursDay, Weekday } from "@/types/organizations";
+import { useOrgAction } from "@cn/core/api/organizations";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { MTD } from "@cn/core/lib/constants/methods";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { Field, NativeSelect, SubCityOptions } from "@cn/ui/guday/shared";
+import type { Branch, BranchInput, HoursDay, Weekday } from "@cn/core/types/organizations";
 
 const DAYS: { day: Weekday; label: string; am: string }[] = [
   { day: "mon", label: "Monday", am: "ሰኞ" },

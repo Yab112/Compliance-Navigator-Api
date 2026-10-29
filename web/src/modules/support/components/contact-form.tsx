@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useSupportMeta, useSupportWrite } from "@/api/support";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { getErrorMessage } from "@/lib/errors";
-import { Field, NativeSelect, PHONE_RE } from "@/modules/guday/components/shared";
-import { useUserStore } from "@/store/user-store";
-import { QUEUE_LABELS, type SupportQueue, type SupportTicket } from "@/types/support";
+import { useSupportMeta, useSupportWrite } from "@cn/core/api/support";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Textarea } from "@cn/ui/textarea";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { Field, NativeSelect, PHONE_RE } from "@cn/ui/guday/shared";
+import { useUserStore } from "@cn/core/store/user-store";
+import { QUEUE_LABELS, type SupportQueue, type SupportTicket } from "@cn/core/types/support";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

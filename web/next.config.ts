@@ -6,7 +6,18 @@ import type { NextConfig } from "next";
 process.env.BUILD_ID ??= `b${Date.now()}`;
 const buildId = process.env.BUILD_ID;
 
+const adminUrl = (process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3001").replace(/\/$/, "");
+
 const nextConfig: NextConfig = {
+  // Shared code is TypeScript source in the workspace packages
+  transpilePackages: ["@cn/core", "@cn/ui"],
+  // Staff pages moved to the admin app; old links (bookmarks, notifications) still land there
+  async redirects() {
+    return [
+      { source: "/admin", destination: `${adminUrl}/`, permanent: false },
+      { source: "/admin/:path*", destination: `${adminUrl}/:path*`, permanent: false },
+    ];
+  },
   generateBuildId: async () => buildId,
   env: { NEXT_PUBLIC_BUILD_ID: buildId },
   images: {

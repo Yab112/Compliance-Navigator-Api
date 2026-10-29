@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { postAuth } from "@/lib/auth-session";
-import { getErrorMessage } from "@/lib/errors";
-import { AuthCard, FormError } from "../components/auth-card";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Label } from "@cn/ui/label";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { postAuth } from "@cn/core/lib/auth-session";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { AuthCard, FormError } from "@cn/ui/auth/auth-card";
 
 export function ForgotPassword() {
   const [email, setEmail] = useState("");

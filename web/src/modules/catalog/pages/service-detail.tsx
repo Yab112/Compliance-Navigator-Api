@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useState } from "react";
 import { useCatalogCenters, useCatalogService } from "@/api/catalog";
 import { ReportIssue } from "@/components/feedback/report-issue";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@cn/ui/badge";
+import { Button } from "@cn/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@cn/ui/card";
 import { HireForm } from "@/modules/marketplace/components/hire-form";
 import { ProviderCard } from "@/modules/marketplace/components/provider-card";
-import { ErrorState, LoadingState } from "@/modules/guday/components/shared";
-import { PageNav } from "@/components/layout/page-nav";
+import { ErrorState, LoadingState } from "@cn/ui/guday/shared";
+import { PageNav } from "@cn/ui/layout/page-nav";
 
 export function ServiceDetail({ id }: { id: string }) {
   const { data, isLoading, isError, error, refetch } = useCatalogService(id);

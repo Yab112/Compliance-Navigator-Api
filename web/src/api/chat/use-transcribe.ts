@@ -1,9 +1,9 @@
 "use client";
 
 import { AxiosError } from "axios";
-import { api } from "@/lib/api";
-import { apiPaths } from "@/lib/constants/api-paths";
-import type { APIResponse } from "@/types/global";
+import { api } from "@cn/core/lib/api";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import type { APIResponse } from "@cn/core/types/global";
 import type { TranscribeResponse } from "@/types/chat";
 
 export class TranscribeError extends Error {

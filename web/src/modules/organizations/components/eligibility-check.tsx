@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useEligibility } from "@/api/organizations";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import { APPLIES_TO_LABEL } from "@/types/organizations";
-import type { PublicRequirement, PublicService } from "@/types/organizations";
-import { PathFlow } from "./path-flow";
+import { useEligibility } from "@cn/core/api/organizations";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import { APPLIES_TO_LABEL } from "@cn/core/types/organizations";
+import type { PublicRequirement, PublicService } from "@cn/core/types/organizations";
+import { PathFlow } from "@/modules/organizations/components/path-flow";
 
 type Answers = Record<string, string | number | boolean | null>;
 

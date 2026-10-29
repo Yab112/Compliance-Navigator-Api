@@ -1,9 +1,9 @@
 "use client";
 
-import { usePayoutReceipt } from "@/api/payments";
-import { formatDateTime } from "@/modules/guday/components/shared";
+import { usePayoutReceipt } from "@cn/core/api/payments";
+import { formatDateTime } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
-import { ReceiptBlock, ReceiptFrame, ReceiptRow, money } from "./receipt-layout";
+import { ReceiptBlock, ReceiptFrame, ReceiptRow, money } from "@/modules/receipts/receipt-layout";
 
 /** Receipt for a withdrawal that was sent to the provider's bank. */
 export function PayoutReceiptPage({ id }: { id: string }) {

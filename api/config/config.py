@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     def qdrant_url(self) -> str:
         return f"http://{self.qdrant_host}:{self.qdrant_port}"
 
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
 
     # Fayda national ID verification (MOSIP eSignet). off | sandbox | live
     fayda_mode: str = os.environ.get("FAYDA_MODE", "sandbox")

@@ -1,7 +1,7 @@
 "use client";
 
 import type { RoadmapStep } from "@/types/roadmap";
-import { StepCard } from "./step-card";
+import { StepCard } from "@/components/roadmap/step-card";
 
 type StepTimelineProps = {
   steps: RoadmapStep[];

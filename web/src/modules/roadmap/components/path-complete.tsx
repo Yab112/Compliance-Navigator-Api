@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/lib/api";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { getErrorMessage } from "@/lib/errors";
-import { StarInput } from "@/modules/marketplace/components/trust";
-import type { APIResponse } from "@/types/global";
+import { Button } from "@cn/ui/button";
+import { Textarea } from "@cn/ui/textarea";
+import { api } from "@cn/core/lib/api";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { StarInput } from "@cn/ui/marketplace/trust";
+import type { APIResponse } from "@cn/core/types/global";
 import type { Roadmap } from "@/types/roadmap";
 
 type Feedback = { accuracy: number; days_taken: number | null; steps_different: string[]; would_recommend: boolean | null };

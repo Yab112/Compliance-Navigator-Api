@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useRegister } from "@/api/auth";
-import { getErrorMessage } from "@/lib/errors";
-import { safeReturnTo } from "@/lib/safe-redirect";
-import { useRedirectIfSignedIn } from "@/hooks/use-redirect-if-signed-in";
-import { AuthCard, FormError } from "../components/auth-card";
-import { PasswordInput, passwordIsValid } from "../components/password-input";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Label } from "@cn/ui/label";
+import { useRegister } from "@cn/core/api/auth";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { safeReturnTo } from "@cn/core/lib/safe-redirect";
+import { useRedirectIfSignedIn } from "@cn/core/hooks/use-redirect-if-signed-in";
+import { AuthCard, FormError } from "@cn/ui/auth/auth-card";
+import { PasswordInput, passwordIsValid } from "@cn/ui/auth/password-input";
 
 const PHONE = /^(\+251|0)[79]\d{8}$/;
 

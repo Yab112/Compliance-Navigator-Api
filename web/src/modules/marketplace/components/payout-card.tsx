@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useBanks, useMyPayout, usePaymentsConfig, useSavePayout } from "@/api/payments";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import { Field, NativeSelect } from "@/modules/guday/components/shared";
-import type { PayoutAccount } from "@/types/payments";
+import { useBanks, useMyPayout, usePaymentsConfig, useSavePayout } from "@cn/core/api/payments";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import { Field, NativeSelect } from "@cn/ui/guday/shared";
+import type { PayoutAccount } from "@cn/core/types/payments";
 
 function PayoutForm({ current, onDone, onCancel }: {
   current?: PayoutAccount;

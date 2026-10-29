@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useAssistant } from "@/api/assistant";
 import { AssistantPanelView } from "@/components/assistant/assistant-panel";
-import { Button } from "@/components/ui/button";
-import { ChatSidePanel } from "./chat-side-panel";
+import { Button } from "@cn/ui/button";
+import { ChatSidePanel } from "@/modules/chat/components/chat-side-panel";
 
 /** The Ask page: the assistant fills the screen, with contact options beside it (a drawer on phones). Works signed out. */
 export function StandaloneChatPanel() {

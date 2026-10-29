@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@cn/core/lib/utils";
 import { TIMELINE, timelineIndex, type HireStage } from "@/lib/hire-stage";
 
 /** Requested · Accepted · Paid · In progress · Delivered · Closed, with the current step marked. */

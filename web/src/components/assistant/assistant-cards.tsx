@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { cn } from "@cn/core/lib/utils";
 import type { AssistantCard } from "@/types/assistant";
 
 const SOURCE_BADGE: Record<string, { label: string; className: string }> = {

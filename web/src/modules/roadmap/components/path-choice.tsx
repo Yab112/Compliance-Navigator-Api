@@ -3,23 +3,23 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useGoalService } from "@/api/catalog";
-import { useCreateHire } from "@/api/providers";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
+import { useCreateHire } from "@cn/core/api/providers";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Textarea } from "@cn/ui/textarea";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
 import {
   Field,
   LoadingState,
   PHONE_RE,
   subCityLabel,
-} from "@/modules/guday/components/shared";
-import { RatingSummary, ScoreBadge, VerificationBadges } from "@/modules/marketplace/components/trust";
-import { TYPE_META } from "@/modules/marketplace/constants";
+} from "@cn/ui/guday/shared";
+import { RatingSummary, ScoreBadge, VerificationBadges } from "@cn/ui/marketplace/trust";
+import { TYPE_META } from "@cn/ui/marketplace/constants";
 import { useUserStore } from "@/store";
-import type { Hire } from "@/types/provider";
-import { ProviderAvatar, verifiedLevel } from "@/modules/marketplace/components/provider-avatar";
+import type { Hire } from "@cn/core/types/provider";
+import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
 
 export type PathChoiceValue = "self" | "agent";
 

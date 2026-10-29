@@ -1,8 +1,8 @@
 "use client";
 
-import { useFetchData } from "@/hooks/use-query";
-import { apiPaths } from "@/lib/constants/api-paths";
-import type { APIResponse } from "@/types/global";
+import { useFetchData } from "@cn/core/hooks/use-query";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import type { APIResponse } from "@cn/core/types/global";
 import type { Roadmap } from "@/types/roadmap";
 
 export const useGetRoadmap = (id: string | null, enabled = true) => {

@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useFaydaActions } from "@/api/guday";
-import { Button } from "@/components/ui/button";
-import { getErrorMessage } from "@/lib/errors";
-import { formatDate } from "@/modules/guday/components/shared";
-import type { FaydaMode, IdVerification } from "@/types/guday";
+import { Button } from "@cn/ui/button";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { formatDate } from "@cn/ui/guday/shared";
+import type { FaydaMode, IdVerification } from "@cn/core/types/guday";
 
 export const FAYDA_RETURN_KEY = "cn-fayda-return";
 

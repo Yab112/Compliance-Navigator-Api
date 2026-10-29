@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useWorkingService, useWorkspace } from "@/api/organizations";
+import { useWorkingService, useWorkspace } from "@cn/core/api/organizations";
 import { PageShell } from "@/components/layout/page-shell";
-import { useRequireAuth } from "@/hooks/use-require-auth";
-import { ErrorState, LoadingState } from "@/modules/guday/components/shared";
-import { ServiceForm } from "../components/service-form";
+import { useRequireAuth } from "@cn/core/hooks/use-require-auth";
+import { ErrorState, LoadingState } from "@cn/ui/guday/shared";
+import { ServiceForm } from "@/modules/organizations/components/service-form";
 
 export function ServiceEditor({ orgId, serviceId }: { orgId: string; serviceId: string | null }) {
   const gate = useRequireAuth();

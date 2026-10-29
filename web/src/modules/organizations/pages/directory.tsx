@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useOrganizations } from "@/api/organizations";
+import { useOrganizations } from "@cn/core/api/organizations";
 import { PageShell } from "@/components/layout/page-shell";
-import { Input } from "@/components/ui/input";
-import { Pager, useUrlPage } from "@/components/ui/pager";
+import { Input } from "@cn/ui/input";
+import { Pager, useUrlPage } from "@cn/ui/pager";
 import {
   EmptyState,
   ErrorState,
   LoadingState,
   NativeSelect,
   useDebounced,
-} from "@/modules/guday/components/shared";
-import { ORG_TYPE_OPTIONS, OrgLogo, OrgTypeLabel, VerifiedBadge } from "../components/shared";
+} from "@cn/ui/guday/shared";
+import { ORG_TYPE_OPTIONS, OrgLogo, OrgTypeLabel, VerifiedBadge } from "@cn/ui/organizations/shared";
 
 const BENEFITS = [
   {

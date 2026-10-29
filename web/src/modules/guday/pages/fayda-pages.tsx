@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useFaydaActions } from "@/api/guday";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { getErrorMessage } from "@/lib/errors";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { getErrorMessage } from "@cn/core/lib/errors";
 import { useUserStore } from "@/store";
-import { Field, LoadingState } from "../components/shared";
-import { useAuthGate } from "../components/use-auth-gate";
+import { Field, LoadingState } from "@cn/ui/guday/shared";
+import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
 import { FAYDA_RETURN_KEY } from "@/modules/marketplace/components/fayda-step";
 
 const DEFAULT_BACK = "/providers/join";

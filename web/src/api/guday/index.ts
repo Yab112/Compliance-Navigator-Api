@@ -1,12 +1,12 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import useMutationFunc from "@/hooks/use-mutation";
-import { useFetchData } from "@/hooks/use-query";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { MTD } from "@/lib/constants/methods";
-import type { APIResponse } from "@/types/global";
-import type { FaydaStatus, IdVerification } from "@/types/guday";
+import useMutationFunc from "@cn/core/hooks/use-mutation";
+import { useFetchData } from "@cn/core/hooks/use-query";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { MTD } from "@cn/core/lib/constants/methods";
+import type { APIResponse } from "@cn/core/types/global";
+import type { FaydaStatus, IdVerification } from "@cn/core/types/guday";
 
 // ---------------------------------------------------------------- Fayda ID verification
 

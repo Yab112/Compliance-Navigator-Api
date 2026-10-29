@@ -7,15 +7,15 @@ import {
   useOrgUpload,
   useRequirementOptions,
   useSaveService,
-} from "@/api/organizations";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { MTD } from "@/lib/constants/methods";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import { Field, NativeSelect, useDebounced } from "@/modules/guday/components/shared";
+} from "@cn/core/api/organizations";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Textarea } from "@cn/ui/textarea";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { MTD } from "@cn/core/lib/constants/methods";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import { Field, NativeSelect, useDebounced } from "@cn/ui/guday/shared";
 import {
   APPLIES_TO_LABEL,
   AUDIENCE_LABEL,
@@ -36,8 +36,8 @@ import {
   type ServiceInput,
   type Step,
   type WorkingService,
-} from "@/types/organizations";
-import { CompletenessMeter, Panel, ServiceStatusChip } from "./shared";
+} from "@cn/core/types/organizations";
+import { CompletenessMeter, Panel, ServiceStatusChip } from "@cn/ui/organizations/shared";
 
 export const EMPTY_SERVICE: ServiceInput = {
   name: "",

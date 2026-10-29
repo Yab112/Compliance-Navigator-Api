@@ -6,10 +6,17 @@ Graph-based decision support for Ethiopian business compliance. Maps regulatory 
 
 ```
 Compliance Navigator/
-├── Doc/          # Product & architecture specs
-├── web/          # Next.js frontend (shadcn, Zod, Zustand)
-└── api/          # FastAPI backend
+├── Doc/              # Product & architecture specs
+├── web/              # Public site: Next.js (shadcn, Zod, Zustand), port 3000
+├── admin/            # Staff app: Next.js, port 3001, its own deployment
+├── packages/
+│   ├── core/         # @cn/core: API client, auth session, types, data hooks, navigation
+│   └── ui/           # @cn/ui: design tokens, UI primitives, shared display components
+└── api/              # FastAPI backend
 ```
+
+`web`, `admin` and `packages/*` are one pnpm workspace. The packages are TypeScript source that each app compiles
+(`transpilePackages`), so a change to a button or a type lands in both apps.
 
 ## What's inside
 
@@ -19,7 +26,7 @@ Compliance Navigator/
 | **MESOB catalog** | Live scrape of [mesobcenter.et](https://mesobcenter.et/service-catalogue): 24 institutions, ~470 services (EN/AM), 19 centers — searchable at `/services`, mirrored into Neo4j, embedded for the AI |
 | **Guday Geday (ጉዳይ ገዳይ)** | Registry of licensed errand agents: self-registration with ID upload → admin review (approve / reject / suspend / renew) → public directory → client requests → ratings |
 | **AI assistant** | Chat (EN/AM, voice) that extracts goal/sub-city/documents, builds roadmaps, and cites MESOB + legal references via pgvector RAG. Providers: Ollama, Claude, or offline keyword mode — switchable from the dashboard |
-| **Admin dashboard** (`/admin`) | Overview metrics, data-source runs, MESOB catalog, knowledge-graph viewer/editor + read-only Cypher console, AI status/testing, Guday Geday management, feedback queue, users & roles |
+| **Admin app** (`admin/`, port 3001) | Overview metrics, data-source runs, MESOB catalog, knowledge-graph viewer/editor + read-only Cypher console, AI status/testing, Guday Geday management, feedback queue, users & roles |
 
 ## Data stores
 
@@ -54,14 +61,19 @@ uv run main.py                               # http://localhost:8080 (docs at /d
 
 Then sign in as an admin and open **Admin → Data sources** to run *MESOB service catalog* (scrape + graph) and *MESOB → AI knowledge base* (embeddings).
 
-### 3. Web
+### 3. Web and admin
 
 ```bash
-cd web
-cp .env.example .env.local
-pnpm install
-pnpm dev                                     # http://localhost:3000
+pnpm install                                 # once, at the repository root
+cp web/.env.example web/.env.local
+cp admin/.env.example admin/.env.local
+pnpm dev:web                                 # public site, http://localhost:3000
+pnpm dev:admin                               # staff app,  http://localhost:3001
 ```
+
+Both apps sign in against the same API, so `CORS_ORIGINS` in `api/.env` must list both origins.
+`NEXT_PUBLIC_SITE_URL` and `NEXT_PUBLIC_ADMIN_URL` tell each app where the other one lives; old `/admin/...`
+links on the public site redirect to the admin app.
 
 ### Admin accounts
 

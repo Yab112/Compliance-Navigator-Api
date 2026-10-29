@@ -1,18 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@cn/ui/badge";
+import { Button } from "@cn/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@cn/ui/card";
 import type { RoadmapStep } from "@/types/roadmap";
-import { cn } from "@/lib/utils";
-import { StepDetail } from "./step-detail";
+import { cn } from "@cn/core/lib/utils";
+import { StepDetail } from "@/components/roadmap/step-detail";
 
 const statusLabel = {
   completed: "Completed",

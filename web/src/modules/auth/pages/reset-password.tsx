@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { broadcastAuth, endSession, postAuth } from "@/lib/auth-session";
-import { getErrorMessage } from "@/lib/errors";
-import { AuthCard, FormError } from "../components/auth-card";
-import { PasswordInput, passwordIsValid } from "../components/password-input";
+import { Button } from "@cn/ui/button";
+import { Label } from "@cn/ui/label";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { broadcastAuth, endSession, postAuth } from "@cn/core/lib/auth-session";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { AuthCard, FormError } from "@cn/ui/auth/auth-card";
+import { PasswordInput, passwordIsValid } from "@cn/ui/auth/password-input";
 
 export function ResetPassword() {
   const router = useRouter();

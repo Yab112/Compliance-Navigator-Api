@@ -1,5 +1,5 @@
-import type { CatalogMatch } from "./catalog";
-import type { Roadmap } from "./roadmap";
+import type { CatalogMatch } from "@cn/core/types/catalog";
+import type { Roadmap } from "@/types/roadmap";
 
 export type ConversationMessage = {
   role: "user" | "assistant";

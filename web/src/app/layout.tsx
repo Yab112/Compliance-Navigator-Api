@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Noto_Sans, Noto_Sans_Ethiopic } from "next/font/google";
 import "./globals.css";
-import { Providers } from "./providers";
+import { Providers } from "@/app/providers";
 import { AppShell } from "@/components/layout/app-shell";
 
 const notoSans = Noto_Sans({ subsets: ["latin"], variable: "--font-latin" });

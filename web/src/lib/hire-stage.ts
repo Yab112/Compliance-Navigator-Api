@@ -1,4 +1,4 @@
-import type { Hire } from "@/types/provider";
+import type { Hire } from "@cn/core/types/provider";
 
 /**
  * Where a hire stands, and what each side does next. One source of truth for the client's card,

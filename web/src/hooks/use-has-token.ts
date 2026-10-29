@@ -1,6 +1,6 @@
 "use client";
 
-import { useUserStore } from "@/store/user-store";
+import { useUserStore } from "@cn/core/store/user-store";
 
 /**
  * Whether the visitor is signed in. `null` until the session check on page load

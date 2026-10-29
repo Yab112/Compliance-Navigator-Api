@@ -1,5 +1,5 @@
-import { cn } from "@/lib/utils";
-import { PageNav } from "./page-nav";
+import { cn } from "@cn/core/lib/utils";
+import { PageNav } from "@cn/ui/layout/page-nav";
 
 type PageShellProps = {
   title: string;

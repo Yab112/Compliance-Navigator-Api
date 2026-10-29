@@ -3,14 +3,14 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@cn/ui/button";
+import { Badge } from "@cn/ui/badge";
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@cn/ui/card";
 import { StepTimeline } from "@/components/roadmap/step-timeline";
 import { RoadmapEmptyState } from "@/modules/roadmap/components/roadmap-empty-state";
 import { PathComplete } from "@/modules/roadmap/components/path-complete";
@@ -19,7 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { syncStep, useRoadmapSaved, useSavePath } from "@/api/roadmap/saved";
 import { useRoadmapStore } from "@/store/roadmap-store";
 import { useUserStore } from "@/store";
-import { PageNav } from "@/components/layout/page-nav";
+import { PageNav } from "@cn/ui/layout/page-nav";
 
 export function RoadmapView() {
   const router = useRouter();

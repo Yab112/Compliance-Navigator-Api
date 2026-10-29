@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePublicService, useServicePath } from "@/api/organizations";
+import { usePublicService, useServicePath } from "@cn/core/api/organizations";
 import { ReportIssue } from "@/components/feedback/report-issue";
 import { PageShell } from "@/components/layout/page-shell";
-import { apiAssetUrl } from "@/lib/api";
-import { ErrorState, LoadingState, formatDate } from "@/modules/guday/components/shared";
-import { AUDIENCE_LABEL, FEE_CATEGORY_LABEL, PROXY_LABEL, type FeeRow, type PublicService } from "@/types/organizations";
-import { EligibilityCheck, RequirementItem } from "../components/eligibility-check";
-import { PathFlow } from "../components/path-flow";
-import { ConfirmedBadge, Panel, VerifiedBadge, formatFee, formatMinutes } from "../components/shared";
+import { apiAssetUrl } from "@cn/core/lib/api";
+import { ErrorState, LoadingState, formatDate } from "@cn/ui/guday/shared";
+import { AUDIENCE_LABEL, FEE_CATEGORY_LABEL, PROXY_LABEL, type FeeRow, type PublicService } from "@cn/core/types/organizations";
+import { EligibilityCheck, RequirementItem } from "@/modules/organizations/components/eligibility-check";
+import { PathFlow } from "@/modules/organizations/components/path-flow";
+import { ConfirmedBadge, Panel, VerifiedBadge, formatFee, formatMinutes } from "@cn/ui/organizations/shared";
 
 const DELIVERY = { in_person: "In person", online: "Online", both: "Online or in person" } as const;
 

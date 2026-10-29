@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import type { AssistantController } from "@/api/assistant";
-import { useMyTickets, useSupportMeta } from "@/api/support";
-import { cn } from "@/lib/utils";
+import { useMyTickets, useSupportMeta } from "@cn/core/api/support";
+import { cn } from "@cn/core/lib/utils";
 import { ContactForm } from "@/modules/support/components/contact-form";
-import { TicketStatusBadge } from "@/modules/support/components/ticket-badges";
-import { useUserStore } from "@/store/user-store";
+import { TicketStatusBadge } from "@cn/ui/support/ticket-badges";
+import { useUserStore } from "@cn/core/store/user-store";
 import type { AssistantAction } from "@/types/assistant";
 
 type AskItem = { en: string; am: string; hint: string; send: { message: string; messageAm: string } | { action: AssistantAction } };

@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { cn } from "@/lib/utils";
-import type { ServicePath } from "@/types/organizations";
-import { formatFee, formatMinutes } from "./shared";
+import { cn } from "@cn/core/lib/utils";
+import type { ServicePath } from "@cn/core/types/organizations";
+import { formatFee, formatMinutes } from "@cn/ui/organizations/shared";
 
 /**
  * The cross-organization chain for one service: every service to finish first,

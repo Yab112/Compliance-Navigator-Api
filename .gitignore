@@ -1,10 +1,10 @@
 # Dependencies
-web/node_modules/
+node_modules/
 api/.venv/
 
 # Build / cache
-web/.next/
-web/out/
+.next/
+out/
 web/build/
 **/__pycache__/
 *.py[cod]

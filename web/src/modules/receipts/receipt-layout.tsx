@@ -1,11 +1,11 @@
 "use client";
 
-import { formatETB } from "@/api/payments";
+import { formatETB } from "@cn/core/api/payments";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { ErrorState, LoadingState, formatDateTime } from "@/modules/guday/components/shared";
-import type { ReceiptIssuer } from "@/types/payments";
+import { Button } from "@cn/ui/button";
+import { cn } from "@cn/core/lib/utils";
+import { ErrorState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
+import type { ReceiptIssuer } from "@cn/core/types/payments";
 
 /** Money in the receipt's currency, two decimals. */
 export function money(amount: number | null | undefined, currency = "ETB"): string {

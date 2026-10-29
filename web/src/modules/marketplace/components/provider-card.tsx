@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Location01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { PublicProvider } from "@/types/provider";
-import { areaLabel, formatFee, specialtyLabel } from "../constants";
-import { ProviderAvatar, verifiedLevel } from "./provider-avatar";
-import { ScoreBadge, Stars, TypeBadge } from "./trust";
+import type { PublicProvider } from "@cn/core/types/provider";
+import { areaLabel, formatFee, specialtyLabel } from "@cn/ui/marketplace/constants";
+import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
+import { ScoreBadge, Stars, TypeBadge } from "@cn/ui/marketplace/trust";
 
 /** Directory card: who they are, how trusted, what they cost. */
 export function ProviderCard({ provider: p }: { provider: PublicProvider }) {

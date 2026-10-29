@@ -13,23 +13,23 @@ import {
   useWorkingService,
   useWorkspace,
   type OrgRegistrationInput,
-} from "@/api/organizations";
+} from "@cn/core/api/organizations";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { useRequireAuth } from "@/hooks/use-require-auth";
-import { env } from "@/config/env";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { MTD } from "@/lib/constants/methods";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import { ErrorState, Field, LoadingState, NativeSelect } from "@/modules/guday/components/shared";
-import { useUserStore } from "@/store/user-store";
-import type { ImportReport, MemberOrganization, OrgServiceListItem } from "@/types/organizations";
-import { BranchesManager } from "../components/branch-editor";
-import { ServiceForm } from "../components/service-form";
-import { CompletenessMeter, ORG_TYPE_OPTIONS, Panel, ServiceStatusChip } from "../components/shared";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Textarea } from "@cn/ui/textarea";
+import { useRequireAuth } from "@cn/core/hooks/use-require-auth";
+import { env } from "@cn/core/config/env";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { MTD } from "@cn/core/lib/constants/methods";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import { ErrorState, Field, LoadingState, NativeSelect } from "@cn/ui/guday/shared";
+import { useUserStore } from "@cn/core/store/user-store";
+import type { ImportReport, MemberOrganization, OrgServiceListItem } from "@cn/core/types/organizations";
+import { BranchesManager } from "@/modules/organizations/components/branch-editor";
+import { ServiceForm } from "@/modules/organizations/components/service-form";
+import { CompletenessMeter, ORG_TYPE_OPTIONS, Panel, ServiceStatusChip } from "@cn/ui/organizations/shared";
 
 const STEPS = [
   { title: "Organization", am: "ተቋም" },

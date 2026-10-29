@@ -6,13 +6,14 @@ import { useState } from "react";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useUserStore } from "@/store";
-import { useLogout } from "@/api/auth";
-import { useAttention, useMyProvider } from "@/api/providers";
-import { mainNav, siteIdentity } from "@/content/site";
-import { cn } from "@/lib/utils";
-import { FlagStripe } from "./flag-stripe";
-import { NotificationBell } from "./notification-bell";
-import { Logo } from "./logo";
+import { useLogout } from "@cn/core/api/auth";
+import { useAttention, useMyProvider } from "@cn/core/api/providers";
+import { mainNav, siteIdentity } from "@cn/core/content/site";
+import { cn } from "@cn/core/lib/utils";
+import { FlagStripe } from "@cn/ui/layout/flag-stripe";
+import { NotificationBell } from "@/components/layout/notification-bell";
+import { Logo } from "@cn/ui/layout/logo";
+import { adminUrl } from "@cn/core/config/env";
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -112,9 +113,9 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
     ) : user ? (
       <>
         {user.role === "admin" && (
-          <Link href="/admin" className="text-gov-yellow font-semibold hover:underline">
+          <a href={adminUrl()} className="text-gov-yellow font-semibold hover:underline">
             Admin dashboard
-          </Link>
+          </a>
         )}
         <NotificationBell />
         <RequestLinks />

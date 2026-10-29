@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { type AssistantController, useAssistant } from "@/api/assistant";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Textarea } from "@cn/ui/textarea";
+import { cn } from "@cn/core/lib/utils";
 import type { AssistantAction, AssistantReply, AssistantWidget, StaffAuthor, TurnResult } from "@/types/assistant";
-import { AssistantCards } from "./assistant-cards";
+import { AssistantCards } from "@/components/assistant/assistant-cards";
 
 type AssistantPanelProps = {
   /** Separates conversations, e.g. "ask" or "roadmap-new" */

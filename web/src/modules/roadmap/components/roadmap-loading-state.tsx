@@ -1,4 +1,4 @@
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@cn/ui/spinner";
 
 export function RoadmapLoadingState() {
   return (

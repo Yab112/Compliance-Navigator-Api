@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useCatalogServices } from "@/api/catalog";
-import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
-import type { ProviderService as AgentService } from "@/types/provider";
-import { useDebounced } from "./shared";
+import { Input } from "@cn/ui/input";
+import { Spinner } from "@cn/ui/spinner";
+import type { ProviderService as AgentService } from "@cn/core/types/provider";
+import { useDebounced } from "@cn/ui/guday/shared";
 
 type ServiceSearchProps = {
   id?: string;

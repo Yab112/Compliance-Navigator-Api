@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { MY_TICKETS_PAGE_SIZE, useMyTicket, useMyTickets, useSupportWrite } from "@/api/support";
+import { MY_TICKETS_PAGE_SIZE, useMyTicket, useMyTickets, useSupportWrite } from "@cn/core/api/support";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { Pager, useUrlPage } from "@/components/ui/pager";
-import { Textarea } from "@/components/ui/textarea";
-import { getErrorMessage } from "@/lib/errors";
-import { formatDateTime, timeAgo } from "@/modules/admin/shared/format";
-import { EmptyState, ErrorState, LoadingState } from "@/modules/guday/components/shared";
+import { Button } from "@cn/ui/button";
+import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Textarea } from "@cn/ui/textarea";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { formatDateTime, timeAgo } from "@cn/core/lib/format";
+import { EmptyState, ErrorState, LoadingState } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
 import { ContactForm } from "@/modules/support/components/contact-form";
-import { TicketStatusBadge } from "@/modules/support/components/ticket-badges";
-import { TicketThread } from "@/modules/support/components/ticket-thread";
+import { TicketStatusBadge } from "@cn/ui/support/ticket-badges";
+import { TicketThread } from "@cn/ui/support/ticket-thread";
 
 /** /account/support: every request the person sent to the support team. */
 export function MySupport() {

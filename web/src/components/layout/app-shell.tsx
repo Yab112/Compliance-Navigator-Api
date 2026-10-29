@@ -3,10 +3,10 @@
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 import { PayoutPrompt } from "@/modules/marketplace/components/payout-prompt";
-import { SiteFooter } from "./site-footer";
-import { SiteHeader } from "./site-header";
-import { UpdateBar } from "./update-bar";
-import { NavTracker } from "./page-nav";
+import { SiteFooter } from "@/components/layout/site-footer";
+import { SiteHeader } from "@/components/layout/site-header";
+import { UpdateBar } from "@/components/layout/update-bar";
+import { NavTracker } from "@cn/ui/layout/page-nav";
 
 /** Full-screen app pages: no footer, content fills exactly what the header leaves. */
 const APP_SCREENS = ["/chat"];

@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { SAVED_PATHS_PAGE_SIZE, useRemovePath, useSavedPaths } from "@/api/roadmap/saved";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { Pager, useUrlPage } from "@/components/ui/pager";
-import { formatDateTime } from "@/modules/admin/shared/format";
-import { EmptyState, ErrorState, LoadingState } from "@/modules/guday/components/shared";
+import { Button } from "@cn/ui/button";
+import { Pager, useUrlPage } from "@cn/ui/pager";
+import { formatDateTime } from "@cn/core/lib/format";
+import { EmptyState, ErrorState, LoadingState } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
 
 /** /account/paths: every path saved to this account, with progress. */

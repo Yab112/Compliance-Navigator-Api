@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useCreateHire } from "@/api/providers";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { getErrorMessage } from "@/lib/errors";
-import { Field, PHONE_RE } from "@/modules/guday/components/shared";
+import { useCreateHire } from "@cn/core/api/providers";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Textarea } from "@cn/ui/textarea";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { Field, PHONE_RE } from "@cn/ui/guday/shared";
 import { useUserStore } from "@/store";
-import type { Hire } from "@/types/provider";
+import type { Hire } from "@cn/core/types/provider";
 import { cleanTelegram, TELEGRAM_HINT, TELEGRAM_RE } from "@/lib/telegram";
 
 type HireFormProps = {

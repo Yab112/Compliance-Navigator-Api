@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Input } from "@/components/ui/input";
+import { Input } from "@cn/ui/input";
 import { PROCESS_GOALS } from "@/data/process-graph";
-import { cn } from "@/lib/utils";
-import { SearchDropdown } from "./search-dropdown";
+import { cn } from "@cn/core/lib/utils";
+import { SearchDropdown } from "@/components/roadmap/search-dropdown";
 
 export const QUICK_GOALS = [
   { id: "passport", label: "Passport" },

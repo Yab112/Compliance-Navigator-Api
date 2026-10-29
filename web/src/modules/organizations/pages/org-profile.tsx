@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useOrganization } from "@/api/organizations";
+import { useOrganization } from "@cn/core/api/organizations";
 import { PageShell } from "@/components/layout/page-shell";
-import { ErrorState, LoadingState } from "@/modules/guday/components/shared";
-import { ConfirmedBadge, OrgLogo, OrgTypeLabel, Panel, VerifiedBadge, formatFee, formatMinutes } from "../components/shared";
+import { ErrorState, LoadingState } from "@cn/ui/guday/shared";
+import { ConfirmedBadge, OrgLogo, OrgTypeLabel, Panel, VerifiedBadge, formatFee, formatMinutes } from "@cn/ui/organizations/shared";
 
 export function OrganizationProfile({ slug }: { slug: string }) {
   const { data, isLoading, isError, error, refetch } = useOrganization(slug);

@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@cn/core/lib/utils";
 
 type SearchDropdownProps = {
   open: boolean;

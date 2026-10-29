@@ -2,16 +2,16 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { usePaymentsConfig } from "@/api/payments";
-import { useMarketAction, useMyProvider } from "@/api/providers";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { MTD } from "@/lib/constants/methods";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { getErrorMessage } from "@/lib/errors";
+import { usePaymentsConfig } from "@cn/core/api/payments";
+import { useMarketAction, useMyProvider } from "@cn/core/api/providers";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { MTD } from "@cn/core/lib/constants/methods";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { getErrorMessage } from "@cn/core/lib/errors";
 import { cleanTelegram, TELEGRAM_HINT, TELEGRAM_RE } from "@/lib/telegram";
 import { usePayoutPromptStore, useUserStore } from "@/store";
-import { PayoutCard } from "./payout-card";
+import { PayoutCard } from "@/modules/marketplace/components/payout-card";
 
 const SEEN_KEY = "cn-payout-prompt:";
 const QUIET_PAGES = ["/login", "/register", "/forgot-password", "/reset-password"];

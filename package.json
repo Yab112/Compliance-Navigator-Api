@@ -1,0 +1,10 @@
+{
+  "name": "compliance-navigator",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter compliance-navigator-web dev",
+    "dev:admin": "pnpm --filter compliance-navigator-admin dev",
+    "build": "pnpm -r --filter ./web --filter ./admin build",
+    "lint": "pnpm -r lint"
+  }
+}

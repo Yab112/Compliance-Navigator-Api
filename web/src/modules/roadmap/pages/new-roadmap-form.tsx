@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@cn/ui/button";
 import { GoalPicker } from "@/components/roadmap/goal-picker";
 import { SubCityPicker } from "@/components/roadmap/sub-city-picker";
 import {
@@ -10,15 +10,15 @@ import {
   DOCUMENT_LABELS,
   PROCESS_GOALS,
 } from "@/constants/compliance";
-import { getLocationLabel } from "@/constants/addis-locations";
+import { getLocationLabel } from "@cn/core/constants/addis-locations";
 import { RoadmapApiError, useCreateRoadmap } from "@/api/roadmap";
 import { roadmapRequestSchema } from "@/schemas/roadmap";
 import { useRoadmapStore } from "@/store/roadmap-store";
 import { useChatStore } from "@/store/chat-store";
 import { ComplianceAssistantPanel } from "@/modules/roadmap/components/compliance-assistant-panel";
 import { PathChoice, type PathChoiceValue } from "@/modules/roadmap/components/path-choice";
-import { cn } from "@/lib/utils";
-import { PageNavBar } from "@/components/layout/page-nav";
+import { cn } from "@cn/core/lib/utils";
+import { PageNavBar } from "@cn/ui/layout/page-nav";
 
 const VALID_GOALS = new Set(PROCESS_GOALS.map((g) => g.id));
 

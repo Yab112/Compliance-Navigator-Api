@@ -1,11 +1,11 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { withQuery } from "@/api/catalog/with-query";
-import { api } from "@/lib/api";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { useUserStore } from "@/store/user-store";
-import type { APIResponse } from "@/types/global";
+import { withQuery } from "@cn/core/api/catalog/with-query";
+import { api } from "@cn/core/lib/api";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { useUserStore } from "@cn/core/store/user-store";
+import type { APIResponse } from "@cn/core/types/global";
 import type { Roadmap } from "@/types/roadmap";
 
 export type SavedPath = {

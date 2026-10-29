@@ -1,12 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ReportIssue } from "@/components/feedback/report-issue";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Badge } from "@cn/ui/badge";
+import { Separator } from "@cn/ui/separator";
 import type { RoadmapStep } from "@/types/roadmap";
 import { getDocumentLabel } from "@/lib/mock-roadmap";
 import { officeStockByStep, stockImages } from "@/content/stock-images";
-import { OrgServiceBlock } from "./org-service-block";
+import { OrgServiceBlock } from "@/components/roadmap/org-service-block";
 
 function MesobBlock({ mesob }: { mesob: NonNullable<RoadmapStep["mesob"]> }) {
   return (

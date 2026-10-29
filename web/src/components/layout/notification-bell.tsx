@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Notification01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMarkNotificationsRead, useNotifications } from "@/api/notifications";
-import { cn } from "@/lib/utils";
+import { cn } from "@cn/core/lib/utils";
 
 function timeAgo(iso: string): string {
   const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);

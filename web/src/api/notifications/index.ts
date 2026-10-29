@@ -1,11 +1,11 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useFetchData } from "@/hooks/use-query";
-import { api } from "@/lib/api";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { useUserStore } from "@/store/user-store";
-import type { APIResponse } from "@/types/global";
+import { useFetchData } from "@cn/core/hooks/use-query";
+import { api } from "@cn/core/lib/api";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { useUserStore } from "@cn/core/store/user-store";
+import type { APIResponse } from "@cn/core/types/global";
 
 export type AppNotification = {
   id: string;

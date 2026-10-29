@@ -11,20 +11,20 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useFaydaStatus } from "@/api/guday";
-import { useJoinMarketplace, useMyProvider } from "@/api/providers";
+import { useJoinMarketplace, useMyProvider } from "@cn/core/api/providers";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import { ErrorState, Field, LoadingState } from "@/modules/guday/components/shared";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import { ErrorState, Field, LoadingState } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
 import { useUserStore } from "@/store";
-import type { EntityType, ProviderType } from "@/types/provider";
-import { VerifiedIdentityCard, VerifyStep } from "../components/fayda-step";
-import { PhotoUploader } from "../components/photo-uploader";
-import { EMPTY_PROVIDER_FORM, ProviderForm, cleanForm } from "../components/provider-form";
-import { TYPE_META, TYPE_ORDER } from "../constants";
+import type { EntityType, ProviderType } from "@cn/core/types/provider";
+import { VerifiedIdentityCard, VerifyStep } from "@/modules/marketplace/components/fayda-step";
+import { PhotoUploader } from "@/modules/marketplace/components/photo-uploader";
+import { EMPTY_PROVIDER_FORM, ProviderForm, cleanForm } from "@/modules/marketplace/components/provider-form";
+import { TYPE_META, TYPE_ORDER } from "@cn/ui/marketplace/constants";
 
 const ENTITY_META: Record<EntityType, { label: string; am: string; blurb: string }> = {
   individual: { label: "Individual", am: "ግለሰብ", blurb: "You work for yourself. Your Fayda-verified name is shown on your profile." },

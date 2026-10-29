@@ -1,10 +1,10 @@
 "use client";
 
 import { AxiosError } from "axios";
-import useMutationFunc from "@/hooks/use-mutation";
-import { MTD } from "@/lib/constants/methods";
-import { apiPaths } from "@/lib/constants/api-paths";
-import type { APIResponse } from "@/types/global";
+import useMutationFunc from "@cn/core/hooks/use-mutation";
+import { MTD } from "@cn/core/lib/constants/methods";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import type { APIResponse } from "@cn/core/types/global";
 import type { ChatRequest, ChatResponse } from "@/types/chat";
 
 export class ChatApiError extends Error {

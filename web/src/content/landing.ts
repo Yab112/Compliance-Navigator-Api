@@ -1,4 +1,4 @@
-import { stockImages } from "./stock-images";
+import { stockImages } from "@/content/stock-images";
 
 export const landingContent = {
   explainer: {

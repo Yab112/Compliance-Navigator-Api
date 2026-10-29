@@ -10,20 +10,20 @@ import {
   useOrgReports,
   useOrgUpload,
   useWorkspace,
-} from "@/api/organizations";
+} from "@cn/core/api/organizations";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { useRequireAuth } from "@/hooks/use-require-auth";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { MTD } from "@/lib/constants/methods";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import { EmptyState, ErrorState, Field, LoadingState, NativeSelect, formatDate } from "@/modules/guday/components/shared";
-import type { MemberOrganization, OrgReport, OrgServiceListItem } from "@/types/organizations";
-import { BranchesManager } from "../components/branch-editor";
-import { CompletenessMeter, ORG_TYPE_OPTIONS, OrgLogo, OrgStatusChip, Panel, ServiceStatusChip } from "../components/shared";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Textarea } from "@cn/ui/textarea";
+import { useRequireAuth } from "@cn/core/hooks/use-require-auth";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { MTD } from "@cn/core/lib/constants/methods";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import { EmptyState, ErrorState, Field, LoadingState, NativeSelect, formatDate } from "@cn/ui/guday/shared";
+import type { MemberOrganization, OrgReport, OrgServiceListItem } from "@cn/core/types/organizations";
+import { BranchesManager } from "@/modules/organizations/components/branch-editor";
+import { CompletenessMeter, ORG_TYPE_OPTIONS, OrgLogo, OrgStatusChip, Panel, ServiceStatusChip } from "@cn/ui/organizations/shared";
 
 /** /org: send members to their organization, everyone else to registration. */
 export function WorkspaceIndex() {

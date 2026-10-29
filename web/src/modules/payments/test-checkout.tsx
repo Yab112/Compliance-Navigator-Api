@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { formatBirr, useSimulatePayment, useTestCheckout } from "@/api/payments";
+import { formatBirr, useSimulatePayment, useTestCheckout } from "@cn/core/api/payments";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { getErrorMessage } from "@/lib/errors";
-import { ErrorState, LoadingState } from "@/modules/guday/components/shared";
+import { Button } from "@cn/ui/button";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { ErrorState, LoadingState } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
 
 /** Stand-in for the Chapa checkout when payments run in "simulated" mode. */

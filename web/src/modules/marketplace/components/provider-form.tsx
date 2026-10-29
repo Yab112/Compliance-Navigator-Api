@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Textarea } from "@cn/ui/textarea";
+import { cn } from "@cn/core/lib/utils";
 import { ServiceMultiPicker } from "@/modules/guday/components/service-picker";
-import { Field, LANGUAGE_OPTIONS, NativeSelect, PHONE_RE } from "@/modules/guday/components/shared";
-import type { EntityType, FeeUnit, Provider, ProviderFormValues, ProviderService, ProviderType } from "@/types/provider";
-import { AREA_OPTIONS, REGIONS, SPECIALTIES, specialtyLabel } from "../constants";
+import { Field, LANGUAGE_OPTIONS, NativeSelect, PHONE_RE } from "@cn/ui/guday/shared";
+import type { EntityType, FeeUnit, Provider, ProviderFormValues, ProviderService, ProviderType } from "@cn/core/types/provider";
+import { AREA_OPTIONS, REGIONS, SPECIALTIES, specialtyLabel } from "@cn/ui/marketplace/constants";
 import { cleanTelegram, TELEGRAM_HINT, TELEGRAM_RE } from "@/lib/telegram";
 
 export const EMPTY_PROVIDER_FORM: ProviderFormValues = {

@@ -1,3 +1,3 @@
 "use client";
 
-export { useRequireAuth as useAuthGate } from "@/hooks/use-require-auth";
+export { useRequireAuth as useAuthGate } from "@cn/core/hooks/use-require-auth";

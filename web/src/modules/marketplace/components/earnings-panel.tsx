@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
-import { MONEY_PAGE_SIZE, formatETB, useMyEarnings, useMyLedger, useMyPayouts, useRequestPayout } from "@/api/payments";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Pager, useUrlPage } from "@/components/ui/pager";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import { EmptyState, ErrorState, Field, LoadingState, formatDate } from "@/modules/guday/components/shared";
-import type { Earnings, LedgerEntry, Payout } from "@/types/payments";
-import { PayoutCard } from "./payout-card";
-import { PayoutStatusBadge, bankLine } from "./payout-status";
+import { MONEY_PAGE_SIZE, formatETB, useMyEarnings, useMyLedger, useMyPayouts, useRequestPayout } from "@cn/core/api/payments";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Pager, useUrlPage } from "@cn/ui/pager";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import { EmptyState, ErrorState, Field, LoadingState, formatDate } from "@cn/ui/guday/shared";
+import type { Earnings, LedgerEntry, Payout } from "@cn/core/types/payments";
+import { PayoutCard } from "@/modules/marketplace/components/payout-card";
+import { PayoutStatusBadge, bankLine } from "@cn/ui/marketplace/payout-status";
 
 function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (

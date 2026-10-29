@@ -2,8 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { howItWorks } from "@/content/how-it-works";
 import { stockImages } from "@/content/stock-images";
-import { Button } from "@/components/ui/button";
-import { PageNavBar } from "@/components/layout/page-nav";
+import { Button } from "@cn/ui/button";
+import { PageNavBar } from "@cn/ui/layout/page-nav";
 
 export function HowItWorksPage() {
   return (

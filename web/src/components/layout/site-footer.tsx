@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { FlagStripe } from "./flag-stripe";
-import { Logo } from "./logo";
-import { siteIdentity } from "@/content/site";
+import { FlagStripe } from "@cn/ui/layout/flag-stripe";
+import { Logo } from "@cn/ui/layout/logo";
+import { siteIdentity } from "@cn/core/content/site";
 
 const columns = [
   {

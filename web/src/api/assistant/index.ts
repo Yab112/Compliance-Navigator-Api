@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
-import { getErrorMessage } from "@/lib/errors";
-import type { APIResponse } from "@/types/global";
+import { api } from "@cn/core/lib/api";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import type { APIResponse } from "@cn/core/types/global";
 import type {
   AssistantAction,
   AssistantChannel,

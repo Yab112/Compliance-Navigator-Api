@@ -1,8 +1,8 @@
 "use client";
 
-import { usePaymentReceipt } from "@/api/payments";
+import { usePaymentReceipt } from "@cn/core/api/payments";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
-import { ReceiptBlock, ReceiptFrame, ReceiptRow, money } from "./receipt-layout";
+import { ReceiptBlock, ReceiptFrame, ReceiptRow, money } from "@/modules/receipts/receipt-layout";
 
 /**
  * Receipt for a paid hire. The provider also sees how the payment became their earnings; their copy

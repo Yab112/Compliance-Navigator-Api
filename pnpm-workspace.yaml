@@ -1,0 +1,10 @@
+packages:
+  - web
+  - admin
+  - packages/*
+
+allowBuilds:
+  '@sentry/cli': false
+  msw: false
+  sharp: false
+  unrs-resolver: false

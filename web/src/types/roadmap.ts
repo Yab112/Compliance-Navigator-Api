@@ -1,5 +1,5 @@
-import type { MesobStepSummary } from "./catalog";
-import type { FeeRow, IssuedBy, ProxyAllowed, ServiceBranch } from "./organizations";
+import type { MesobStepSummary } from "@cn/core/types/catalog";
+import type { FeeRow, IssuedBy, ProxyAllowed, ServiceBranch } from "@cn/core/types/organizations";
 
 /** What the issuing organization published about this step (newer than catalog data). */
 export type OrgStepService = {

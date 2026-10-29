@@ -9,22 +9,23 @@ import {
   useMySessions,
   useRevokeSession,
   useUpdateProfile,
-} from "@/api/auth";
+} from "@cn/core/api/auth";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useRequireAuth } from "@/hooks/use-require-auth";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { MTD } from "@/lib/constants/methods";
-import { getErrorMessage } from "@/lib/errors";
-import { PasswordInput, passwordIsValid } from "@/modules/auth/components/password-input";
-import { Field, LoadingState, NativeSelect, SubCityOptions, formatDateTime } from "@/modules/guday/components/shared";
-import { useUserStore } from "@/store/user-store";
-import type { AuthEvent, AuthSession } from "@/types/user-types";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { useRequireAuth } from "@cn/core/hooks/use-require-auth";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { MTD } from "@cn/core/lib/constants/methods";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { PasswordInput, passwordIsValid } from "@cn/ui/auth/password-input";
+import { Field, LoadingState, NativeSelect, SubCityOptions, formatDateTime } from "@cn/ui/guday/shared";
+import { useUserStore } from "@cn/core/store/user-store";
+import type { AuthEvent, AuthSession } from "@cn/core/types/user-types";
 import { cleanTelegram, TELEGRAM_HINT, TELEGRAM_RE } from "@/lib/telegram";
-import { cn } from "@/lib/utils";
-import { useMyProvider } from "@/api/providers";
+import { cn } from "@cn/core/lib/utils";
+import { useMyProvider } from "@cn/core/api/providers";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { adminUrl } from "@cn/core/config/env";
 
 const EVENT_LABEL: Record<string, string> = {
   register: "Account created",
@@ -292,9 +293,9 @@ export function AccountPage() {
           </>
         )}
         {user.role === "admin" && (
-          <Link href="/admin" className="border-primary text-primary rounded-md border px-3 py-1.5 font-semibold">
+          <a href={adminUrl()} className="border-primary text-primary rounded-md border px-3 py-1.5 font-semibold">
             Admin dashboard
-          </Link>
+          </a>
         )}
       </nav>
 

@@ -10,16 +10,16 @@ import {
   TranslateIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useProvider, useProviderReviews, type ReviewSort } from "@/api/providers";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { ErrorState, LoadingState, formatDate, languageLabel } from "@/modules/guday/components/shared";
-import type { ProviderProfileView, Review } from "@/types/provider";
-import { HireForm } from "../components/hire-form";
-import { ProviderAvatar, verifiedLevel } from "../components/provider-avatar";
-import { ScoreBadge, ScoreBreakdown, Stars, TypeBadge, VerificationBadges } from "../components/trust";
-import { SUB_RATINGS, areaLabel, formatFee, memberSince, responseLabel, specialtyLabel } from "../constants";
-import { PageNav } from "@/components/layout/page-nav";
+import { useProvider, useProviderReviews, type ReviewSort } from "@cn/core/api/providers";
+import { Button } from "@cn/ui/button";
+import { cn } from "@cn/core/lib/utils";
+import { ErrorState, LoadingState, formatDate, languageLabel } from "@cn/ui/guday/shared";
+import type { ProviderProfileView, Review } from "@cn/core/types/provider";
+import { HireForm } from "@/modules/marketplace/components/hire-form";
+import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
+import { ScoreBadge, ScoreBreakdown, Stars, TypeBadge, VerificationBadges } from "@cn/ui/marketplace/trust";
+import { SUB_RATINGS, areaLabel, formatFee, memberSince, responseLabel, specialtyLabel } from "@cn/ui/marketplace/constants";
+import { PageNav } from "@cn/ui/layout/page-nav";
 
 function Section({ id, title, am, children, aside }: { id?: string; title: string; am?: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (

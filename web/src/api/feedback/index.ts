@@ -1,8 +1,8 @@
 "use client";
 
-import useMutationFunc from "@/hooks/use-mutation";
-import { apiPaths } from "@/lib/constants/api-paths";
-import { MTD } from "@/lib/constants/methods";
+import useMutationFunc from "@cn/core/hooks/use-mutation";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import { MTD } from "@cn/core/lib/constants/methods";
 
 export type FeedbackTarget =
   | "document"

@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useReportIssue, type FeedbackTarget } from "@/api/feedback";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
+import { Button } from "@cn/ui/button";
+import { Textarea } from "@cn/ui/textarea";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
 
 type ReportIssueProps = {
   targetType: FeedbackTarget;

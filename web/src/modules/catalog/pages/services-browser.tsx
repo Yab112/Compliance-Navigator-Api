@@ -5,11 +5,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useServiceDirectory } from "@/api/catalog";
 import { PageShell } from "@/components/layout/page-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import { EmptyState, ErrorState, LoadingState, useDebounced } from "@/modules/guday/components/shared";
-import type { DirectoryItem, DirectorySource } from "@/types/catalog";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { cn } from "@cn/core/lib/utils";
+import { EmptyState, ErrorState, LoadingState, useDebounced } from "@cn/ui/guday/shared";
+import type { DirectoryItem, DirectorySource } from "@cn/core/types/catalog";
 
 const PAGE_SIZE = 20;
 

@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { aboutProduct, aboutSections } from "@/content/about";
-import { PageNav } from "@/components/layout/page-nav";
+import { PageNav } from "@cn/ui/layout/page-nav";
 
 export function AboutHero() {
   return (

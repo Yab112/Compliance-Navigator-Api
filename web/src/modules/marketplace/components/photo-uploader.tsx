@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
-import type { EntityType } from "@/types/provider";
-import { ProviderAvatar, type VerifiedLevel } from "./provider-avatar";
+import { Button } from "@cn/ui/button";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { cn } from "@cn/core/lib/utils";
+import type { EntityType } from "@cn/core/types/provider";
+import { ProviderAvatar, type VerifiedLevel } from "@cn/ui/marketplace/provider-avatar";
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_BYTES = 5 * 1024 * 1024;
