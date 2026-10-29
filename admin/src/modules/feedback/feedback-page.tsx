@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { FEEDBACK_PAGE_SIZE, useFeedbackFlags, useResolveFlag } from "@cn/core/api/admin";
 import { siteUrl } from "@cn/core/config/env";
 import { getErrorMessage } from "@cn/core/lib/errors";
@@ -157,7 +157,8 @@ export function FeedbackPage() {
   const [query, setQuery] = useState(filters.q);
   const q = useDebounced(query.trim(), 300);
   const [page, setPage] = useUrlPage();
-  const { payload, isLoading, error, refetch } = useFeedbackFlags(filters, page);
+  const [size, setSize] = useUrlPageSize(FEEDBACK_PAGE_SIZE);
+  const { payload, isLoading, error, refetch } = useFeedbackFlags(filters, page, size);
   const typeId = useId();
 
   useEffect(() => {
@@ -225,7 +226,7 @@ export function FeedbackPage() {
           ))}
         </ul>
       )}
-      <Pager page={page} pageSize={FEEDBACK_PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

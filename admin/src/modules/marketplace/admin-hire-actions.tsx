@@ -83,10 +83,11 @@ export function AssignProvider({ hire, onDone }: { hire: Hire; onDone?: () => vo
   const [area, setArea] = useState(hire.sub_city ?? "");
   const [specialty, setSpecialty] = useState(hire.specialty ?? "");
   const [page, setPage] = useState(0);
+  const [size, setSize] = useState(CANDIDATES_PAGE_SIZE);
   const [pick, setPick] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const { data, isLoading, isError } = useAssignCandidates(hire.id, { q, area, specialty, page });
+  const { data, isLoading, isError } = useAssignCandidates(hire.id, { q, area, specialty, page, size });
   const { run, isPending } = useMarketAction<{ action: "assign"; provider_id: string; note: string }>();
   const items = data?.payload.items ?? [];
   const searchId = useId();
@@ -165,7 +166,14 @@ export function AssignProvider({ hire, onDone }: { hire: Hire; onDone?: () => vo
           </ul>
         </fieldset>
       )}
-      <Pager page={page} pageSize={CANDIDATES_PAGE_SIZE} total={data?.payload.total ?? 0} onPage={setPage} className="mt-2" />
+      <Pager
+        page={page}
+        pageSize={size}
+        total={data?.payload.total ?? 0}
+        onPage={setPage}
+        onPageSize={(n) => { setSize(n); setPage(0); }}
+        className="mt-2"
+      />
       <NoteField label="Why this provider (staff only)" value={note} onChange={setNote} error={error} />
       <p className="text-muted-foreground">The provider gets the request and sees the client&apos;s phone only after they accept.</p>
       <Button size="sm" disabled={!pick} loading={isPending} onClick={assign}>Assign</Button>

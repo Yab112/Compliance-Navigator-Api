@@ -12,7 +12,7 @@ import {
 } from "@cn/core/api/providers";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
@@ -102,6 +102,7 @@ export function AdminProviders() {
   const idUnverified = params.get("id") === "unverified";
   const sort = (SORTS.some((o) => o.value === params.get("sort")) ? params.get("sort") : "queue") as AdminProviderSort;
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(PAGE_SIZE);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const q = useDebounced(query.trim(), 300);
 
@@ -131,8 +132,8 @@ export function AdminProviders() {
     id_verified: idUnverified ? false : undefined,
     sort,
     q: q || undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: size,
+    offset: page * size,
   });
   const items = data?.payload.items ?? [];
   const total = data?.payload.total ?? 0;
@@ -264,7 +265,7 @@ export function AdminProviders() {
           </table>
         </div>
       )}
-      <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={total} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

@@ -6,7 +6,7 @@ import { CANNED_PAGE_SIZE, useCannedReplies, useCannedReplyAdmin } from "@cn/cor
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Textarea } from "@cn/ui/textarea";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { Field, useDebounced } from "@cn/ui/guday/shared";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { timeAgo } from "@cn/core/lib/format";
@@ -177,10 +177,11 @@ function Item({ reply, onEdit }: { reply: CannedReply; onEdit: () => void }) {
 /** /support/replies: the team's saved replies. */
 export function CannedReplies() {
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(CANNED_PAGE_SIZE);
   const [query, setQuery] = useState("");
   const q = useDebounced(query.trim(), 300);
   const [queue, setQueue] = useState("");
-  const { payload, isLoading, error, refetch } = useCannedReplies({ q: q || undefined, queue: queue || undefined, page });
+  const { payload, isLoading, error, refetch } = useCannedReplies({ q: q || undefined, queue: queue || undefined, page, limit: size });
   const [editing, setEditing] = useState<Draft | null>(null);
 
   return (
@@ -247,7 +248,7 @@ export function CannedReplies() {
           ))}
         </ul>
       )}
-      <Pager page={page} pageSize={CANNED_PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

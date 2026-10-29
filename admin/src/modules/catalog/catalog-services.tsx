@@ -29,6 +29,7 @@ export function CatalogServices({ institution, onClearInstitution }: Props) {
   const [q, setQ] = useState("");
   const [language, setLanguage] = useState<"en" | "am">("en");
   const [page, setPage] = useState(0);
+  const [size, setSize] = useState(PAGE_SIZE);
   const [open, setOpen] = useState<string | null>(null);
   const institutionId = institution?.id ?? "";
   const [lastInstitution, setLastInstitution] = useState(institutionId);
@@ -46,11 +47,11 @@ export function CatalogServices({ institution, onClearInstitution }: Props) {
     return () => clearTimeout(t);
   }, [input]);
 
-  const params = new URLSearchParams({ language, limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
+  const params = new URLSearchParams({ language, limit: String(size), offset: String(page * size) });
   if (q) params.set("q", q);
   if (institutionId) params.set("institution_id", institutionId);
   const services = useAdminQuery<Paged<CatalogService>>(
-    ["catalog-services", q, language, institutionId, page],
+    ["catalog-services", q, language, institutionId, page, size],
     `${apiPaths.catalog.services}?${params}`,
   );
   const items = services.payload?.items ?? [];
@@ -176,7 +177,7 @@ export function CatalogServices({ institution, onClearInstitution }: Props) {
           })}
         </ul>
       )}
-      <Pager page={page} pageSize={PAGE_SIZE} total={services.payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={services.payload?.total ?? 0} onPage={setPage} onPageSize={(n) => { setSize(n); setPage(0); }} />
     </div>
   );
 }

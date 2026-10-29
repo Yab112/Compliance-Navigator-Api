@@ -109,14 +109,15 @@ export function IntentModelSection() {
   const [threshold, setThreshold] = useState("0.6");
   const [includeLabelled, setIncludeLabelled] = useState(false);
   const [page, setPage] = useState(0);
+  const [size, setSize] = useState(TURNS_PAGE_SIZE);
   const turnParams = new URLSearchParams({
     max_confidence: threshold,
     include_labelled: String(includeLabelled),
-    limit: String(TURNS_PAGE_SIZE),
-    offset: String(page * TURNS_PAGE_SIZE),
+    limit: String(size),
+    offset: String(page * size),
   });
   const turns = useAdminQuery<{ items: Turn[]; total: number }>(
-    ["assistant", "turns", threshold, includeLabelled, page],
+    ["assistant", "turns", threshold, includeLabelled, page, size],
     `${p.assistantTurns}?${turnParams}`,
   );
   const retrain = useAdminMutation<{ started: boolean }, undefined>();
@@ -326,7 +327,13 @@ export function IntentModelSection() {
           ) : (
             <p className="text-muted-foreground text-sm">Nothing to review right now.</p>
           )}
-          <Pager page={page} pageSize={TURNS_PAGE_SIZE} total={turns.payload?.total ?? 0} onPage={setPage} />
+          <Pager
+            page={page}
+            pageSize={size}
+            total={turns.payload?.total ?? 0}
+            onPage={setPage}
+            onPageSize={(n) => { setSize(n); setPage(0); }}
+          />
         </div>
       </CardContent>
     </Card>

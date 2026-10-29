@@ -7,7 +7,7 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Label } from "@cn/ui/label";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { Textarea } from "@cn/ui/textarea";
 import { AdminPage } from "@/modules/components/admin-page";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
@@ -19,7 +19,8 @@ const ROLE_PAGE = 50;
 function RolesList() {
   const { can } = useCan();
   const [page, setPage] = useUrlPage();
-  const { payload, isLoading, error, refetch } = useRoles(page, ROLE_PAGE);
+  const [size, setSize] = useUrlPageSize(ROLE_PAGE);
+  const { payload, isLoading, error, refetch } = useRoles(page, size);
   return (
     <AdminPage
       title="Roles · ሚናዎች"
@@ -56,7 +57,7 @@ function RolesList() {
           ))}
         </ul>
       )}
-      <Pager page={page} pageSize={ROLE_PAGE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

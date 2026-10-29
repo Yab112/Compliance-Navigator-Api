@@ -7,7 +7,7 @@ import { ADMIN_MONEY_PAGE_SIZE, formatETB, useAdminPayoutReview, useAdminPayouts
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { getErrorMessage } from "@cn/core/lib/errors";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
 import { StatTile } from "@/modules/shared/stat-tile";
@@ -337,7 +337,8 @@ export function AdminPayouts() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
   const [page, setPage] = useUrlPage();
-  const { payload, isLoading, isError, error, refetch } = useAdminPayouts(filter.value, page);
+  const [size, setSize] = useUrlPageSize(ADMIN_MONEY_PAGE_SIZE);
+  const { payload, isLoading, isError, error, refetch } = useAdminPayouts(filter.value, page, size);
   const totals = payload?.totals;
   const items = payload?.items ?? [];
 
@@ -397,7 +398,7 @@ export function AdminPayouts() {
           ))}
         </ul>
       )}
-      <Pager page={page} pageSize={ADMIN_MONEY_PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

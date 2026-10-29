@@ -5,7 +5,7 @@ import { useEffect, useId, useState } from "react";
 import { ADMIN_ORGS_PAGE_SIZE, useReviewSubmission, useSubmission, useSubmissions } from "@cn/core/api/organizations";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { Textarea } from "@cn/ui/textarea";
 import { siteUrl } from "@cn/core/config/env";
 import { getErrorMessage } from "@cn/core/lib/errors";
@@ -33,7 +33,8 @@ export function AdminSubmissions() {
   const [query, setQuery] = useState(urlQ);
   const q = useDebounced(query.trim(), 300);
   const [page, setPage] = useUrlPage();
-  const { payload, isLoading, error, refetch } = useSubmissions(status, page, urlQ);
+  const [size, setSize] = useUrlPageSize(ADMIN_ORGS_PAGE_SIZE);
+  const { payload, isLoading, error, refetch } = useSubmissions(status, page, urlQ, size);
   const items = payload?.submissions ?? [];
 
   useEffect(() => {
@@ -98,7 +99,7 @@ export function AdminSubmissions() {
           ))}
         </ul>
       )}
-      <Pager page={page} pageSize={ADMIN_ORGS_PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

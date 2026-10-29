@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { Input } from "@cn/ui/input";
 import { Label } from "@cn/ui/label";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { AdminPage } from "@/modules/components/admin-page";
 import { NativeSelect } from "@/modules/shared/native-select";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
@@ -28,6 +28,7 @@ function AuditList() {
   const [draft, setDraft] = useState<AuditFilters>({});
   const [filters, setFilters] = useState<AuditFilters>({});
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(PAGE_SIZE);
 
   // Text boxes apply after a short pause; a new filter starts from the first page
   useEffect(() => {
@@ -40,7 +41,7 @@ function AuditList() {
     return () => clearTimeout(t);
   }, [draft, filters, setPage]);
 
-  const { payload, isLoading, error, refetch } = useAudit(filters, page);
+  const { payload, isLoading, error, refetch } = useAudit(filters, page, size);
   const set = (k: keyof AuditFilters) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setDraft((d) => ({ ...d, [k]: e.target.value }));
 
@@ -86,7 +87,7 @@ function AuditList() {
       ) : (
         <AuditTable items={payload.items} />
       )}
-      <Pager page={page} pageSize={PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

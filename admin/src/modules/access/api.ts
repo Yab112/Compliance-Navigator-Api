@@ -154,12 +154,12 @@ export const useRoleMutations = () => {
 
 // ---------------------------------------------------------------- staff
 
-export type StaffFilters = { q?: string; status?: string; role_id?: string; page?: number };
+export type StaffFilters = { q?: string; status?: string; role_id?: string; page?: number; size?: number };
 
-export const useStaffList = ({ q = "", status = "", role_id = "", page = 0 }: StaffFilters) =>
+export const useStaffList = ({ q = "", status = "", role_id = "", page = 0, size = PAGE_SIZE }: StaffFilters) =>
   useAdminQuery<Paged<StaffMember>>(
-    ["access", "staff", q, status, role_id, page],
-    `${accessPaths.staff}?${qs({ q, status, role_id, limit: PAGE_SIZE, offset: page * PAGE_SIZE })}`,
+    ["access", "staff", q, status, role_id, page, size],
+    `${accessPaths.staff}?${qs({ q, status, role_id, limit: size, offset: page * size })}`,
   );
 
 export const useStaffMember = (id: string) =>
@@ -167,7 +167,7 @@ export const useStaffMember = (id: string) =>
 
 export const useStaffSessions = (id: string, page: number, pageSize = 10) =>
   useAdminQuery<Paged<Session>>(
-    ["access", "staff-sessions", id, page],
+    ["access", "staff-sessions", id, page, pageSize],
     `${accessPaths.staffSessions(id)}?${qs({ limit: pageSize, offset: page * pageSize })}`,
   );
 
@@ -192,10 +192,10 @@ export const useStaffMutations = () => {
 
 export type ApprovalBox = "waiting" | "mine" | "all";
 
-export const useApprovals = (box: ApprovalBox, page: number, status = "") =>
+export const useApprovals = (box: ApprovalBox, page: number, status = "", size = PAGE_SIZE) =>
   useAdminQuery<Paged<Approval>>(
-    ["access", "approvals", box, status, page],
-    `${accessPaths.approvals}?${qs({ box, status, limit: PAGE_SIZE, offset: page * PAGE_SIZE })}`,
+    ["access", "approvals", box, status, page, size],
+    `${accessPaths.approvals}?${qs({ box, status, limit: size, offset: page * size })}`,
   );
 
 export const useApprovalCount = (box: ApprovalBox) =>
@@ -215,19 +215,19 @@ export const useDecide = () => {
 
 export type AuditFilters = { actor?: string; action?: string; target?: string; since?: string; until?: string };
 
-export const useAudit = (filters: AuditFilters, page: number) =>
+export const useAudit = (filters: AuditFilters, page: number, size = PAGE_SIZE) =>
   useAdminQuery<Paged<AuditEntry>>(
-    ["access", "audit", filters, page],
-    `${accessPaths.audit}?${qs({ ...filters, limit: PAGE_SIZE, offset: page * PAGE_SIZE })}`,
+    ["access", "audit", filters, page, size],
+    `${accessPaths.audit}?${qs({ ...filters, limit: size, offset: page * size })}`,
   );
 
 // ---------------------------------------------------------------- my account
 
 export const useMySessions = (page: number, pageSize = 10) =>
-  useAdminQuery<Paged<Session>>(["my-sessions", page], `${staffPaths.sessions}?${qs({ limit: pageSize, offset: page * pageSize })}`);
+  useAdminQuery<Paged<Session>>(["my-sessions", page, pageSize], `${staffPaths.sessions}?${qs({ limit: pageSize, offset: page * pageSize })}`);
 
 export const useMyActivity = (page: number, pageSize = 10) =>
-  useAdminQuery<Paged<AuditEntry>>(["my-activity", page], `${staffPaths.activity}?${qs({ limit: pageSize, offset: page * pageSize })}`);
+  useAdminQuery<Paged<AuditEntry>>(["my-activity", page, pageSize], `${staffPaths.activity}?${qs({ limit: pageSize, offset: page * pageSize })}`);
 
 export const useMyAccountMutations = () => {
   const { run, isPending } = useAdminMutation<unknown, unknown>();

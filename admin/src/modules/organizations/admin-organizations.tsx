@@ -12,7 +12,7 @@ import {
 import { useAdminQuery } from "@cn/core/api/admin";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { Textarea } from "@cn/ui/textarea";
 import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { getErrorMessage } from "@cn/core/lib/errors";
@@ -42,7 +42,8 @@ export function AdminOrganizations() {
   const [query, setQuery] = useState(urlQ);
   const q = useDebounced(query.trim(), 300);
   const [page, setPage] = useUrlPage();
-  const { payload, isLoading, error, refetch } = useAdminOrganizations(status, urlQ, page);
+  const [size, setSize] = useUrlPageSize(ADMIN_ORGS_PAGE_SIZE);
+  const { payload, isLoading, error, refetch } = useAdminOrganizations(status, urlQ, page, size);
   const [exportState, setExportState] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const days = payload?.confirm_every_days ?? 90;
 
@@ -173,7 +174,7 @@ export function AdminOrganizations() {
           </table>
         </div>
       )}
-      <Pager page={page} pageSize={ADMIN_ORGS_PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

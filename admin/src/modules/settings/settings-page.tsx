@@ -9,7 +9,7 @@ import { cn } from "@cn/core/lib/utils";
 import type { SettingField, SettingGroup, SettingValue } from "@cn/core/types/settings";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { AdminPage } from "@/modules/components/admin-page";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
 
@@ -198,7 +198,8 @@ function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: N
 
 function History() {
   const [page, setPage] = useUrlPage();
-  const { payload, isLoading, isError, error, refetch } = useSettingsHistory(page);
+  const [size, setSize] = useUrlPageSize(SETTINGS_HISTORY_PAGE_SIZE);
+  const { payload, isLoading, isError, error, refetch } = useSettingsHistory(page, size);
   if (isLoading) return <LoadingState />;
   if (isError) return <ErrorState message={error?.message ?? "Could not load the history"} onRetry={() => refetch()} />;
   if (!payload?.items.length) return <EmptyState title="No settings have been changed yet." />;
@@ -229,7 +230,7 @@ function History() {
           </tbody>
         </table>
       </div>
-      <Pager className="mt-4" page={page} pageSize={SETTINGS_HISTORY_PAGE_SIZE} total={payload.total} onPage={setPage} />
+      <Pager className="mt-4" page={page} pageSize={size} total={payload.total} onPage={setPage} onPageSize={setSize} />
     </>
   );
 }

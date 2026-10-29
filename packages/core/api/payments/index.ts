@@ -249,11 +249,11 @@ export const useSimulatePayment = () => {
 export const ADMIN_MONEY_PAGE_SIZE = 25;
 
 /** Client payments with every amount; filter by status, search (reference, job, client, provider), dates or hire. */
-export const useAdminPayments = (filters: PaymentStatus | AdminPaymentFilters = {}, page = 0) => {
+export const useAdminPayments = (filters: PaymentStatus | AdminPaymentFilters = {}, page = 0, size = ADMIN_MONEY_PAGE_SIZE) => {
   const f: AdminPaymentFilters = typeof filters === "string" ? { status: filters } : filters;
   return useAdminQuery<AdminPayments>(
-    ["market", "payments", f, page],
-    withQuery(apiPaths.admin.marketPayments, { ...f, limit: ADMIN_MONEY_PAGE_SIZE, offset: page * ADMIN_MONEY_PAGE_SIZE }),
+    ["market", "payments", f, page, size],
+    withQuery(apiPaths.admin.marketPayments, { ...f, limit: size, offset: page * size }),
   );
 };
 
@@ -293,10 +293,15 @@ export const useRequestRefund = () => {
   return { requestRefund, isPending };
 };
 
-export const useAdminRefunds = (params: { tx_ref?: string; status?: RefundStatus } = {}, page = 0, enabled = true) =>
+export const useAdminRefunds = (
+  params: { tx_ref?: string; status?: RefundStatus } = {},
+  page = 0,
+  enabled = true,
+  size = ADMIN_MONEY_PAGE_SIZE,
+) =>
   useAdminQuery<Paged<Refund>>(
-    ["market", "refunds", params, page],
-    withQuery(apiPaths.admin.marketRefunds, { ...params, limit: ADMIN_MONEY_PAGE_SIZE, offset: page * ADMIN_MONEY_PAGE_SIZE }),
+    ["market", "refunds", params, page, size],
+    withQuery(apiPaths.admin.marketRefunds, { ...params, limit: size, offset: page * size }),
     { enabled },
   );
 
@@ -308,10 +313,10 @@ export const useRefundAction = () => {
 };
 
 /** Provider withdrawal requests, filtered by status (the API defaults to "requested"). */
-export const useAdminPayouts = (status: PayoutStatus, page = 0) =>
+export const useAdminPayouts = (status: PayoutStatus, page = 0, size = ADMIN_MONEY_PAGE_SIZE) =>
   useAdminQuery<AdminPayouts>(
-    ["market", "payouts", status, page],
-    withQuery(apiPaths.admin.marketPayouts, { status, limit: ADMIN_MONEY_PAGE_SIZE, offset: page * ADMIN_MONEY_PAGE_SIZE }),
+    ["market", "payouts", status, page, size],
+    withQuery(apiPaths.admin.marketPayouts, { status, limit: size, offset: page * size }),
   );
 
 /** Who gets a payout, whether the account is theirs, and which payments fund it. */

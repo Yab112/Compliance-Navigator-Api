@@ -6,7 +6,7 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Label } from "@cn/ui/label";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { AdminPage } from "@/modules/components/admin-page";
 import { NativeSelect } from "@/modules/shared/native-select";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
@@ -132,6 +132,7 @@ function StaffList() {
   const [status, setStatus] = useState("");
   const [roleId, setRoleId] = useState("");
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(PAGE_SIZE);
   const [inviting, setInviting] = useState(false);
   const roles = useRoles(0, 200).payload?.items ?? [];
 
@@ -145,7 +146,7 @@ function StaffList() {
     return () => clearTimeout(t);
   }, [search, q, setPage]);
 
-  const { payload, isLoading, error, refetch } = useStaffList({ q, status, role_id: roleId, page });
+  const { payload, isLoading, error, refetch } = useStaffList({ q, status, role_id: roleId, page, size });
 
   return (
     <AdminPage
@@ -218,7 +219,7 @@ function StaffList() {
           </table>
         </div>
       )}
-      <Pager page={page} pageSize={PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }

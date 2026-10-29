@@ -21,7 +21,8 @@ export function DocumentsTable({ onEdit, initialStatus = "" }: { onEdit: (docId:
   const [q, setQ] = useState("");
   const [status, setStatus] = useState(initialStatus);
   const [page, setPage] = useState(0);
-  const docs = useGraphDocuments({ q, status, page });
+  const [size, setSize] = useState(GRAPH_DOCUMENTS_PAGE_SIZE);
+  const docs = useGraphDocuments({ q, status, page, size });
 
   // Search after the admin stops typing, and go back to the first page
   useEffect(() => {
@@ -136,7 +137,7 @@ export function DocumentsTable({ onEdit, initialStatus = "" }: { onEdit: (docId:
           </table>
         </div>
       )}
-      <Pager page={page} pageSize={GRAPH_DOCUMENTS_PAGE_SIZE} total={total} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={total} onPage={setPage} onPageSize={(n) => { setSize(n); setPage(0); }} />
     </div>
   );
 }

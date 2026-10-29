@@ -11,10 +11,10 @@ export const SETTINGS_HISTORY_PAGE_SIZE = 20;
 /** Every editable business rule, grouped, with its limits and current value. */
 export const usePlatformSettings = () => useAdminQuery<PlatformSettings>(["settings"], apiPaths.admin.settings);
 
-export const useSettingsHistory = (page = 0) =>
+export const useSettingsHistory = (page = 0, size = SETTINGS_HISTORY_PAGE_SIZE) =>
   useAdminQuery<{ items: SettingChange[]; total: number }>(
-    ["settings", "history", page],
-    withQuery(apiPaths.admin.settingsHistory, { limit: SETTINGS_HISTORY_PAGE_SIZE, offset: page * SETTINGS_HISTORY_PAGE_SIZE }),
+    ["settings", "history", page, size],
+    withQuery(apiPaths.admin.settingsHistory, { limit: size, offset: page * size }),
   );
 
 /** Save several fields at once (all validated first) or put one back to its default. */

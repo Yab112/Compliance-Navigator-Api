@@ -6,7 +6,7 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { Button } from "@cn/ui/button";
 import { Label } from "@cn/ui/label";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { Textarea } from "@cn/ui/textarea";
 import { AdminPage } from "@/modules/components/admin-page";
 import { NativeSelect } from "@/modules/shared/native-select";
@@ -117,13 +117,14 @@ export function ApprovalsPage() {
   const box = (TABS.find((t) => t.id === params.get("box"))?.id ?? "waiting") as ApprovalBox;
   const [status, setStatus] = useState("");
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(PAGE_SIZE);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const counts: Record<ApprovalBox, number | undefined> = {
     waiting: useApprovalCount("waiting"),
     mine: useApprovalCount("mine"),
     all: undefined,
   };
-  const { payload, isLoading, error, refetch } = useApprovals(box, page, box === "waiting" ? "" : status);
+  const { payload, isLoading, error, refetch } = useApprovals(box, page, box === "waiting" ? "" : status, size);
 
   const select = (next: ApprovalBox, focus = false) => {
     const sp = new URLSearchParams(params.toString());
@@ -195,7 +196,7 @@ export function ApprovalsPage() {
             ))}
           </ul>
         )}
-        <Pager page={page} pageSize={PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+        <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
       </div>
     </AdminPage>
   );

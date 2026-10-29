@@ -69,7 +69,8 @@ function InstitutionsTable({
   const [input, setInput] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
-  const breakdown = useGraphInstitutions({ q, page });
+  const [size, setSize] = useState(GRAPH_INSTITUTIONS_PAGE_SIZE);
+  const breakdown = useGraphInstitutions({ q, page, size });
   const rows = breakdown.payload?.items ?? [];
 
   useEffect(() => {
@@ -156,7 +157,13 @@ function InstitutionsTable({
           </table>
         </div>
       )}
-      <Pager page={page} pageSize={GRAPH_INSTITUTIONS_PAGE_SIZE} total={breakdown.payload?.total ?? 0} onPage={setPage} />
+      <Pager
+        page={page}
+        pageSize={size}
+        total={breakdown.payload?.total ?? 0}
+        onPage={setPage}
+        onPageSize={(n) => { setSize(n); setPage(0); }}
+      />
     </div>
   );
 }

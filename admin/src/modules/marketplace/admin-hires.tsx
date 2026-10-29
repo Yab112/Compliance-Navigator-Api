@@ -15,7 +15,7 @@ import {
 } from "@cn/core/api/providers";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
@@ -48,6 +48,7 @@ export function AdminHires() {
   const followUp = params.get("follow_up") === "1";
   const refund = params.get("refund") === "1";
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(ADMIN_MARKET_PAGE_SIZE);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const q = useDebounced(query.trim(), 300);
   // A filter change starts again at page 1
@@ -71,8 +72,8 @@ export function AdminHires() {
   };
   const { data, isLoading, isError, error, refetch } = useAdminHires({
     ...filters,
-    limit: ADMIN_MARKET_PAGE_SIZE,
-    offset: page * ADMIN_MARKET_PAGE_SIZE,
+    limit: size,
+    offset: page * size,
   });
   const exportCsv = useHiresExport();
   const [exporting, setExporting] = useState(false);
@@ -173,7 +174,7 @@ export function AdminHires() {
           </ul>
         </>
       )}
-      <Pager page={page} pageSize={ADMIN_MARKET_PAGE_SIZE} total={total} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={total} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }
@@ -249,13 +250,17 @@ function ReviewChanges({
   onStatus,
   page,
   onPage,
+  size,
+  onSize,
 }: {
   status: ReviewChangeStatus;
   onStatus: (s: ReviewChangeStatus) => void;
   page: number;
   onPage: (page: number) => void;
+  size: number;
+  onSize: (size: number) => void;
 }) {
-  const { data, isLoading, isError, error, refetch } = useAdminReviewChanges(status, page);
+  const { data, isLoading, isError, error, refetch } = useAdminReviewChanges(status, page, true, size);
   const items = data?.payload.items ?? [];
   return (
     <>
@@ -281,7 +286,7 @@ function ReviewChanges({
           ))}
         </ul>
       )}
-      <Pager page={page} pageSize={ADMIN_MARKET_PAGE_SIZE} total={data?.payload.total ?? 0} onPage={onPage} />
+      <Pager page={page} pageSize={size} total={data?.payload.total ?? 0} onPage={onPage} onPageSize={onSize} />
     </>
   );
 }
@@ -358,6 +363,7 @@ export function AdminReviews() {
   const statusParam = params.get("status");
   const changeStatus: ReviewChangeStatus = CHANGE_STATUSES.some((s) => s.key === statusParam) ? (statusParam as ReviewChangeStatus) : "pending";
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(ADMIN_MARKET_PAGE_SIZE);
   // Every tab or status change starts again at page 1
   const setParams = (next: Record<string, string | null>) => {
     const q = new URLSearchParams(params.toString());
@@ -380,7 +386,8 @@ export function AdminReviews() {
     hidden: filter === "hidden" ? true : undefined,
     max_rating: filter === "low" ? 2 : undefined,
     q: q || undefined,
-    offset: page * ADMIN_MARKET_PAGE_SIZE,
+    offset: page * size,
+    limit: size,
   }, filter !== "changes");
   const pendingChanges = useAdminReviewChanges("pending").data?.payload.pending ?? 0;
   const items: AdminReview[] = data?.payload.items ?? [];
@@ -410,6 +417,8 @@ export function AdminReviews() {
           onStatus={(s) => setParams({ status: s === "pending" ? null : s })}
           page={page}
           onPage={setPage}
+          size={size}
+          onSize={setSize}
         />
       ) : isLoading ? (
         <LoadingState />
@@ -425,7 +434,7 @@ export function AdminReviews() {
         </ul>
       )}
       {filter !== "changes" && (
-        <Pager page={page} pageSize={ADMIN_MARKET_PAGE_SIZE} total={data?.payload.total ?? 0} onPage={setPage} />
+        <Pager page={page} pageSize={size} total={data?.payload.total ?? 0} onPage={setPage} onPageSize={setSize} />
       )}
     </AdminPage>
   );

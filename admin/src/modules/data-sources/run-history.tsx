@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import {
   DATA_SOURCE_RUNS_PAGE_SIZE,
   useDataSourceRuns,
@@ -174,7 +174,8 @@ export function RunHistory({ sources, poll }: { sources: DataSource[]; poll: boo
   const to = DATE_RE.test(params.get("to") ?? "") ? params.get("to")! : "";
   const badRange = !!from && !!to && from > to;
   const [page, setPage] = useUrlPage();
-  const runs = useDataSourceRuns({ source, status, from: badRange ? "" : from, to: badRange ? "" : to, page }, poll);
+  const [size, setSize] = useUrlPageSize(DATA_SOURCE_RUNS_PAGE_SIZE);
+  const runs = useDataSourceRuns({ source, status, from: badRange ? "" : from, to: badRange ? "" : to, page, size }, poll);
   const byId = Object.fromEntries(sources.map((s) => [s.id, s]));
   const items = runs.payload?.items ?? [];
   const total = runs.payload?.total ?? 0;
@@ -289,7 +290,7 @@ export function RunHistory({ sources, poll }: { sources: DataSource[]; poll: boo
           </table>
         </div>
       )}
-      <Pager page={page} pageSize={DATA_SOURCE_RUNS_PAGE_SIZE} total={total} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={total} onPage={setPage} onPageSize={setSize} />
     </section>
   );
 }

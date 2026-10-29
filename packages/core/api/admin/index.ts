@@ -38,20 +38,20 @@ export const useDataSources = (poll: boolean) =>
 
 export const DATA_SOURCE_RUNS_PAGE_SIZE = 20;
 
-export type DataSourceRunFilters = { source?: string; status?: string; from?: string; to?: string; page?: number };
+export type DataSourceRunFilters = { source?: string; status?: string; from?: string; to?: string; page?: number; size?: number };
 
 export const useDataSourceRuns = (filters: DataSourceRunFilters, poll: boolean) => {
-  const { source = "", status = "", from = "", to = "", page = 0 } = filters;
+  const { source = "", status = "", from = "", to = "", page = 0, size = DATA_SOURCE_RUNS_PAGE_SIZE } = filters;
   const params = new URLSearchParams({
-    limit: String(DATA_SOURCE_RUNS_PAGE_SIZE),
-    offset: String(page * DATA_SOURCE_RUNS_PAGE_SIZE),
+    limit: String(size),
+    offset: String(page * size),
   });
   if (source) params.set("source", source);
   if (status) params.set("status", status);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
   return useAdminQuery<Paged<DataSourceRun>>(
-    ["data-source-runs", source, status, from, to, page],
+    ["data-source-runs", source, status, from, to, page, size],
     `${p.dataSourceRuns}?${params}`,
     { refetchInterval: poll ? 3000 : false },
   );
@@ -107,27 +107,27 @@ export const useGraphStats = () => useAdminQuery<GraphCounts>(["graph-stats"], p
 export const useGraphView = () => useAdminQuery<GraphView>(["graph-view"], p.graphView);
 export const GRAPH_DOCUMENTS_PAGE_SIZE = 20;
 
-export const useGraphDocuments = (filters: { q?: string; status?: string; page?: number }) => {
-  const { q = "", status = "", page = 0 } = filters;
+export const useGraphDocuments = (filters: { q?: string; status?: string; page?: number; size?: number }) => {
+  const { q = "", status = "", page = 0, size = GRAPH_DOCUMENTS_PAGE_SIZE } = filters;
   const params = new URLSearchParams({
-    limit: String(GRAPH_DOCUMENTS_PAGE_SIZE),
-    offset: String(page * GRAPH_DOCUMENTS_PAGE_SIZE),
+    limit: String(size),
+    offset: String(page * size),
   });
   if (q) params.set("q", q);
   if (status) params.set("status", status);
-  return useAdminQuery<Paged<GraphDocument>>(["graph-documents", q, status, page], `${p.graphDocuments}?${params}`);
+  return useAdminQuery<Paged<GraphDocument>>(["graph-documents", q, status, page, size], `${p.graphDocuments}?${params}`);
 };
 
 export const GRAPH_INSTITUTIONS_PAGE_SIZE = 15;
 
-export const useGraphInstitutions = (filters: { q?: string; page?: number }) => {
-  const { q = "", page = 0 } = filters;
+export const useGraphInstitutions = (filters: { q?: string; page?: number; size?: number }) => {
+  const { q = "", page = 0, size = GRAPH_INSTITUTIONS_PAGE_SIZE } = filters;
   const params = new URLSearchParams({
-    limit: String(GRAPH_INSTITUTIONS_PAGE_SIZE),
-    offset: String(page * GRAPH_INSTITUTIONS_PAGE_SIZE),
+    limit: String(size),
+    offset: String(page * size),
   });
   if (q) params.set("q", q);
-  return useAdminQuery<Paged<InstitutionBreakdown>>(["graph-institutions", q, page], `${p.graphInstitutions}?${params}`);
+  return useAdminQuery<Paged<InstitutionBreakdown>>(["graph-institutions", q, page, size], `${p.graphInstitutions}?${params}`);
 };
 
 export type DocumentPatch = Partial<
@@ -178,12 +178,12 @@ export const useKnowledgeSearch = () => {
 
 export const FEEDBACK_PAGE_SIZE = 25;
 
-export const useFeedbackFlags = (filters: FeedbackFilters, page = 0) => {
-  const params = new URLSearchParams({ status: filters.status, limit: String(FEEDBACK_PAGE_SIZE), offset: String(page * FEEDBACK_PAGE_SIZE) });
+export const useFeedbackFlags = (filters: FeedbackFilters, page = 0, size = FEEDBACK_PAGE_SIZE) => {
+  const params = new URLSearchParams({ status: filters.status, limit: String(size), offset: String(page * size) });
   if (filters.target_type) params.set("target_type", filters.target_type);
   if (filters.q) params.set("q", filters.q);
   if (filters.org_id) params.set("org_id", filters.org_id);
-  return useAdminQuery<{ flags: FeedbackFlag[]; total: number }>(["feedback", filters, page], `${p.feedback}?${params}`);
+  return useAdminQuery<{ flags: FeedbackFlag[]; total: number }>(["feedback", filters, page, size], `${p.feedback}?${params}`);
 };
 
 export const useResolveFlag = () => {
@@ -213,14 +213,14 @@ export const useAuthSummary = () => useAdminQuery<AuthSummary>(["auth", "summary
 
 export const AUTH_EVENTS_PAGE_SIZE = 25;
 
-export const useAuthEvents = (userId?: string, page = 0) => {
+export const useAuthEvents = (userId?: string, page = 0, size = AUTH_EVENTS_PAGE_SIZE) => {
   const params = new URLSearchParams({
-    limit: String(AUTH_EVENTS_PAGE_SIZE),
-    offset: String(page * AUTH_EVENTS_PAGE_SIZE),
+    limit: String(size),
+    offset: String(page * size),
   });
   if (userId) params.set("user_id", userId);
   return useAdminQuery<{ events: AuthEvent[]; total: number }>(
-    ["auth", "events", userId ?? "all", page],
+    ["auth", "events", userId ?? "all", page, size],
     `${p.authEvents}?${params}`,
   );
 };

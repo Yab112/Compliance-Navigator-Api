@@ -212,10 +212,10 @@ export type { Branch };
 
 export const ADMIN_ORGS_PAGE_SIZE = 25;
 
-export const useAdminOrganizations = (status: string, q: string, page = 0) =>
+export const useAdminOrganizations = (status: string, q: string, page = 0, size = ADMIN_ORGS_PAGE_SIZE) =>
   useAdminQuery<Paged<AdminOrganization> & { confirm_every_days: number }>(
-    ["organizations", status, q, page],
-    withQuery(a.organizations, { status, q, limit: ADMIN_ORGS_PAGE_SIZE, offset: page * ADMIN_ORGS_PAGE_SIZE }),
+    ["organizations", status, q, page, size],
+    withQuery(a.organizations, { status, q, limit: size, offset: page * size }),
   );
 
 /** Download the organizations list (same filters) as a CSV file. */
@@ -242,10 +242,10 @@ export const useReviewOrganization = () => {
   };
 };
 
-export const useSubmissions = (status: string, page = 0, q = "") =>
+export const useSubmissions = (status: string, page = 0, q = "", size = ADMIN_ORGS_PAGE_SIZE) =>
   useAdminQuery<{ submissions: Submission[]; total: number }>(
-    ["submissions", status, q, page],
-    withQuery(a.submissions, { status, q, limit: ADMIN_ORGS_PAGE_SIZE, offset: page * ADMIN_ORGS_PAGE_SIZE }),
+    ["submissions", status, q, page, size],
+    withQuery(a.submissions, { status, q, limit: size, offset: page * size }),
   );
 
 export const useSubmission = (id: string) =>

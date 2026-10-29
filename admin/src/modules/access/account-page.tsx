@@ -8,7 +8,7 @@ import { staffLogout } from "@cn/core/lib/staff-session";
 import { PasswordInput, passwordIsValid } from "@cn/ui/auth/password-input";
 import { Button } from "@cn/ui/button";
 import { Label } from "@cn/ui/label";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { AdminPage } from "@/modules/components/admin-page";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
 import { useMyAccountMutations, useMyActivity, useMySessions, useStaffMe } from "./api";
@@ -67,7 +67,8 @@ export function ChangePasswordForm() {
 
 function MySessions() {
   const [page, setPage] = useUrlPage("sessions_page");
-  const { payload, isLoading, error, refetch } = useMySessions(page, SMALL_PAGE);
+  const [size, setSize] = useUrlPageSize(SMALL_PAGE, "sessions_page");
+  const { payload, isLoading, error, refetch } = useMySessions(page, size);
   const { endSession, isPending } = useMyAccountMutations();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -113,7 +114,7 @@ function MySessions() {
           ))}
         </ul>
       )}
-      <Pager page={page} pageSize={SMALL_PAGE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button
           variant="outline"
@@ -134,13 +135,14 @@ function MySessions() {
 
 function MyActivity() {
   const [page, setPage] = useUrlPage("activity_page");
-  const { payload, isLoading, error, refetch } = useMyActivity(page, SMALL_PAGE);
+  const [size, setSize] = useUrlPageSize(SMALL_PAGE, "activity_page");
+  const { payload, isLoading, error, refetch } = useMyActivity(page, size);
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />;
   return (
     <>
       {!payload?.items.length ? <EmptyState title="Nothing yet" /> : <AuditTable items={payload.items} showActor={false} />}
-      <Pager page={page} pageSize={SMALL_PAGE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </>
   );
 }

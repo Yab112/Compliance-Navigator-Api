@@ -96,7 +96,8 @@ function RolesEditor({ staff, editable }: { staff: StaffMember; editable: boolea
 
 function Sessions({ id }: { id: string }) {
   const [page, setPage] = useState(0);
-  const { payload, isLoading } = useStaffSessions(id, page, SESSION_PAGE);
+  const [size, setSize] = useState(SESSION_PAGE);
+  const { payload, isLoading } = useStaffSessions(id, page, size);
   if (isLoading) return <LoadingState />;
   if (!payload?.items.length) return <EmptyState title="Not signed in anywhere" />;
   return (
@@ -111,7 +112,16 @@ function Sessions({ id }: { id: string }) {
           </li>
         ))}
       </ul>
-      <Pager page={page} pageSize={SESSION_PAGE} total={payload.total} onPage={setPage} />
+      <Pager
+        page={page}
+        pageSize={size}
+        total={payload.total}
+        onPage={setPage}
+        onPageSize={(next) => {
+          setSize(next);
+          setPage(0);
+        }}
+      />
     </>
   );
 }

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { type TicketFilters, useSupportExport, useSupportSummary, useSupportTickets } from "@cn/core/api/support";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
@@ -79,6 +79,7 @@ export function SupportDesk() {
   const since = params.get("since") ?? "";
   const until = params.get("until") ?? "";
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(PAGE_SIZE);
   const exportCsv = useSupportExport();
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -111,8 +112,8 @@ export function SupportDesk() {
     until: until || undefined,
     sort: sort === "triage" ? undefined : sort,
     q: q || undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: size,
+    offset: page * size,
   };
   const tickets = useSupportTickets(filters);
   const s = summary.payload;
@@ -386,7 +387,7 @@ export function SupportDesk() {
             </div>
           )}
 
-          <Pager page={page} pageSize={PAGE_SIZE} total={tickets.payload?.total ?? 0} onPage={setPage} />
+          <Pager page={page} pageSize={size} total={tickets.payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
         </div>
       </div>
     </AdminPage>

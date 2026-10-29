@@ -178,7 +178,8 @@ function ReferenceRow({ p, r }: { p: AdminProvider; r: VettingReference }) {
 
 function History({ p }: { p: AdminProvider }) {
   const [page, setPage] = useState(0);
-  const { data, isLoading, isError, error, refetch } = useAdminProviderDocuments(p.id, page);
+  const [size, setSize] = useState(VETTING_HISTORY_PAGE_SIZE);
+  const { data, isLoading, isError, error, refetch } = useAdminProviderDocuments(p.id, page, true, size);
   const result = data?.payload;
   if (isLoading) return <LoadingState />;
   if (isError) return <ErrorState message={error?.message ?? "Could not load"} onRetry={() => refetch()} />;
@@ -193,7 +194,14 @@ function History({ p }: { p: AdminProvider }) {
           </li>
         ))}
       </ul>
-      <Pager className="mt-2" page={page} pageSize={VETTING_HISTORY_PAGE_SIZE} total={result.total} onPage={setPage} />
+      <Pager
+        className="mt-2"
+        page={page}
+        pageSize={size}
+        total={result.total}
+        onPage={setPage}
+        onPageSize={(n) => { setSize(n); setPage(0); }}
+      />
     </>
   );
 }

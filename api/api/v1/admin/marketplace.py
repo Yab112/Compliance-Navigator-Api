@@ -222,7 +222,7 @@ def assign_candidates(
     q: str | None = Query(None, max_length=100),
     area: str | None = Query(None, max_length=40),
     specialty: str | None = Query(None, max_length=40),
-    limit: int = Query(20, ge=1, le=50),
+    limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
     """Providers who can take this request now (listed and taking work), best fit first."""

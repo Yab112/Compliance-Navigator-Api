@@ -256,10 +256,10 @@ export const useAdminProvider = (id: string) =>
     staleTime: 0,
   });
 
-export const useAdminProviderDocuments = (id: string, page = 0, enabled = true) =>
+export const useAdminProviderDocuments = (id: string, page = 0, enabled = true, size = VETTING_HISTORY_PAGE_SIZE) =>
   useFetchData<APIResponse<Paged<VettingDocument>>>(
-    ["admin", "market", "provider", id, "documents", page],
-    withQuery(apiPaths.admin.marketProviderDocuments(id), { limit: VETTING_HISTORY_PAGE_SIZE, offset: page * VETTING_HISTORY_PAGE_SIZE }),
+    ["admin", "market", "provider", id, "documents", page, size],
+    withQuery(apiPaths.admin.marketProviderDocuments(id), { limit: size, offset: page * size }),
     { enabled: enabled && !!id, staleTime: 0 },
   );
 
@@ -298,7 +298,7 @@ export const CANDIDATES_PAGE_SIZE = 10;
 
 export const useAssignCandidates = (
   id: string,
-  params: { q?: string; area?: string; specialty?: string; page?: number },
+  params: { q?: string; area?: string; specialty?: string; page?: number; size?: number },
   enabled = true,
 ) =>
   useFetchData<APIResponse<Paged<AssignCandidate>>>(
@@ -307,8 +307,8 @@ export const useAssignCandidates = (
       q: params.q || undefined,
       area: params.area || undefined,
       specialty: params.specialty || undefined,
-      limit: CANDIDATES_PAGE_SIZE,
-      offset: (params.page ?? 0) * CANDIDATES_PAGE_SIZE,
+      limit: params.size ?? CANDIDATES_PAGE_SIZE,
+      offset: (params.page ?? 0) * (params.size ?? CANDIDATES_PAGE_SIZE),
     }),
     { enabled: enabled && !!id, staleTime: 0 },
   );
@@ -337,18 +337,21 @@ export const useSampleStatus = () =>
 
 export const ADMIN_MARKET_PAGE_SIZE = 25;
 
-export const useAdminReviews = (params: { hidden?: boolean; max_rating?: number; q?: string; offset?: number }, enabled = true) =>
+export const useAdminReviews = (
+  params: { hidden?: boolean; max_rating?: number; q?: string; offset?: number; limit?: number },
+  enabled = true,
+) =>
   useFetchData<APIResponse<Paged<AdminReview>>>(
     ["admin", "market", "reviews", params],
-    withQuery(apiPaths.admin.marketReviews, { ...params, limit: ADMIN_MARKET_PAGE_SIZE }),
+    withQuery(apiPaths.admin.marketReviews, { ...params, limit: params.limit ?? ADMIN_MARKET_PAGE_SIZE }),
     { enabled, staleTime: 0 },
   );
 
 export type ReviewChangeStatus = ReviewChange["status"];
 
-export const useAdminReviewChanges = (status: ReviewChangeStatus, page = 0, enabled = true) =>
+export const useAdminReviewChanges = (status: ReviewChangeStatus, page = 0, enabled = true, size = ADMIN_MARKET_PAGE_SIZE) =>
   useFetchData<APIResponse<Paged<ReviewChange> & { pending: number }>>(
-    ["admin", "market", "review-changes", status, page],
-    withQuery(apiPaths.admin.reviewChanges, { status, limit: ADMIN_MARKET_PAGE_SIZE, offset: page * ADMIN_MARKET_PAGE_SIZE }),
+    ["admin", "market", "review-changes", status, page, size],
+    withQuery(apiPaths.admin.reviewChanges, { status, limit: size, offset: page * size }),
     { enabled, staleTime: 0 },
   );

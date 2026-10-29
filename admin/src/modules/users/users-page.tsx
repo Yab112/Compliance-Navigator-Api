@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import {
   AUTH_EVENTS_PAGE_SIZE,
   useAdminUsers,
@@ -227,6 +227,7 @@ function UsersTab() {
   const [q, setQ] = useState("");
   const [role, setRole] = useState("");
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(PAGE_SIZE);
 
   // Debounce the search box; a new search starts from the first page
   useEffect(() => {
@@ -240,7 +241,7 @@ function UsersTab() {
     return () => clearTimeout(t);
   }, [search, q, setPage]);
 
-  const { payload, isLoading, error, refetch } = useAdminUsers(q, role, page, PAGE_SIZE);
+  const { payload, isLoading, error, refetch } = useAdminUsers(q, role, page, size);
   const total = payload?.total ?? 0;
 
   return (
@@ -283,7 +284,7 @@ function UsersTab() {
           </table>
         </div>
       )}
-      <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={total} onPage={setPage} onPageSize={setSize} />
     </>
   );
 }
@@ -320,7 +321,8 @@ function SecuritySummary() {
 
 function SecurityActivity() {
   const [page, setPage] = useUrlPage("events_page");
-  const { payload, isLoading, error, refetch } = useAuthEvents(undefined, page);
+  const [size, setSize] = useUrlPageSize(AUTH_EVENTS_PAGE_SIZE, "events_page");
+  const { payload, isLoading, error, refetch } = useAuthEvents(undefined, page, size);
   const total = payload?.total ?? 0;
   return (
     <>
@@ -359,7 +361,7 @@ function SecurityActivity() {
           </table>
         </div>
       )}
-      <Pager page={page} pageSize={AUTH_EVENTS_PAGE_SIZE} total={total} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={total} onPage={setPage} onPageSize={setSize} />
     </>
   );
 }

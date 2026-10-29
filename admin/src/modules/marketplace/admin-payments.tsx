@@ -18,7 +18,7 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { Badge } from "@cn/ui/badge";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
-import { Pager, useUrlPage } from "@cn/ui/pager";
+import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
 import { useCan } from "@/modules/access/api";
@@ -156,14 +156,15 @@ function RefundRow({ r, canRefund }: { r: Refund; canRefund: boolean }) {
 
 function PaymentRefunds({ txRef, canRefund }: { txRef: string; canRefund: boolean }) {
   const [page, setPage] = useState(0);
-  const { payload, isLoading, isError, error } = useAdminRefunds({ tx_ref: txRef }, page);
+  const [size, setSize] = useState(ADMIN_MONEY_PAGE_SIZE);
+  const { payload, isLoading, isError, error } = useAdminRefunds({ tx_ref: txRef }, page, true, size);
   if (isLoading) return <LoadingState />;
   if (isError) return <p className="text-destructive text-xs" role="alert">{error?.message ?? "Could not load refunds"}</p>;
   if (!payload?.items.length) return <p className="text-muted-foreground text-xs">No refunds for this payment.</p>;
   return (
     <div>
       <ul>{payload.items.map((r) => <RefundRow key={r.id} r={r} canRefund={canRefund} />)}</ul>
-      <Pager page={page} pageSize={ADMIN_MONEY_PAGE_SIZE} total={payload.total} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload.total} onPage={setPage} onPageSize={(n) => { setSize(n); setPage(0); }} />
     </div>
   );
 }
@@ -293,6 +294,7 @@ export function AdminPayments() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
   const [page, setPage] = useUrlPage();
+  const [size, setSize] = useUrlPageSize(ADMIN_MONEY_PAGE_SIZE);
   const filters: AdminPaymentFilters = {
     status: status || undefined,
     q: q || undefined,
@@ -301,7 +303,7 @@ export function AdminPayments() {
     needs_refund: needsRefund || undefined,
     engagement_id: engagement || undefined,
   };
-  const { payload, isLoading, isError, error, refetch } = useAdminPayments(filters, page);
+  const { payload, isLoading, isError, error, refetch } = useAdminPayments(filters, page, size);
   const totals = payload?.totals;
   const items = payload?.items ?? [];
   const canRefund = can("payments.refund");
@@ -413,7 +415,7 @@ export function AdminPayments() {
           ))}
         </ul>
       )}
-      <Pager page={page} pageSize={ADMIN_MONEY_PAGE_SIZE} total={payload?.total ?? 0} onPage={setPage} />
+      <Pager page={page} pageSize={size} total={payload?.total ?? 0} onPage={setPage} onPageSize={setSize} />
     </AdminPage>
   );
 }
