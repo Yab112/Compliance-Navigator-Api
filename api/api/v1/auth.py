@@ -7,7 +7,7 @@ in memory by the web app.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from auth import service
 from auth.service import AuthError, ClientInfo, SessionTokens
@@ -155,11 +155,12 @@ def reset_password(body: PasswordReset, client: ClientInfo = Depends(client_info
 
 
 @router.get("/sessions")
-def my_sessions(user: AuthUser = Depends(get_current_user)):
-    sessions = service.list_sessions(user.id)
+def my_sessions(limit: int = Query(10, ge=1, le=100), offset: int = Query(0, ge=0),
+                user: AuthUser = Depends(get_current_user)):
+    sessions = service.list_sessions(user.id, limit, offset)
     for s in sessions:
         s["current"] = s["id"] == user.session_id
-    return _ok({"sessions": sessions})
+    return _ok({"sessions": sessions, "total": service.count_sessions(user.id)})
 
 
 @router.delete("/sessions/{session_id}")
@@ -172,5 +173,6 @@ def end_session(session_id: UUID, user: AuthUser = Depends(get_current_user),
 
 
 @router.get("/activity")
-def my_activity(user: AuthUser = Depends(get_current_user)):
-    return _ok({"events": service.list_events(user.id, limit=30)})
+def my_activity(limit: int = Query(10, ge=1, le=100), offset: int = Query(0, ge=0),
+                user: AuthUser = Depends(get_current_user)):
+    return _ok({"events": service.list_events(user.id, limit, offset), "total": service.count_events(user.id)})

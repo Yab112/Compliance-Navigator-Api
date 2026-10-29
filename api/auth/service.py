@@ -66,7 +66,7 @@ def record_event(event: str, *, user_id: str | None = None, email: str | None = 
     )
 
 
-def list_events(user_id: str | None = None, limit: int = 100) -> list[dict]:
+def list_events(user_id: str | None = None, limit: int = 100, offset: int = 0) -> list[dict]:
     where, params = ("where e.user_id = %s", [user_id]) if user_id else ("", [])
     return fetch_all(
         f"""
@@ -74,10 +74,14 @@ def list_events(user_id: str | None = None, limit: int = 100) -> list[dict]:
                e.user_agent, e.detail, e.created_at
         from auth_events e left join users u on u.id = e.user_id
         {where}
-        order by e.created_at desc limit %s
+        order by e.created_at desc, e.id desc limit %s offset %s
         """,
-        [*params, limit],
+        [*params, limit, offset],
     )
+
+
+def count_events(user_id: str) -> int:
+    return fetch_one("select count(*) as n from auth_events where user_id = %s", (user_id,))["n"]
 
 
 def _recent_failures(column: str, value: str | None) -> int:
@@ -154,16 +158,23 @@ def revoke_all_sessions(user_id: str, reason: str, keep_session_id: str | None =
     return len(rows)
 
 
-def list_sessions(user_id: str) -> list[dict]:
+ACTIVE_SESSION = "user_id = %s and revoked_at is null and expires_at > now()"
+
+
+def list_sessions(user_id: str, limit: int | None = None, offset: int = 0) -> list[dict]:
     return fetch_all(
-        """
+        f"""
         select id::text, user_agent, ip, created_at, last_used_at, expires_at
         from auth_sessions
-        where user_id = %s and revoked_at is null and expires_at > now()
-        order by last_used_at desc
+        where {ACTIVE_SESSION}
+        order by last_used_at desc, id limit %s offset %s
         """,
-        (user_id,),
+        (user_id, limit, offset),
     )
+
+
+def count_sessions(user_id: str) -> int:
+    return fetch_one(f"select count(*) as n from auth_sessions where {ACTIVE_SESSION}", (user_id,))["n"]
 
 
 def count_active_sessions(user_ids: list[str]) -> dict[str, int]:

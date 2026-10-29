@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
+  SECURITY_PAGE_SIZE,
   useChangePassword,
   useLogout,
   useMyActivity,
@@ -13,6 +15,7 @@ import {
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
+import { Pager, useUrlPage } from "@cn/ui/pager";
 import { useRequireAuth } from "@cn/core/hooks/use-require-auth";
 import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { MTD } from "@cn/core/lib/constants/methods";
@@ -250,14 +253,100 @@ function ActivityList({ events }: { events: AuthEvent[] }) {
   );
 }
 
+type SecurityView = "devices" | "activity";
+
+/**
+ * Devices and security activity both grow long, so they sit side by side as two tabs,
+ * each paged on its own. The open tab and page live in the URL (?view=activity&page=2).
+ */
+function SecurityHistory({ onChanged }: { onChanged: () => void }) {
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const view: SecurityView = params.get("view") === "activity" ? "activity" : "devices";
+  const [page, setPage] = useUrlPage();
+  const sessions = useMySessions(view === "devices" ? page : 0);
+  const activity = useMyActivity(view === "activity" ? page : 0);
+  const { logout, isLoggingOut } = useLogout();
+
+  const setView = (next: SecurityView) => {
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete("page");
+    if (next === "activity") sp.set("view", "activity");
+    else sp.delete("view");
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+  };
+  const tabs = [
+    { key: "devices" as const, label: "Where you’re signed in", am: "የገቡባቸው መሳሪያዎች", count: sessions.data?.payload.total },
+    { key: "activity" as const, label: "Recent security activity", am: "የቅርብ ጊዜ እንቅስቃሴ", count: activity.data?.payload.total },
+  ];
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const next = view === "devices" ? "activity" : "devices";
+    setView(next);
+    document.getElementById(`security-tab-${next}`)?.focus();
+  };
+
+  return (
+    <section className="border-border bg-card rounded-md border">
+      <div role="tablist" aria-label="Security history" className="border-border grid grid-cols-2 border-b">
+        {tabs.map((t) => {
+          const active = t.key === view;
+          return (
+            <button
+              key={t.key}
+              id={`security-tab-${t.key}`}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-controls="security-panel"
+              tabIndex={active ? 0 : -1}
+              onClick={() => setView(t.key)}
+              onKeyDown={onKeyDown}
+              className={cn(
+                "-mb-px flex flex-col items-start gap-0.5 border-b-[3px] px-4 py-3 text-left text-sm sm:flex-row sm:items-center sm:gap-2",
+                active ? "border-primary text-gov-ink font-semibold" : "text-muted-foreground hover:text-foreground border-transparent",
+              )}
+            >
+              <span>{t.label}</span>
+              <span className="text-muted-foreground text-xs font-normal">
+                {t.am}
+                {t.count != null && <span className="tabular-nums"> · {t.count}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div role="tabpanel" id="security-panel" aria-labelledby={`security-tab-${view}`} className="p-5">
+        {view === "devices" ? (
+          <>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-muted-foreground text-sm">Sign out any device you don&apos;t recognise.</p>
+              <Button size="sm" variant="outline" loading={isLoggingOut} onClick={() => logout(true)}>
+                Sign out everywhere
+              </Button>
+            </div>
+            {sessions.data ? <SessionsList sessions={sessions.data.payload.sessions} onRevoked={onChanged} /> : <LoadingState />}
+            <Pager className="mt-4" page={page} pageSize={SECURITY_PAGE_SIZE} total={sessions.data?.payload.total ?? 0} onPage={setPage} />
+          </>
+        ) : (
+          <>
+            {activity.data ? <ActivityList events={activity.data.payload.events} /> : <LoadingState />}
+            <Pager className="mt-4" page={page} pageSize={SECURITY_PAGE_SIZE} total={activity.data?.payload.total ?? 0} onPage={setPage} />
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 type AccountTab = "profile" | "security";
 
 export function AccountPage() {
   const gate = useRequireAuth();
   const user = useUserStore((s) => s.user);
-  const { logout, isLoggingOut } = useLogout();
-  const sessions = useMySessions();
-  const activity = useMyActivity();
+  const queryClient = useQueryClient();
   const isProvider = !!useMyProvider(gate === "ready").data?.payload.provider;
   const params = useSearchParams();
   const router = useRouter();
@@ -273,10 +362,8 @@ export function AccountPage() {
     );
   }
 
-  const refetchAll = () => {
-    void sessions.refetch();
-    void activity.refetch();
-  };
+  // A password change or a signed-out device shows up in both lists, on every page
+  const refetchAll = () => void queryClient.invalidateQueries({ queryKey: ["auth"] });
   const link = "border-border hover:border-primary rounded-md border px-3 py-1.5";
 
   return (
@@ -330,21 +417,7 @@ export function AccountPage() {
             <PasswordForm onChanged={refetchAll} />
           </Section>
 
-          <Section
-            title="Where you’re signed in"
-            am="የገቡባቸው መሳሪያዎች"
-            aside={
-              <Button size="sm" variant="outline" loading={isLoggingOut} onClick={() => logout(true)}>
-                Sign out everywhere
-              </Button>
-            }
-          >
-            {sessions.data ? <SessionsList sessions={sessions.data.payload.sessions} onRevoked={refetchAll} /> : <LoadingState />}
-          </Section>
-
-          <Section title="Recent security activity" am="የቅርብ ጊዜ እንቅስቃሴ">
-            {activity.data ? <ActivityList events={activity.data.payload.events} /> : <LoadingState />}
-          </Section>
+          <SecurityHistory onChanged={refetchAll} />
         </div>
       )}
     </PageShell>

@@ -182,3 +182,19 @@ def test_sessions_list_and_revoke(make_user):
         other = next(s for s in sessions if not s["current"])  # the make_user registration session
         assert browser.delete(f"{API}/auth/sessions/{other['id']}", headers=headers).status_code == 200
         assert browser.delete(f"{API}/auth/sessions/{uuid.uuid4()}", headers=headers).status_code == 404
+
+
+def test_sessions_and_activity_page_with_totals(make_user):
+    user = make_user()
+    for _ in range(3):  # four sessions in all with the registration one; each sign-in is an event too
+        with _fresh_client() as browser:
+            r = browser.post(f"{API}/auth/login", json={"email": user["email"], "password": user["password"]})
+    headers = {"Authorization": f"Bearer {r.json()['payload']['accessToken']}"}
+    with _fresh_client() as browser:
+        get = lambda path, **p: browser.get(f"{API}{path}", params=p, headers=headers).json()["payload"]  # noqa: E731
+        first, second = get("/auth/sessions", limit=3), get("/auth/sessions", limit=3, offset=3)
+        assert first["total"] == 4 and len(first["sessions"]) == 3 and len(second["sessions"]) == 1
+        assert not {s["id"] for s in first["sessions"]} & {s["id"] for s in second["sessions"]}
+        events = get("/auth/activity", limit=2)
+        assert events["total"] >= 4 and len(events["events"]) == 2
+        assert events["events"][0]["created_at"] >= events["events"][1]["created_at"]  # newest first
