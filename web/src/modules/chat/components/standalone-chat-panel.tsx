@@ -1,116 +1,57 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useAssistant } from "@/api/assistant";
+import { AssistantPanelView } from "@/components/assistant/assistant-panel";
 import { Button } from "@/components/ui/button";
-import { ChatWindow } from "@/components/chat/ChatWindow";
-import { ChatInput } from "@/components/chat/ChatInput";
-import { useChatStore } from "@/store/chat-store";
-import { useRoadmapStore } from "@/store/roadmap-store";
-import { useSendMessage, ChatApiError } from "@/api/chat";
-import { getAccessToken } from "@/lib/auth-token";
+import { ChatSidePanel } from "./chat-side-panel";
 
+/** The Ask page: the assistant fills the screen, with contact options beside it (a drawer on phones). Works signed out. */
 export function StandaloneChatPanel() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const router = useRouter();
+  const assistant = useAssistant("ask");
+  const [drawer, setDrawer] = useState(false);
 
   useEffect(() => {
-    setIsLoggedIn(!!getAccessToken());
-  }, []);
-
-  const {
-    messages,
-    conversationHistory,
-    slots,
-    addUserMessage,
-    addAssistantMessage,
-    updateHistory,
-    updateSlots,
-    clearChat,
-  } = useChatStore();
-
-  const setCurrent = useRoadmapStore((s) => s.setCurrent);
-  const { sendMessage, isSending } = useSendMessage();
-
-  const handleSend = useCallback(
-    async (text: string) => {
-      if (!isLoggedIn) return;
-      addUserMessage(text);
-
-      try {
-        const response = await sendMessage({
-          message: text,
-          goal: slots.goal,
-          sub_city: slots.sub_city,
-          documents_held: slots.documents_held,
-          conversation_history: conversationHistory,
-        });
-
-        addAssistantMessage(response.reply);
-        updateHistory(response.updated_history ?? []);
-
-        if (response.suggested_goal) updateSlots({ goal: response.suggested_goal });
-        if (response.suggested_sub_city) updateSlots({ sub_city: response.suggested_sub_city });
-        if (response.suggested_documents_held.length > 0)
-          updateSlots({ documents_held: response.suggested_documents_held });
-
-        if (response.roadmap) {
-          setCurrent(response.roadmap);
-          router.push("/roadmap");
-        }
-      } catch (err) {
-        addAssistantMessage(
-          err instanceof ChatApiError ? err.message : "Something went wrong. Please try again.",
-        );
-      }
-    },
-    [
-      isLoggedIn,
-      addUserMessage,
-      addAssistantMessage,
-      sendMessage,
-      slots,
-      conversationHistory,
-      updateHistory,
-      updateSlots,
-      setCurrent,
-      router,
-    ],
-  );
-
-  if (!isLoggedIn) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-        <p className="text-sm font-semibold">Compliance Assistant</p>
-        <p className="text-muted-foreground max-w-xs text-xs leading-relaxed">
-          Sign in to chat in English or Amharic. Ask about permits, licenses, IDs, or any
-          government process — type or use your voice.
-        </p>
-        <Button asChild size="sm">
-          <Link href="/login?returnTo=/chat">Sign in to chat</Link>
-        </Button>
-      </div>
-    );
-  }
+    if (!drawer) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [drawer]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-border flex shrink-0 items-center justify-between border-b px-4 py-3">
-        <div>
-          <p className="text-sm font-semibold">Compliance Assistant</p>
-          <p className="text-muted-foreground text-xs">
-            English or Amharic · type or speak · history saved
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={clearChat}>
-          Clear
-        </Button>
+    <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1">
+      <div className="border-border flex min-h-0 min-w-0 flex-1 flex-col lg:border-x">
+        <AssistantPanelView
+          assistant={assistant}
+          className="min-h-0 flex-1"
+          subtitle="Any service, any office · English or Amharic · type or speak"
+          headerExtra={
+            <Button variant="outline" size="sm" className="lg:hidden" aria-expanded={drawer} aria-controls="chat-help" onClick={() => setDrawer(true)}>
+              Contact us · ያግኙን
+            </Button>
+          }
+        />
       </div>
+      <aside className="border-border hidden w-80 shrink-0 overflow-y-auto border-r lg:block" aria-label="Help and contact">
+        <ChatSidePanel assistant={assistant} />
+      </aside>
 
-      <ChatWindow messages={messages} isLoading={isSending} onQuickReply={handleSend} />
-
-      <ChatInput onSend={handleSend} disabled={isSending} enableVoice />
+      {drawer && (
+        <div className="fixed inset-0 z-[70] lg:hidden" role="dialog" aria-modal="true" aria-label="Help and contact" id="chat-help">
+          <button type="button" aria-label="Close" className="absolute inset-0 bg-black/40" onClick={() => setDrawer(false)} />
+          <div className="bg-card absolute inset-y-0 right-0 flex w-[min(22rem,90vw)] flex-col shadow-xl">
+            <div className="border-border flex shrink-0 items-center justify-between border-b px-4 py-3">
+              <p className="text-sm font-semibold">Help and contact · እገዛ</p>
+              <Button variant="ghost" size="sm" onClick={() => setDrawer(false)}>
+                Close
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ChatSidePanel assistant={assistant} onPicked={() => setDrawer(false)} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

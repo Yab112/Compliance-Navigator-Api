@@ -52,7 +52,7 @@ export function ChatInput({ onSend, disabled, enableVoice }: ChatInputProps) {
     chunksRef.current = [];
 
     if (blob.size < 1000) {
-      setVoiceError("Recording too short — try again.");
+      setVoiceError("Recording too short, try again.");
       return;
     }
 

@@ -1,4 +1,4 @@
-"""Compliance graph relationships — Doc/01 §3.2."""
+"""Compliance graph relationships, Doc/01 §3.2."""
 
 from typing import ClassVar
 
@@ -6,6 +6,8 @@ from neontology import BaseRelationship
 
 from models.compliance_nodes import (
     DocumentNode,
+    GovServiceNode,
+    InstitutionNode,
     ManualReferenceNode,
     OfficeNode,
     RoadmapNode,
@@ -56,6 +58,22 @@ class AppliesToRel(BaseRelationship):
 
     source: DocumentNode
     target: SectorNode
+
+
+class OfferedByRel(BaseRelationship):
+    __relationshiptype__: ClassVar[str] = "OFFERED_BY"
+
+    source: GovServiceNode
+    target: InstitutionNode
+
+
+class FulfilledByRel(BaseRelationship):
+    """Roadmap document can be obtained through this catalog service."""
+
+    __relationshiptype__: ClassVar[str] = "FULFILLED_BY"
+
+    source: DocumentNode
+    target: GovServiceNode
 
 
 class EnrichesDocumentRel(BaseRelationship):

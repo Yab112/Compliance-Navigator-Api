@@ -8,9 +8,14 @@ export function RoadmapEmptyState() {
       <p className="text-muted-foreground mt-2 max-w-sm text-sm">
         Pick passport, Kebele ID, or trade license and we will map your steps.
       </p>
-      <Link href="/roadmap/new" className="mt-6">
-        <Button size="lg">Find my path</Button>
-      </Link>
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
+        <Link href="/roadmap/new">
+          <Button size="lg">Find my path</Button>
+        </Link>
+        <Link href="/account/paths">
+          <Button size="lg" variant="outline">My saved paths</Button>
+        </Link>
+      </div>
     </div>
   );
 }

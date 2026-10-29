@@ -1,7 +1,14 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
+// One id per build: pages compare theirs with the server's to offer a reload after an update.
+// Set once in the env so the build's worker processes, which reload this file, all share it.
+process.env.BUILD_ID ??= `b${Date.now()}`;
+const buildId = process.env.BUILD_ID;
+
 const nextConfig: NextConfig = {
+  generateBuildId: async () => buildId,
+  env: { NEXT_PUBLIC_BUILD_ID: buildId },
   images: {
     remotePatterns: [
       {

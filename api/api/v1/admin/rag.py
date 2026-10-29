@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from core.deps import get_current_user
+from core.deps import require_admin
 from schemas.auth_user import AuthUser
 from services.rag_service import ingest_text, search_legal_chunks
 
@@ -30,7 +30,7 @@ class SearchRequest(BaseModel):
 @router.post("/ingest", status_code=201)
 def ingest_legal_text(
     body: IngestTextRequest,
-    _: AuthUser = Depends(get_current_user),
+    _: AuthUser = Depends(require_admin),
 ):
     result = ingest_text(
         body.text,
@@ -49,7 +49,7 @@ def ingest_legal_text(
 @router.post("/search")
 def search_legal_text(
     body: SearchRequest,
-    _: AuthUser = Depends(get_current_user),
+    _: AuthUser = Depends(require_admin),
 ):
     hits = search_legal_chunks(
         body.query,

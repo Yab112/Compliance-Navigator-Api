@@ -71,10 +71,20 @@ export function StepCard({ step, onMarkComplete, canTrack }: StepCardProps) {
                 ? "Free"
                 : `${step.feeEtb} ETB`}
           </span>
-          {step.office?.name && (
+          {step.orgService ? (
+            <Badge variant="outline" className="h-auto py-0">
+              {step.orgService.branch?.window ? `${step.orgService.branch.name} · ${step.orgService.branch.window}` : step.orgService.orgName}
+              {step.orgService.confirmedDaysAgo != null && !step.orgService.confirmationDue && " · confirmed"}
+            </Badge>
+          ) : step.office?.name && (
             <span>
               <strong>Office:</strong> {step.office.name}
             </span>
+          )}
+          {step.mesob && (
+            <Badge variant="outline" className="h-auto py-0">
+              At MESOB · {step.mesob.institution}
+            </Badge>
           )}
         </div>
 

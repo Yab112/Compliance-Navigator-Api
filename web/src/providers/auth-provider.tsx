@@ -1,51 +1,40 @@
 "use client";
 
 import { useEffect } from "react";
-import { useGetCurrentUser } from "@/api/auth";
-import { useUserStore } from "@/store";
-import { getAccessToken, setAccessToken, clearAccessToken } from "@/lib/auth-token";
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { endSession, listenForAuthChanges, refreshIfStale, refreshSession } from "@/lib/auth-session";
+
+const LEGACY_TOKEN_KEY = "compliance_navigator_access_token";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { setUser } = useUserStore();
-  const hasToken = typeof window !== "undefined" && !!getAccessToken();
-  const { currentUser, isError } = useGetCurrentUser(hasToken);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
+    // Tokens used to be kept in localStorage; never leave one behind
+    try {
+      localStorage.removeItem(LEGACY_TOKEN_KEY);
+    } catch {}
 
-    const supabase = getSupabase();
-    if (!supabase) return;
+    void refreshSession();
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.access_token) {
-        setAccessToken(session.access_token);
+    const stopListening = listenForAuthChanges((message) => {
+      if (message.type === "signed-out") {
+        endSession();
+        queryClient.clear();
+      } else {
+        void refreshSession().then(() => queryClient.invalidateQueries());
       }
     });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.access_token) {
-        setAccessToken(session.access_token);
-      } else if (!getAccessToken()) {
-        setUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [setUser]);
-
-  useEffect(() => {
-    if (currentUser) {
-      setUser(currentUser);
-      return;
-    }
-    if (isError && hasToken) {
-      clearAccessToken();
-      setUser(null);
-    }
-  }, [currentUser, isError, hasToken, setUser]);
+    // Coming back to a tab after a long sleep: make sure the session is still alive
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshIfStale();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopListening();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [queryClient]);
 
   return <>{children}</>;
 }

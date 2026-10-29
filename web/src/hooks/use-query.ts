@@ -32,9 +32,13 @@ export const useFetchData = <T>(
       } catch (error) {
         if (error instanceof AxiosError) {
           const networkError = error.code === "ERR_NETWORK";
+          const data = error.response?.data as
+            | { message?: string; detail?: unknown }
+            | undefined;
           const message = networkError
             ? error.message
-            : (error.response?.data as { message?: string })?.message;
+            : (data?.message ??
+              (typeof data?.detail === "string" ? data.detail : undefined));
           throw new Error(message ?? "Request failed");
         }
         throw error;

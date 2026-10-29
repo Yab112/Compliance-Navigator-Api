@@ -1,64 +1,41 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import useMutationFunc from "@/hooks/use-mutation";
-import { MTD } from "@/lib/constants/methods";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiPaths } from "@/lib/constants/api-paths";
-import { setAccessToken } from "@/lib/auth-token";
-import { isMockCredentials, MOCK_TOKEN } from "@/lib/mock-auth";
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
-import type { APIResponse } from "@/types/global";
-import type { User } from "@/types/user-types";
+import { applySession, broadcastAuth, postAuth } from "@/lib/auth-session";
+import type { SessionPayload } from "@/types/user-types";
 
 export interface RegisterInput {
   email: string;
   password: string;
   fullname: string;
+  phone?: string;
 }
 
+/** Creates the account and signs straight in. */
 export const useRegister = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [isRegistering, setPending] = useState(false);
 
-  const { mutateAsync, isPending } = useMutationFunc<
-    APIResponse<{ user: User }>,
-    RegisterInput
-  >({
-    onSuccess: () => {
-      router.push("/login");
-    },
-  });
-
-  const register = async (input: RegisterInput) => {
-    if (isMockCredentials(input.email, input.password)) {
-      setAccessToken(MOCK_TOKEN);
-      router.push("/login");
-      return;
-    }
-
-    if (isSupabaseConfigured()) {
-      const supabase = getSupabase()!;
-      const { error } = await supabase.auth.signUp({
-        email: input.email,
-        password: input.password,
-        options: { data: { fullname: input.fullname } },
+  const register = async (input: RegisterInput, returnTo = "/roadmap") => {
+    setPending(true);
+    try {
+      const session = await postAuth<SessionPayload>(apiPaths.auth.register, {
+        ...input,
+        phone: input.phone?.trim() || undefined,
       });
-      if (error) {
-        throw new Error(error.message);
-      }
-      router.push("/login");
-      return;
+      applySession(session);
+      broadcastAuth({ type: "signed-in" });
+      await queryClient.invalidateQueries();
+      router.push(returnTo);
+      return session;
+    } finally {
+      setPending(false);
     }
-
-    return mutateAsync({
-      url: apiPaths.users.register,
-      method: MTD.POST,
-      body: input,
-      headers: { "Content-Type": "application/json" },
-    });
   };
 
-  return {
-    register,
-    isRegistering: isPending,
-  };
+  return { register, isRegistering };
 };

@@ -1,8 +1,5 @@
 """
-Seed sample legal chunks into Supabase pgvector.
-
-Requires SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in api/.env
-and migration 001_initial.sql applied.
+Seed sample legal chunks into Postgres pgvector (DATABASE_URL).
 
 Run: uv run python -m scripts.seed_rag_samples
 """
@@ -15,13 +12,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.rag_service import ingest_text
-from services.supabase_client import is_supabase_configured
+from services.db import run_migrations
 
 
 SAMPLES = [
     {
         "text": """
-        Immigration Proclamation — Ethiopian passport issuance requires valid Kebele ID,
+        Immigration Proclamation, Ethiopian passport issuance requires valid Kebele ID,
         birth certificate, biometric photographs per ICS specification, and payment receipt.
         Processing at Immigration and Citizenship Service Main Department typically
         requires 10 to 21 business days. Common rejections include incorrect photo
@@ -36,7 +33,7 @@ SAMPLES = [
     },
     {
         "text": """
-        Proc. 1396/2024 — Tax Identification Number registration at ERCA requires
+        Proc. 1396/2024, Tax Identification Number registration at ERCA requires
         notarized lease agreement, Kebele ID, and completed form IT-101.
         TIN issuance is typically within 1 to 2 business days at sub-city taxpayer
         service centres. Rejections include non-notarized lease or incomplete IT-101.
@@ -76,10 +73,7 @@ SAMPLES = [
 
 
 def main() -> None:
-    if not is_supabase_configured():
-        print("Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.")
-        sys.exit(1)
-
+    run_migrations()
     total = 0
     for sample in SAMPLES:
         result = ingest_text(**sample)

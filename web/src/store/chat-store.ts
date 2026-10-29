@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { CatalogMatch } from "@/types/catalog";
 import type { ChatMessage, AccumulatedSlots, ConversationMessage } from "@/types/chat";
 
 const INITIAL_SLOTS: AccumulatedSlots = {
@@ -13,7 +14,7 @@ type ChatStore = {
   conversationHistory: ConversationMessage[];
   slots: AccumulatedSlots;
   addUserMessage: (text: string) => void;
-  addAssistantMessage: (text: string) => void;
+  addAssistantMessage: (text: string, catalogMatches?: CatalogMatch[]) => void;
   updateHistory: (history: ConversationMessage[]) => void;
   updateSlots: (partial: Partial<AccumulatedSlots>) => void;
   clearChat: () => void;
@@ -34,11 +35,17 @@ export const useChatStore = create<ChatStore>()(
           ],
         })),
 
-      addAssistantMessage: (text) =>
+      addAssistantMessage: (text, catalogMatches) =>
         set((state) => ({
           messages: [
             ...state.messages,
-            { id: `a-${Date.now()}`, role: "assistant", text, timestamp: Date.now() },
+            {
+              id: `a-${Date.now()}`,
+              role: "assistant",
+              text,
+              timestamp: Date.now(),
+              ...(catalogMatches?.length ? { catalogMatches } : {}),
+            },
           ],
         })),
 

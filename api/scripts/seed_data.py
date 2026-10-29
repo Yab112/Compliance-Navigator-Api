@@ -1,4 +1,4 @@
-"""Static seed data — mirrors web/src/constants/addis-locations.ts and process-graph.ts."""
+"""Static seed data, mirrors web/src/constants/addis-locations.ts and process-graph.ts."""
 
 from datetime import date
 
@@ -74,7 +74,7 @@ DOCUMENTS = [
         "form_code": "ICS-P-100",
         "fee_etb": 2500,
         "avg_processing_days": 15,
-        "legal_basis": "Immigration Proclamation — passport issuance",
+        "legal_basis": "Immigration Proclamation, passport issuance",
         "required_input_labels": ["Valid Kebele ID", "Birth certificate", "Application form", "Biometric photographs", "Payment receipt"],
         "rejection_reasons": ["Payment receipt not attached", "Photographs wrong background", "Kebele stamp missing"],
         "source_url": "https://www.ics.gov.et",
@@ -206,7 +206,7 @@ OFFICE_TEMPLATES = {
         "documents_issued": ["trade_license"],
     },
     "ics_main": {
-        "name": "Immigration and Citizenship Service — Main Department",
+        "name": "Immigration and Citizenship Service, Main Department",
         "parent_institution": "Immigration and Citizenship Service",
         "address_detail": "Addis Ababa, around Mexico Square, Main Department building",
         "landmark": "ICS Main Department",
@@ -223,7 +223,7 @@ OFFICE_TEMPLATES = {
         "documents_issued": ["commercial_registration"],
     },
     "nbe_main": {
-        "name": "National Bank of Ethiopia — Licensing",
+        "name": "National Bank of Ethiopia, Licensing",
         "parent_institution": "National Bank of Ethiopia",
         "address_detail": "NBE headquarters, licensing division",
         "phones": ["+251 11 000 0005"],

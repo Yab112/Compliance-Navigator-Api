@@ -13,9 +13,13 @@ import {
 } from "@/components/ui/card";
 import { StepTimeline } from "@/components/roadmap/step-timeline";
 import { RoadmapEmptyState } from "@/modules/roadmap/components/roadmap-empty-state";
+import { PathComplete } from "@/modules/roadmap/components/path-complete";
 import { RoadmapChatPanel } from "@/modules/roadmap/components/roadmap-chat-panel";
+import { useQueryClient } from "@tanstack/react-query";
+import { syncStep, useRoadmapSaved, useSavePath } from "@/api/roadmap/saved";
 import { useRoadmapStore } from "@/store/roadmap-store";
 import { useUserStore } from "@/store";
+import { PageNav } from "@/components/layout/page-nav";
 
 export function RoadmapView() {
   const router = useRouter();
@@ -24,6 +28,25 @@ export function RoadmapView() {
   const markStepComplete = useRoadmapStore((s) => s.markStepComplete);
   const saveCurrent = useRoadmapStore((s) => s.saveCurrent);
   const user = useUserStore((s) => s.user);
+  const queryClient = useQueryClient();
+  const savePath = useSavePath();
+  // From GET /roadmaps/{id}: also covers the path opened from /roadmap, which may never have been fetched
+  const isSaved = useRoadmapSaved(roadmap?.id ?? null);
+
+  const save = () => {
+    if (!roadmap) return;
+    saveCurrent();
+    savePath.mutate(roadmap.id);
+  };
+  const markObtained = (stepId: string) => {
+    markStepComplete(stepId);
+    // Signed in: progress is kept with the path on the server, not only in this browser
+    if (user && roadmap) {
+      void syncStep(roadmap.id, stepId, true)
+        .then(() => queryClient.invalidateQueries({ queryKey: ["roadmaps", "mine"] }))
+        .catch(() => undefined);
+    }
+  };
 
   useEffect(() => {
     if (roadmap?.steps.some((s) => !s.office?.name)) {
@@ -33,7 +56,8 @@ export function RoadmapView() {
 
   if (!roadmap) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-20">
+      <div className="mx-auto max-w-lg px-4 py-10">
+        <PageNav label="My current path" className="mb-8" />
         <RoadmapEmptyState />
       </div>
     );
@@ -46,10 +70,11 @@ export function RoadmapView() {
     : "All requirements met";
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] overflow-hidden">
-      {/* Left — scrollable roadmap content */}
+    <div className="flex h-[calc(100dvh-var(--nav-h))] overflow-hidden">
+      {/* Left, scrollable roadmap content */}
       <div className="flex-1 overflow-y-auto px-4 py-10 lg:px-8">
         <div className="mx-auto max-w-2xl">
+          <PageNav label={`Path to ${roadmap.request.goalLabel}`} />
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <Badge variant="secondary" className="mb-2">
@@ -68,7 +93,15 @@ export function RoadmapView() {
                 Change goal
               </Button>
               {user ? (
-                <Button onClick={saveCurrent}>Save path</Button>
+                isSaved ? (
+                  <Link href="/account/paths">
+                    <Button variant="secondary">Saved ✓ · view all</Button>
+                  </Link>
+                ) : (
+                  <Button onClick={save} disabled={savePath.isPending}>
+                    {savePath.isPending ? "Saving…" : "Save path"}
+                  </Button>
+                )
               ) : (
                 <Link href="/login">
                   <Button variant="secondary">Sign in to save</Button>
@@ -76,6 +109,8 @@ export function RoadmapView() {
               )}
             </div>
           </div>
+
+          {roadmap.steps.length > 0 && completed === roadmap.steps.length && <PathComplete roadmap={roadmap} />}
 
           <div className="mb-8 grid gap-4 sm:grid-cols-3">
             <Card size="sm">
@@ -108,13 +143,13 @@ export function RoadmapView() {
 
           <StepTimeline
             steps={roadmap.steps}
-            onMarkComplete={markStepComplete}
+            onMarkComplete={markObtained}
             canTrack
           />
         </div>
       </div>
 
-      {/* Right — sticky chat panel (desktop only) */}
+      {/* Right, sticky chat panel (desktop only) */}
       <div className="hidden w-80 shrink-0 lg:flex lg:w-96 lg:flex-col">
         <RoadmapChatPanel roadmap={roadmap} />
       </div>

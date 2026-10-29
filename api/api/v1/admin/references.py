@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 
 
 
-from core.deps import get_current_user
+from core.deps import require_admin
 
 from models.compliance_nodes import DocumentNode, ManualReferenceNode, ServiceNode
 
@@ -22,7 +22,7 @@ from services.rag_service import ingest_text
 
 from services.storage_service import upload_file
 
-from services.supabase_store import save_manual_reference
+from services.roadmap_store import save_manual_reference
 
 
 
@@ -116,7 +116,7 @@ async def upload_reference(
 
     notes: str | None = Form(None),
 
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_admin),
 
 ):
 
@@ -152,7 +152,7 @@ async def upload_reference(
 
     raw_text = _extract_text_from_bytes(content, safe_name, file.content_type)
 
-    title = notes or f"{service.name}" + (f" — {company_name}" if company_name else "")
+    title = notes or f"{service.name}" + (f", {company_name}" if company_name else "")
 
 
 
@@ -241,6 +241,8 @@ async def upload_reference(
         extraction_status=ref.extraction_status,
 
         user_id=user.id,
+
+        institution_id=institution_id,
 
     )
 

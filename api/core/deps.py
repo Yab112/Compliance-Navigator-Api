@@ -1,99 +1,53 @@
 from typing import Annotated
 
-
-
-from fastapi import Depends, HTTPException, status
-
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-
-
-from auth.supabase_auth import is_auth_configured, verify_access_token
-
+from auth import service
 from schemas.auth_user import AuthUser
 
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-bearer_scheme = HTTPBearer(auto_error=True)
-
-bearer_optional = HTTPBearer(auto_error=False)
-
-
-
-
-
-def _user_from_bearer(credentials: HTTPAuthorizationCredentials | None) -> AuthUser | None:
-
-    if not credentials:
-
+def _resolve_user(token: str) -> AuthUser | None:
+    resolved = service.resolve_access_token(token)
+    if not resolved:
         return None
-
-    if not is_auth_configured():
-
-        raise HTTPException(
-
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-
-            detail="Supabase Auth is not configured on the server",
-
-        )
-
-    user = verify_access_token(credentials.credentials)
-
-    if not user:
-
-        raise HTTPException(
-
-            status_code=status.HTTP_401_UNAUTHORIZED,
-
-            detail="Invalid or expired token",
-
-        )
-
+    user, session_id = resolved
+    user.session_id = session_id
     return user
 
 
-
-
-
 def get_current_user(
-
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
-
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> AuthUser:
-
-    return _user_from_bearer(credentials)
-
-
-
+    user = _resolve_user(credentials.credentials) if credentials else None
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not signed in or session expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 
 def get_optional_user(
-
-    credentials: Annotated[
-
-        HTTPAuthorizationCredentials | None,
-
-        Depends(bearer_optional),
-
-    ] = None,
-
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)] = None,
 ) -> AuthUser | None:
-
     if not credentials:
-
         return None
-
-    if not is_auth_configured():
-
-        return None
-
-    try:
-
-        return verify_access_token(credentials.credentials)
-
-    except Exception:
-
-        return None
+    return _resolve_user(credentials.credentials)
 
 
+def require_admin(user: Annotated[AuthUser, Depends(get_current_user)]) -> AuthUser:
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return user
+
+
+def client_info(request: Request) -> service.ClientInfo:
+    # Behind a reverse proxy, run uvicorn with --proxy-headers so client.host is the real IP
+    return service.ClientInfo(
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )

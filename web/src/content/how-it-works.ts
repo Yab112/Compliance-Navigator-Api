@@ -7,7 +7,7 @@ export const howItWorks = {
     {
       number: "1",
       title: "What do you need?",
-      body: "Tap Passport, Kebele ID, or Trade license—or search for something else. That’s it.",
+      body: "Tap Passport, Kebele ID, or Trade license, or search for something else. That’s it.",
       image: stockImages.passport,
     },
     {

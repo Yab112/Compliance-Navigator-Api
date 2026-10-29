@@ -10,7 +10,7 @@ export const useGetRoadmap = (id: string | null, enabled = true) => {
   const url = id ? `${apiPaths.roadmaps}/${id}` : apiPaths.roadmaps;
 
   const { data, isLoading, isError, refetch } = useFetchData<
-    APIResponse<{ roadmap: Roadmap }>
+    APIResponse<{ roadmap: Roadmap; saved?: boolean }>
   >(queryKey, url, {
     enabled: enabled && !!id,
     retry: false,

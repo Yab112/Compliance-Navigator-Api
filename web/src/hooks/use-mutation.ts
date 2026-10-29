@@ -96,17 +96,22 @@ const useMutationFunc = <TResponseData, TRequestBody, TError = ApiErrorResponse>
       }
       let message: string;
       let code: number | string | undefined;
+      const detail =
+        error instanceof AxiosError
+          ? (error.response?.data as { detail?: unknown })?.detail
+          : undefined;
       if (error instanceof AxiosError) {
         code = error.code === "ERR_NETWORK" ? 500 : error.response?.status;
         if (error.response?.status === 403) {
           message =
-            (error.response?.data as { message?: string })?.message ||
+            (typeof detail === "string" ? detail : undefined) ||
             "You don't have permission to perform this action.";
         } else if (error.code === "ERR_NETWORK") {
           message = "Network error occurred";
         } else {
           message =
             (error.response?.data as { message?: string })?.message ||
+            (typeof detail === "string" ? detail : undefined) ||
             options?.defaultErrorMessage ||
             "An error occurred";
         }

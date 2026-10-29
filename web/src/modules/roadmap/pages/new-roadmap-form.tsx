@@ -16,12 +16,18 @@ import { roadmapRequestSchema } from "@/schemas/roadmap";
 import { useRoadmapStore } from "@/store/roadmap-store";
 import { useChatStore } from "@/store/chat-store";
 import { ComplianceAssistantPanel } from "@/modules/roadmap/components/compliance-assistant-panel";
+import { PathChoice, type PathChoiceValue } from "@/modules/roadmap/components/path-choice";
 import { cn } from "@/lib/utils";
+import { PageNavBar } from "@/components/layout/page-nav";
 
 const VALID_GOALS = new Set(PROCESS_GOALS.map((g) => g.id));
 
 type NewRoadmapFormProps = {
   initialGoal?: string;
+  /** Restored after sign-in so a half-made choice isn't lost */
+  initialSubCity?: string;
+  initialHeld?: string[];
+  initialChoice?: PathChoiceValue;
 };
 
 function FormStep({
@@ -53,7 +59,7 @@ function FormStep({
   );
 }
 
-export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
+export function NewRoadmapForm({ initialGoal, initialSubCity, initialHeld, initialChoice }: NewRoadmapFormProps) {
   const router = useRouter();
   const setCurrent = useRoadmapStore((s) => s.setCurrent);
   const { createRoadmap, isCreating } = useCreateRoadmap();
@@ -62,8 +68,13 @@ export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
   const defaultGoal =
     initialGoal && VALID_GOALS.has(initialGoal) ? initialGoal : "passport";
   const [goal, setGoal] = useState(defaultGoal);
-  const [subCity, setSubCity] = useState("bole");
-  const [documentsHeld, setDocumentsHeld] = useState<string[]>([]);
+  const [subCity, setSubCity] = useState(initialSubCity || "bole");
+  const [documentsHeld, setDocumentsHeld] = useState<string[]>(
+    (initialHeld ?? []).filter((d) => (ALL_DOCUMENT_IDS as readonly string[]).includes(d)),
+  );
+  // Step 2 of the flow: "do it myself" or "hire an agent"
+  const [stage, setStage] = useState<"details" | "choose">(initialChoice ? "choose" : "details");
+  const [choice, setChoice] = useState<PathChoiceValue | null>(initialChoice ?? null);
   const [showDocs, setShowDocs] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<"form" | "assistant">("form");
@@ -115,15 +126,17 @@ export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
     syncToChatStore({ sub_city: next });
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = roadmapRequestSchema.safeParse({
-      goal,
-      subCity,
-      documentsHeld,
-    });
-    if (!parsed.success) return;
+    if (!roadmapRequestSchema.safeParse({ goal, subCity, documentsHeld }).success) return;
+    setSubmitError(null);
+    setStage("choose");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
+  async function generateRoadmap() {
+    const parsed = roadmapRequestSchema.safeParse({ goal, subCity, documentsHeld });
+    if (!parsed.success) return;
     setSubmitError(null);
     try {
       const roadmap = await createRoadmap(parsed.data);
@@ -138,6 +151,32 @@ export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
     }
   }
 
+  const goalLabel = PROCESS_GOALS.find((g) => g.id === goal)?.label ?? goal;
+  const returnTo = `/roadmap/new?${new URLSearchParams({
+    goal,
+    sub: subCity,
+    ...(documentsHeld.length ? { held: documentsHeld.join(",") } : {}),
+    choice: "agent",
+  }).toString()}`;
+
+  const choicePanel = (
+    <div className="px-4 py-8 md:py-10 lg:px-8">
+      <PathChoice
+        goal={goal}
+        goalLabel={goalLabel}
+        subCity={subCity}
+        heldLabels={documentsHeld.map((id) => DOCUMENT_LABELS[id] ?? id)}
+        choice={choice}
+        onChoose={setChoice}
+        onBack={() => setStage("details")}
+        onShowSteps={generateRoadmap}
+        isGenerating={isCreating}
+        generateError={submitError}
+        returnTo={returnTo}
+      />
+    </div>
+  );
+
   const formPanel = (
     <div className="px-4 py-8 md:py-10 lg:px-8">
       <header className="mb-8 text-center md:text-left">
@@ -145,7 +184,7 @@ export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
           Find my path
         </h1>
         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-          Use the form or chat with the assistant — English or Amharic.
+          Use the form or chat with the assistant: English or Amharic.
         </p>
       </header>
 
@@ -172,7 +211,7 @@ export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
         <FormStep
           number={3}
           title="Already have documents?"
-          hint="Optional — we skip steps you finished."
+          hint="Optional, we skip steps you finished."
         >
           <button
             type="button"
@@ -215,9 +254,8 @@ export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
           type="submit"
           size="lg"
           className="h-12 w-full rounded-lg text-base"
-          loading={isCreating}
         >
-          Show my path
+          Continue →
         </Button>
       </form>
     </div>
@@ -225,6 +263,7 @@ export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
 
   return (
     <div className="mx-auto max-w-6xl">
+      <PageNavBar label="Find my path" className="pb-2" />
       {/* Mobile tab switcher */}
       <div className="border-border flex border-b lg:hidden">
         <button
@@ -253,13 +292,13 @@ export function NewRoadmapForm({ initialGoal }: NewRoadmapFormProps) {
         </button>
       </div>
 
-      <div className="lg:grid lg:min-h-[calc(100dvh-3.5rem)] lg:grid-cols-[1fr_380px]">
+      <div className="lg:grid lg:min-h-[calc(100dvh-var(--nav-h))] lg:grid-cols-[1fr_380px]">
         <div className={cn(mobileTab !== "form" && "hidden lg:block")}>
-          {formPanel}
+          {stage === "choose" ? choicePanel : formPanel}
         </div>
         <div
           className={cn(
-            "lg:sticky lg:top-14 lg:h-[calc(100dvh-3.5rem)]",
+            "lg:sticky lg:top-(--nav-h) lg:h-[calc(100dvh-var(--nav-h))]",
             mobileTab !== "assistant" && "hidden lg:block",
           )}
         >

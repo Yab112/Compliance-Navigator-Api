@@ -59,3 +59,53 @@ def upload_file(
     dest = local_dir / f"{uuid.uuid4()}_{safe_name}"
     dest.write_bytes(content)
     return str(dest)
+
+
+UPLOAD_ROOT = Path("uploads")
+ALLOWED_UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
+
+def save_agent_file(content: bytes, filename: str, content_type: str | None, *, public: bool) -> str:
+    """
+    Agent photos are public (served at /uploads/public/...); ID documents are
+    private and only reachable through the admin file endpoint.
+    """
+    if content_type not in ALLOWED_UPLOAD_TYPES:
+        raise ValueError("Only JPG, PNG, WEBP or PDF files are accepted")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise ValueError("Files must be 5 MB or smaller")
+    if is_s3_configured():
+        return upload_file(content, filename, prefix="guday/public" if public else "guday/private",
+                           content_type=content_type)
+
+    folder = "public" if public else "private"
+    safe_name = f"{uuid.uuid4()}{Path(filename).suffix.lower()[:8]}"
+    dest = UPLOAD_ROOT / folder / safe_name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(content)
+    return f"/uploads/public/{safe_name}" if public else f"private/{safe_name}"
+
+
+IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def delete_public_file(url: str | None) -> None:
+    """Remove a replaced photo or logo we stored locally; anything else is left alone."""
+    if not url or not url.startswith("/uploads/public/"):
+        return
+    base = (UPLOAD_ROOT / "public").resolve()
+    path = (UPLOAD_ROOT / "public" / url.removeprefix("/uploads/public/")).resolve()
+    if base in path.parents and path.is_file():
+        path.unlink()
+
+
+def private_file_path(key: str) -> Path | None:
+    """Resolve a 'private/<name>' key to a local file, refusing path traversal."""
+    if not key.startswith("private/"):
+        return None
+    base = (UPLOAD_ROOT / "private").resolve()
+    path = (UPLOAD_ROOT / key).resolve()
+    if base not in path.parents or not path.is_file():
+        return None
+    return path

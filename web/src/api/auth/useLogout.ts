@@ -1,32 +1,31 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { clearAccessToken, getAccessToken } from "@/lib/auth-token";
-import { isMockToken } from "@/lib/mock-auth";
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
-import { useUserStore } from "@/store";
+import { apiPaths } from "@/lib/constants/api-paths";
+import { broadcastAuth, endSession, postAuth } from "@/lib/auth-session";
 
 export const useLogout = () => {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { setUser } = useUserStore();
+  const [isLoggingOut, setPending] = useState(false);
 
-  const logout = async () => {
-    if (!isMockToken(getAccessToken()) && isSupabaseConfigured()) {
-      const supabase = getSupabase();
-      if (supabase) {
-        await supabase.auth.signOut();
-      }
+  /** `everywhere` also ends the account's sessions on other devices. */
+  const logout = async (everywhere = false) => {
+    setPending(true);
+    try {
+      await postAuth(everywhere ? apiPaths.auth.logoutAll : apiPaths.auth.logout);
+    } catch {
+      // Sign out locally even if the server can't be reached; the cookie expires on its own
+    } finally {
+      endSession();
+      broadcastAuth({ type: "signed-out" });
+      queryClient.clear();
+      setPending(false);
+      router.push("/");
     }
-    clearAccessToken();
-    setUser(null);
-    queryClient.clear();
-    router.push("/");
   };
 
-  return {
-    logout,
-    isLoggingOut: false,
-  };
+  return { logout, isLoggingOut };
 };

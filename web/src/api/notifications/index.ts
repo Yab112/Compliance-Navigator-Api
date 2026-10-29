@@ -1,0 +1,39 @@
+"use client";
+
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useFetchData } from "@/hooks/use-query";
+import { api } from "@/lib/api";
+import { apiPaths } from "@/lib/constants/api-paths";
+import { useUserStore } from "@/store/user-store";
+import type { APIResponse } from "@/types/global";
+
+export type AppNotification = {
+  id: string;
+  kind: string;
+  title: string;
+  body?: string | null;
+  link?: string | null;
+  created_at: string;
+  read_at?: string | null;
+};
+
+/** The signed-in user's notifications; polls every minute while the tab is open. */
+export const useNotifications = () => {
+  const signedIn = useUserStore((s) => s.status === "authenticated");
+  return useFetchData<APIResponse<{ items: AppNotification[]; unread: number }>>(
+    ["notifications"],
+    apiPaths.notifications.list,
+    { enabled: signedIn, staleTime: 15 * 1000, refetchInterval: 30 * 1000, refetchOnWindowFocus: true },
+  );
+};
+
+/** Mark some notifications read, or all of them when ids is omitted. */
+export const useMarkNotificationsRead = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids?: string[]) => {
+      await api.post(`/${apiPaths.notifications.read}`, ids ? { ids } : {});
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+};

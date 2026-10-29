@@ -1,14 +1,6 @@
-const TOKEN_KEY = "compliance_navigator_access_token";
+import { useUserStore } from "@/store/user-store";
 
+/** Current in-memory access token (never persisted to storage). */
 export function getAccessToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setAccessToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearAccessToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  return useUserStore.getState().accessToken;
 }

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { PageNav } from "./page-nav";
 
 type PageShellProps = {
   title: string;
@@ -6,6 +7,8 @@ type PageShellProps = {
   children: React.ReactNode;
   className?: string;
   maxWidth?: "md" | "lg" | "xl" | "full";
+  /** Short name for breadcrumbs and "Back to …" on other pages; defaults to the English part of the title */
+  navLabel?: string;
 };
 
 const maxWidthClass = {
@@ -15,26 +18,29 @@ const maxWidthClass = {
   full: "max-w-6xl",
 };
 
+/** Standard page: green title band with breadcrumb, then the content column. */
 export function PageShell({
   title,
   description,
   children,
   className,
   maxWidth = "xl",
+  navLabel,
 }: PageShellProps) {
   return (
-    <div className={cn("mx-auto px-4 py-10", maxWidthClass[maxWidth], className)}>
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-          {title}
-        </h1>
-        {description && (
-          <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-            {description}
-          </p>
-        )}
+    <>
+      <header className="border-border bg-secondary/60 border-b">
+        <div className={cn("mx-auto px-4 py-6 md:py-8", maxWidthClass[maxWidth])}>
+          <PageNav label={navLabel ?? title.split(" · ")[0]} />
+          <h1 className="text-gov-ink border-gov-green border-l-4 pl-3 text-2xl font-bold tracking-tight md:text-3xl">
+            {title}
+          </h1>
+          {description && (
+            <p className="text-muted-foreground mt-3 max-w-3xl text-sm leading-relaxed">{description}</p>
+          )}
+        </div>
       </header>
-      {children}
-    </div>
+      <div className={cn("mx-auto px-4 py-8", maxWidthClass[maxWidth], className)}>{children}</div>
+    </>
   );
 }

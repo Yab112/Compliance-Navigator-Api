@@ -8,7 +8,7 @@ type SearchDropdownProps = {
   className?: string;
 };
 
-/** Absolutely positioned list — does not shift layout below */
+/** Absolutely positioned list, does not shift layout below */
 export function SearchDropdown({
   open,
   children,

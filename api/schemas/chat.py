@@ -22,6 +22,7 @@ class ChatResponse(BaseModel):
     intent: str = "new_roadmap"
     language: str = "en"
     roadmap: dict | None = None
+    catalog_matches: list[dict] = Field(default_factory=list)
 
 
 class TranscribeResponse(BaseModel):

@@ -1,4 +1,4 @@
-"""Compliance graph nodes — aligned with Doc/02 Government Data Dictionary."""
+"""Compliance graph nodes, aligned with Doc/02 Government Data Dictionary."""
 
 from datetime import date, datetime
 from typing import ClassVar, Optional
@@ -54,9 +54,13 @@ class InstitutionNode(BaseNode):
 
     id: str
     name: str
+    name_am: Optional[str] = None
+    short_name: Optional[str] = None
+    logo_url: Optional[str] = None
     portal_url: Optional[str] = None
     scrape_method: Optional[str] = None
     refresh_frequency: Optional[str] = None
+    at_mesob: bool = False
 
 
 class DocumentNode(BaseNode):
@@ -95,6 +99,42 @@ class OfficeNode(BaseNode):
     working_hours: str = "Mon–Fri 08:30–17:00 (EAT)"
     documents_issued: list[str] = Field(default_factory=list)
     last_verified: Optional[date] = None
+
+
+class GovServiceNode(BaseNode):
+    """A single government service from a public catalog (e.g. MESOB)."""
+
+    __primarylabel__: ClassVar[str] = "GovService"
+    __primaryproperty__: ClassVar[str] = "id"
+
+    id: str
+    source: str = "mesob"
+    source_id: Optional[int] = None
+    language: str = "en"
+    name: str
+    institution_id: str
+    required_documents: list[str] = Field(default_factory=list)
+    processing_time_text: Optional[str] = None
+    processing_minutes: Optional[int] = None
+    fee_text: Optional[str] = None
+    fee_etb_min: Optional[int] = None
+    fee_etb_max: Optional[int] = None
+    fee_has_usd: bool = False
+    online_url: Optional[str] = None
+    source_url: Optional[str] = None
+    last_verified: Optional[date] = None
+
+
+class MesobCenterNode(BaseNode):
+    __primarylabel__: ClassVar[str] = "MesobCenter"
+    __primaryproperty__: ClassVar[str] = "id"
+
+    id: str
+    name: str
+    city: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    map_url: Optional[str] = None
 
 
 class ManualReferenceNode(BaseNode):

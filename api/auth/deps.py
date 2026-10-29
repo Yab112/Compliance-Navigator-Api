@@ -1,4 +1,4 @@
-"""Re-export for backward compatibility — prefer core.deps in new code."""
+"""Re-export for backward compatibility, prefer core.deps in new code."""
 
 from core.deps import get_current_user
 

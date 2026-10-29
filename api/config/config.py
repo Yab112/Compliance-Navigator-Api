@@ -30,18 +30,34 @@ class Settings(BaseSettings):
     secret_key: str = os.environ.get("SECRET_KEY", "change-me-in-production")
     algorithm: str = "HS256"
 
-    supabase_url: str | None = os.environ.get("SUPABASE_URL")
-    supabase_service_role_key: str | None = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    supabase_anon_key: str | None = os.environ.get("SUPABASE_ANON_KEY")
+    # Postgres system of record
+    database_url: str = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://navigator:navigator@localhost:5433/compliance_navigator",
+    )
+    # Comma-separated emails that are promoted to admin on register/login
+    admin_emails: str = os.environ.get("ADMIN_EMAILS", "")
+    # Auth: short-lived JWT access tokens + rotating refresh tokens in an httpOnly cookie
+    access_token_ttl_minutes: int = int(os.environ.get("ACCESS_TOKEN_TTL_MINUTES", "15"))
+    refresh_token_ttl_days: int = int(os.environ.get("REFRESH_TOKEN_TTL_DAYS", "30"))
+    auth_cookie_secure: bool = os.environ.get("AUTH_COOKIE_SECURE", "false").lower() == "true"
+    # "lax" when web and API share a site; "none" (requires secure) for cross-site deployments
+    auth_cookie_samesite: str = os.environ.get("AUTH_COOKIE_SAMESITE", "lax")
+    # Public web origin, used to build password-reset links
+    web_base_url: str = os.environ.get("WEB_BASE_URL", "http://localhost:3000")
+    # Optional SMTP for password-reset email; without it links are logged and admins can issue them
+    smtp_host: str | None = os.environ.get("SMTP_HOST")
+    smtp_port: int = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_username: str | None = os.environ.get("SMTP_USERNAME")
+    smtp_password: str | None = os.environ.get("SMTP_PASSWORD")
+    smtp_from: str = os.environ.get("SMTP_FROM", "no-reply@localhost")
+    environment: str = os.environ.get("ENVIRONMENT", "development")
     anthropic_api_key: str | None = os.environ.get("ANTHROPIC_API_KEY")
     llm_provider: str = os.environ.get("LLM_PROVIDER", "ollama")
     ollama_base_url: str = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     ollama_model: str = os.environ.get("OLLAMA_MODEL", "llama3.2")
     hf_token: str | None = os.environ.get("HF_TOKEN")
     whisper_model_size: str = os.environ.get("WHISPER_MODEL_SIZE", "small")
-    supabase_storage_bucket: str = os.environ.get(
-        "SUPABASE_STORAGE_BUCKET", "compliance-uploads"
-    )
 
     aws_access_key_id: str | None = os.environ.get("AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str | None = os.environ.get("AWS_SECRET_ACCESS_KEY")
@@ -63,6 +79,50 @@ class Settings(BaseSettings):
         return f"http://{self.qdrant_host}:{self.qdrant_port}"
 
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    # Fayda national ID verification (MOSIP eSignet). off | sandbox | live
+    fayda_mode: str = os.environ.get("FAYDA_MODE", "sandbox")
+    fayda_client_id: str | None = os.environ.get("FAYDA_CLIENT_ID")
+    fayda_authorize_url: str | None = os.environ.get("FAYDA_AUTHORIZE_URL")
+    fayda_token_url: str | None = os.environ.get("FAYDA_TOKEN_URL")
+    fayda_userinfo_url: str | None = os.environ.get("FAYDA_USERINFO_URL")
+    fayda_jwks_url: str | None = os.environ.get("FAYDA_JWKS_URL")
+    fayda_private_key: str | None = os.environ.get("FAYDA_PRIVATE_KEY")  # PEM text or file path
+    fayda_redirect_uri: str = os.environ.get(
+        "FAYDA_REDIRECT_URI", "http://localhost:3000/guday/register/fayda-callback"
+    )
+    fayda_sandbox_url: str = os.environ.get(
+        "FAYDA_SANDBOX_URL", "http://localhost:3000/guday/register/fayda-sandbox"
+    )
+    # Keys the national ID hash; defaults to SECRET_KEY, set it once and never change it
+    id_hash_pepper: str | None = os.environ.get("ID_HASH_PEPPER")
+
+    # Paying providers through the platform. off | simulated (local checkout, no money) | chapa
+    payments_mode: str = os.environ.get("PAYMENTS_MODE", "simulated")
+    chapa_secret_key: str | None = os.environ.get("CHAPA_SECRET_KEY")  # CHASECK_TEST-... while testing
+    chapa_webhook_secret: str | None = os.environ.get("CHAPA_WEBHOOK_SECRET")
+    chapa_base_url: str = os.environ.get("CHAPA_BASE_URL", "https://api.chapa.co/v1")
+    # Our share of every payment, in percent; the rest is split to the provider by the gateway
+    platform_commission_percent: float = float(os.environ.get("PLATFORM_COMMISSION_PERCENT", "10"))
+    # VAT (Proclamation 1341/2024). The standard rate is 15%; set by an accountant, not hard-coded in logic
+    vat_rate_percent: float = float(os.environ.get("VAT_RATE_PERCENT", "15"))
+    # Whether we are VAT-registered: then VAT is charged on our commission
+    platform_vat_registered: bool = os.environ.get("PLATFORM_VAT_REGISTERED", "true").lower() == "true"
+    # Shown on receipts
+    platform_legal_name: str = os.environ.get("PLATFORM_LEGAL_NAME", "Compliance Navigator")
+    platform_tin: str | None = os.environ.get("PLATFORM_TIN")
+    platform_vat_number: str | None = os.environ.get("PLATFORM_VAT_NUMBER")
+    platform_address: str = os.environ.get("PLATFORM_ADDRESS", "Addis Ababa, Ethiopia")
+    # Public address of this API, for gateway callbacks (a tunnel URL when testing webhooks locally)
+    api_public_url: str = os.environ.get("API_PUBLIC_URL", "http://localhost:8080")
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
 settings = Settings()
