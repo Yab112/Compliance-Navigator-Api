@@ -1,8 +1,8 @@
 "use client";
 
-import { useFetchData } from "@/hooks/use-query";
-import { apiPaths } from "@/lib/constants/api-paths";
-import type { APIResponse } from "@/types/global";
+import { useFetchData } from "@cn/core/hooks/use-query";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
+import type { APIResponse } from "@cn/core/types/global";
 import type { Roadmap } from "@/types/roadmap";
 
 export const useGetRoadmap = (id: string | null, enabled = true) => {
@@ -10,7 +10,7 @@ export const useGetRoadmap = (id: string | null, enabled = true) => {
   const url = id ? `${apiPaths.roadmaps}/${id}` : apiPaths.roadmaps;
 
   const { data, isLoading, isError, refetch } = useFetchData<
-    APIResponse<{ roadmap: Roadmap }>
+    APIResponse<{ roadmap: Roadmap; saved?: boolean }>
   >(queryKey, url, {
     enabled: enabled && !!id,
     retry: false,

@@ -113,7 +113,11 @@ def _call_ollama(
                 "model": model,
                 "prompt": prompt,
                 "stream": False,
-                "format": "json",
+                # A schema (not just "json") makes Ollama emit exactly our keys
+                "format": EXTRACT_TOOL_SCHEMA,
+                "options": {"num_predict": 400},
+                # Reasoning models (qwen3, deepseek-r1) otherwise think for minutes
+                "think": False,
             },
             timeout=120.0,
         )
@@ -136,14 +140,20 @@ def _call_anthropic(
         import anthropic
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            system=system,
+        # Forced tool_choice is rejected on current models, steer with the prompt instead
+        response = client.beta.messages.create(
+            model="claude-opus-5-5",
+            max_tokens=4096,
+            system=system + "\n\nAlways answer by calling the extract_compliance_slots tool.",
             tools=[tool_def],
-            tool_choice={"type": "any"},
+            tool_choice={"type": "auto"},
+            output_config={"effort": "low"},
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",
             messages=messages,
         )
+        if response.stop_reason == "refusal":
+            return None
         for block in response.content:
             if block.type == "tool_use" and block.name == "extract_compliance_slots":
                 return block.input

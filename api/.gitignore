@@ -5,4 +5,10 @@
 
 __pycache__/
 example.log
+logs/
 uploads/
+.cache/
+
+# Assistant training run status files
+models_store/assistant/.last_run*
+models_store/train.log

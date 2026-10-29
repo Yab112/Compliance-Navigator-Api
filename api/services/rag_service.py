@@ -1,4 +1,4 @@
-"""RAG via Supabase pgvector — legal chunk ingest and similarity search."""
+"""RAG via Postgres pgvector, legal chunk ingest and similarity search."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from services.embeddings import EMBEDDING_DIMENSION, embed_text, embed_texts
-from services.supabase_client import get_supabase, is_supabase_configured
+from services.db import connection, execute, fetch_all, fetch_one
 
 MATCH_THRESHOLD = 0.75
 CHUNK_SIZE = 400
@@ -44,34 +44,59 @@ def ingest_text(
     source_url: str | None = None,
     language: str = "en",
 ) -> dict:
-    """Chunk, embed, and insert into Supabase legal_chunks."""
-    if not is_supabase_configured():
-        return {"status": "skipped", "reason": "Supabase not configured"}
-
-    sb = get_supabase()
+    """Chunk, embed, and insert into legal_chunks."""
     parts = chunk_text(text)
     if not parts:
         return {"status": "empty", "chunks_inserted": 0}
 
     vectors = embed_texts(parts)
-    rows = []
-    for content, embedding in zip(parts, vectors):
-        rows.append({
-            "content": content,
-            "embedding": embedding,
-            "document_id": document_id,
-            "service_id": service_id,
-            "proclamation_number": proclamation_number,
-            "article_number": article_number,
-            "issuing_body": issuing_body,
-            "topic_tags": topic_tags or [],
-            "sector_tags": sector_tags or [],
-            "source_url": source_url,
-            "language": language,
-        })
-
-    sb.table("legal_chunks").insert(rows).execute()
+    rows = [
+        (
+            content, _vector_literal(embedding), document_id, service_id,
+            proclamation_number, article_number, issuing_body,
+            topic_tags or [], sector_tags or [], source_url, language,
+        )
+        for content, embedding in zip(parts, vectors)
+    ]
+    with connection() as conn, conn.cursor() as cur:
+        cur.executemany(
+            """
+            insert into legal_chunks (content, embedding, document_id, service_id,
+              proclamation_number, article_number, issuing_body, topic_tags,
+              sector_tags, source_url, language)
+            values (%s, %s::vector, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            rows,
+        )
     return {"status": "ok", "chunks_inserted": len(rows)}
+
+
+def _vector_literal(values: list[float]) -> str:
+    return "[" + ",".join(f"{v:.6f}" for v in values) + "]"
+
+
+def delete_chunks(*, service_id: str | None = None, service_id_prefix: str | None = None) -> int:
+    """Remove previously ingested chunks for a source before re-ingesting it."""
+    if service_id:
+        return execute("delete from legal_chunks where service_id = %s", (service_id,))
+    if service_id_prefix:
+        return execute(
+            "delete from legal_chunks where service_id like %s", (f"{service_id_prefix}%",)
+        )
+    raise ValueError("delete_chunks needs service_id or service_id_prefix")
+
+
+def chunk_stats() -> dict:
+    row = fetch_one(
+        """
+        select count(*) as total,
+               count(*) filter (where service_id like 'mesob-%') as mesob,
+               count(distinct coalesce(issuing_body, '')) as sources,
+               max(created_at) as last_ingested_at
+        from legal_chunks
+        """
+    )
+    return dict(row)
 
 
 def search_legal_chunks(
@@ -81,24 +106,27 @@ def search_legal_chunks(
     service_id: str | None = None,
     limit: int = 5,
     threshold: float = MATCH_THRESHOLD,
+    service_id_prefix: str | None = None,
 ) -> list[dict]:
-    if not is_supabase_configured():
-        return []
-
-    sb = get_supabase()
-    vector = embed_text(query)
-    result = sb.rpc(
-        "match_legal_chunks",
-        {
-            "query_embedding": vector,
-            "match_threshold": threshold,
-            "match_count": limit,
-            "filter_document_id": document_id,
-            "filter_service_id": service_id,
-        },
-    ).execute()
-
-    return list(result.data or [])
+    vector = _vector_literal(embed_text(query))
+    rows = fetch_all(
+        """
+        select id::text, content, service_id, document_id, proclamation_number,
+               article_number, issuing_body, source_url,
+               1 - (embedding <=> %(v)s::vector) as similarity
+        from legal_chunks
+        where embedding is not null
+          and (%(doc)s::text is null or document_id = %(doc)s)
+          and (%(svc)s::text is null or service_id = %(svc)s)
+          and (%(prefix)s::text is null or service_id like %(prefix)s || '%%')
+          and 1 - (embedding <=> %(v)s::vector) > %(threshold)s
+        order by embedding <=> %(v)s::vector
+        limit %(limit)s
+        """,
+        {"v": vector, "doc": document_id, "svc": service_id, "prefix": service_id_prefix,
+         "threshold": threshold, "limit": limit},
+    )
+    return [{**r, "similarity": float(r["similarity"])} for r in rows]
 
 
 def ground_step(
@@ -137,7 +165,7 @@ def _format_citation(hit: dict) -> str | None:
     proc = hit.get("proclamation_number")
     body = hit.get("issuing_body")
     if proc and body:
-        return f"{body} — Proc. {proc}"
+        return f"{body}, Proc. {proc}"
     if proc:
         return f"Proc. {proc}"
     if body:
@@ -147,9 +175,6 @@ def _format_citation(hit: dict) -> str | None:
 
 def enrich_roadmap_steps(roadmap: dict) -> dict:
     """Attach legal_basis / sourceUrl from RAG when chunks match."""
-    if not is_supabase_configured():
-        return roadmap
-
     req = roadmap.get("request", {})
     sub_city = req.get("subCity", "")
     industry = req.get("industry")

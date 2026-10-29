@@ -41,12 +41,32 @@ DOCUMENT_KEYWORDS: dict[str, list[str]] = {
 }
 
 
+# "I already have my kebele ID and TIN", the clause ends at punctuation or a new want/need
+_HELD_CLAUSE = re.compile(
+    r"\b(already have|i have|i've got|i got|i hold|i obtained|have my|got my|completed|finished|done with)\b"
+    r"(?:(?!\b(?:but|want|need|looking|apply|get a|halfway|working on|started)\b)[^.;!?])*"
+)
+
+
+def _keyword_positions(text: str, keys: list[str]) -> list[int]:
+    # Word boundaries so short keys like "tin" don't match inside "getting"
+    return [m.start() for k in keys for m in re.finditer(rf"(?<!\w){re.escape(k)}(?!\w)", text)]
+
+
 def _detect_goal(text: str) -> str | None:
+    """Earliest goal mentioned outside an 'I already have …' clause."""
     lower = text.lower()
+    held_spans = [m.span() for m in _HELD_CLAUSE.finditer(lower)]
+    best: tuple[int, str] | None = None
+    fallback: str | None = None
     for goal, keys in SERVICE_KEYWORDS.items():
-        if any(k in lower for k in keys):
-            return goal
-    return None
+        for pos in _keyword_positions(lower, keys):
+            fallback = fallback or goal
+            if any(start <= pos < end for start, end in held_spans):
+                continue
+            if best is None or pos < best[0]:
+                best = (pos, goal)
+    return best[1] if best else fallback
 
 
 def _detect_sub_city(text: str) -> str | None:
@@ -61,9 +81,10 @@ def _detect_held(text: str) -> list[str]:
     lower = text.lower()
     if re.search(r"\b(nothing|none|don't have|do not have|no documents)\b", lower):
         return []
+    held_spans = [m.span() for m in _HELD_CLAUSE.finditer(lower)]
     held: list[str] = []
     for doc_id, keys in DOCUMENT_KEYWORDS.items():
-        if any(k in lower for k in keys):
+        if any(start <= pos < end for pos in _keyword_positions(lower, keys) for start, end in held_spans):
             held.append(doc_id)
     return held
 
@@ -143,7 +164,7 @@ def extract_slots_keyword(
                 prompts.append("Which Addis Ababa sub-city are you in?")
             reply = " ".join(prompts)
         else:
-            reply = "Got it — I'm putting together your compliance path."
+            reply = "Got it, I'm putting together your compliance path."
 
     return {
         "goal": detected_goal,

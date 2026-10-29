@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@cn/core/lib/utils";
 
 type SearchDropdownProps = {
   open: boolean;
@@ -8,7 +8,7 @@ type SearchDropdownProps = {
   className?: string;
 };
 
-/** Absolutely positioned list — does not shift layout below */
+/** Absolutely positioned list, does not shift layout below */
 export function SearchDropdown({
   open,
   children,

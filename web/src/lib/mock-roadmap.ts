@@ -2,7 +2,7 @@ import {
   DOCUMENT_LABELS,
   PROCESS_GOALS,
 } from "@/data/process-graph";
-import { getLocationLabel } from "@/constants/addis-locations";
+import { getLocationLabel } from "@cn/core/constants/addis-locations";
 import type { Roadmap, RoadmapRequest, RoadmapStep, StepStatus } from "@/types/roadmap";
 import type { ProcessStepTemplate } from "@/data/process-graph";
 

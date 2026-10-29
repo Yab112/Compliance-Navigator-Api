@@ -19,3 +19,26 @@ celery_app.conf.update(
     task_time_limit=60 * 30,
     worker_prefetch_multiplier=1,
 )
+
+# Nightly MESOB refresh, daily maintenance and due staff-added sources (run `celery -A worker.celery_app beat` alongside the worker)
+celery_app.conf.beat_schedule = {
+    "mesob-nightly": {
+        "task": "worker.tasks.scrape_government_source",
+        "schedule": 60 * 60 * 24,
+        "args": ("mesob",),
+    },
+    "stale-check-daily": {
+        "task": "worker.tasks.flag_stale_graph_nodes",
+        "schedule": 60 * 60 * 24,
+    },
+    # Staff-added sources with a daily or weekly schedule; each one runs only when it is due
+    # Payouts approved and sent to Chapa, until Chapa says they landed or failed
+    "payouts-processing-15min": {
+        "task": "worker.tasks.check_processing_payouts",
+        "schedule": 60 * 15,
+    },
+    "custom-sources-hourly": {
+        "task": "worker.tasks.run_scheduled_custom_sources",
+        "schedule": 60 * 60,
+    },
+}

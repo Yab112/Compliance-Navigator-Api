@@ -1,4 +1,5 @@
-import type { Roadmap } from "./roadmap";
+import type { CatalogMatch } from "@cn/core/types/catalog";
+import type { Roadmap } from "@/types/roadmap";
 
 export type ConversationMessage = {
   role: "user" | "assistant";
@@ -26,6 +27,7 @@ export type ChatResponse = {
   intent: string;
   language: string;
   roadmap: Roadmap | null;
+  catalog_matches?: CatalogMatch[];
   updated_history: ConversationMessage[];
 };
 
@@ -34,6 +36,8 @@ export type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   timestamp: number;
+  /** MESOB services suggested alongside an assistant reply */
+  catalogMatches?: CatalogMatch[];
 };
 
 export type AccumulatedSlots = {

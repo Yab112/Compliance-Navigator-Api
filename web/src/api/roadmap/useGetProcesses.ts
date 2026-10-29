@@ -1,9 +1,9 @@
 "use client";
 
-import { useFetchData } from "@/hooks/use-query";
-import { apiPaths } from "@/lib/constants/api-paths";
+import { useFetchData } from "@cn/core/hooks/use-query";
+import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { PROCESS_GOALS } from "@/data/process-graph";
-import type { APIResponse } from "@/types/global";
+import type { APIResponse } from "@cn/core/types/global";
 
 export interface ProcessGoalSummary {
   id: string;

@@ -1,0 +1,359 @@
+"use client";
+
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import useAxiosAuth from "../../hooks/use-axios-auth";
+import useMutationFunc from "../../hooks/use-mutation";
+import { useFetchData } from "../../hooks/use-query";
+import { withQuery } from "../catalog/with-query";
+import { apiPaths } from "../../lib/constants/api-paths";
+import { MTD } from "../../lib/constants/methods";
+import type { APIResponse } from "../../types/global";
+import type { Paged } from "../../types/guday";
+import type {
+  AdminHireDetail,
+  AdminProvider,
+  AdminProviderRow,
+  AdminReview,
+  AssignCandidate,
+  ClientRecord,
+  EntityType,
+  Hire,
+  HireInput,
+  HireStatus,
+  LicenseStatus,
+  MarketplaceStats,
+  MyProvider,
+  ProviderJoinInput,
+  ProviderListParams,
+  ProviderProfileView,
+  ProviderStatus,
+  ProviderType,
+  PublicProvider,
+  Review,
+  ReviewChange,
+  SampleStatus,
+  Vetting,
+  VettingDocument,
+  VettingUpload,
+} from "../../types/provider";
+
+const p = apiPaths.providers;
+
+// ---------------------------------------------------------------- public
+
+export const useProviders = (params: ProviderListParams, enabled = true) =>
+  useFetchData<APIResponse<Paged<PublicProvider> & { countsByType: Partial<Record<ProviderType, number>> }>>(
+    ["providers", "list", params],
+    withQuery(p.list, params),
+    { enabled, staleTime: 60 * 1000 },
+  );
+
+export const useProvider = (slug: string) =>
+  useFetchData<APIResponse<{ provider: ProviderProfileView }>>(["providers", "profile", slug], p.profile(slug), {
+    enabled: !!slug,
+    staleTime: 30 * 1000,
+    retry: false,
+  });
+
+export type ReviewSort = "recent" | "highest" | "lowest";
+
+export const useProviderReviews = (slug: string, offset: number, enabled: boolean, sort: ReviewSort = "recent") =>
+  useFetchData<APIResponse<Paged<Review>>>(
+    ["providers", "reviews", slug, offset, sort],
+    withQuery(p.reviews(slug), { limit: 10, offset, sort }),
+    { enabled, staleTime: 30 * 1000 },
+  );
+
+// ---------------------------------------------------------------- my provider profile
+
+export const useMyProvider = (enabled = true) =>
+  useFetchData<APIResponse<{ provider: MyProvider | null }>>(["providers", "me"], p.me, {
+    enabled,
+    staleTime: 0,
+    refetchOnMount: true,
+  });
+
+export type JobGroup = "new" | "in_progress" | "completed" | "declined";
+export type JobCounts = Record<JobGroup, number>;
+export const JOBS_PAGE_SIZE = 20;
+
+/** One page of the provider's jobs in a group, plus the count of every group. */
+export const useMyJobs = (group: JobGroup, page = 0, enabled = true) =>
+  useFetchData<APIResponse<Paged<Hire> & { counts: JobCounts }>>(
+    ["providers", "me", "jobs", group, page],
+    withQuery(p.myJobs, { group, limit: JOBS_PAGE_SIZE, offset: page * JOBS_PAGE_SIZE }),
+    {
+      enabled,
+      staleTime: 0,
+      refetchInterval: 30 * 1000, // the job cards and group counts stay current
+    },
+  );
+
+export const MY_REVIEWS_PAGE_SIZE = 10;
+
+export const useMyProviderReviews = (page = 0, enabled = true) =>
+  useFetchData<APIResponse<Paged<Review>>>(
+    ["providers", "me", "reviews", page],
+    withQuery(p.myReviews, { limit: MY_REVIEWS_PAGE_SIZE, offset: page * MY_REVIEWS_PAGE_SIZE }),
+    { enabled, staleTime: 0 },
+  );
+
+/** Join as a provider: multipart (JSON `data` + optional photo, licence copy, ID copy). */
+export const useJoinMarketplace = () => {
+  const axiosAuth = useAxiosAuth();
+  const queryClient = useQueryClient();
+  return async (
+    input: ProviderJoinInput,
+    files: { photo?: File | null; licenseDocument?: File | null; idDocument?: File | null },
+    /** What is printed on the trade licence (companies) */
+    license?: { issued_on?: string; expires_on?: string; reference_no?: string },
+  ) => {
+    const form = new FormData();
+    form.append("data", JSON.stringify(input));
+    for (const [k, v] of Object.entries(license ?? {})) if (v) form.append(`license_${k}`, v);
+    if (files.photo) form.append("photo", files.photo);
+    if (files.licenseDocument) form.append("license_document", files.licenseDocument);
+    if (files.idDocument) form.append("id_document", files.idDocument);
+    const res = await axiosAuth.post<APIResponse<{ provider: MyProvider }>>(`/${p.join}`, form);
+    await queryClient.invalidateQueries({ queryKey: ["providers"] });
+    return res.data.payload.provider;
+  };
+};
+
+export const useUploadProviderFile = () => {
+  const axiosAuth = useAxiosAuth();
+  const queryClient = useQueryClient();
+  return async (kind: "photo" | "license", file: File) => {
+    const form = new FormData();
+    form.append(kind === "photo" ? "photo" : "document", file);
+    await axiosAuth.post(`/${kind === "photo" ? p.mePhoto : p.meLicense}`, form);
+    await queryClient.invalidateQueries({ queryKey: ["providers"] });
+  };
+};
+
+/** The documents the join form asks for, by entity type */
+export const useVettingRequirements = (entity: EntityType | null) =>
+  useFetchData<APIResponse<{ vetting: Vetting & { references_required?: boolean } }>>(
+    ["providers", "vetting-requirements", entity],
+    withQuery(p.vettingRequirements, { entity: entity ?? "individual" }),
+    { enabled: !!entity, staleTime: 5 * 60 * 1000 },
+  );
+
+/** Upload or replace one vetting document (multipart). Throws with the server's reason when refused. */
+export const useUploadVettingDocument = () => {
+  const axiosAuth = useAxiosAuth();
+  const queryClient = useQueryClient();
+  return async ({ file, ...fields }: VettingUpload) => {
+    const form = new FormData();
+    form.append("file", file);
+    for (const [k, v] of Object.entries(fields)) if (v) form.append(k, String(v));
+    const res = await axiosAuth.post<APIResponse<{ document: VettingDocument; vetting: Vetting }>>(`/${p.myDocuments}`, form);
+    await queryClient.invalidateQueries({ queryKey: ["providers"] });
+    return res.data.payload;
+  };
+};
+
+export const VETTING_HISTORY_PAGE_SIZE = 10;
+
+/** Everything the provider uploaded, including replaced copies */
+export const useMyVettingDocuments = (page = 0, enabled = true) =>
+  useFetchData<APIResponse<Paged<VettingDocument>>>(
+    ["providers", "me", "documents", page],
+    withQuery(p.myDocuments, { limit: VETTING_HISTORY_PAGE_SIZE, offset: page * VETTING_HISTORY_PAGE_SIZE }),
+    { enabled, staleTime: 0 },
+  );
+
+export const useRemoveProviderPhoto = () => {
+  const axiosAuth = useAxiosAuth();
+  const queryClient = useQueryClient();
+  return async () => {
+    await axiosAuth.delete(`/${p.mePhoto}`);
+    await queryClient.invalidateQueries({ queryKey: ["providers"] });
+  };
+};
+
+// ---------------------------------------------------------------- hires (client)
+
+export type HireScope = "active" | "history";
+export const HIRES_PAGE_SIZE = 20;
+
+/** One page of the client's hires in a tab, plus the count of both tabs. */
+export const useMyHires = (scope: HireScope, page = 0, enabled = true) =>
+  useFetchData<APIResponse<Paged<Hire> & { counts: Record<HireScope, number> }>>(
+    ["hires", "mine", scope, page],
+    withQuery(apiPaths.hires.list, { scope, limit: HIRES_PAGE_SIZE, offset: page * HIRES_PAGE_SIZE }),
+    {
+      enabled,
+      staleTime: 0,
+      refetchOnMount: true,
+      refetchInterval: 30 * 1000, // the hire cards stay current
+    },
+  );
+
+/** Hires and jobs that wait on the signed-in user: header badges */
+export const useAttention = (enabled = true) =>
+  useFetchData<APIResponse<{ hires: number; jobs: number }>>(["hires", "attention"], apiPaths.attention, {
+    enabled,
+    staleTime: 0,
+    refetchInterval: 30 * 1000,
+  });
+
+/** Your record as a client, as providers see it */
+export const useMyClientRecord = (enabled = true) =>
+  useFetchData<APIResponse<{ record: ClientRecord }>>(["hires", "record"], apiPaths.hires.myRecord, { enabled, staleTime: 0 });
+
+/** JSON action that refreshes marketplace queries (public, mine and admin) on success. */
+export const useMarketAction = <TBody = unknown, TResult = unknown>() => {
+  const queryClient = useQueryClient();
+  const { mutateAsync, isPending } = useMutationFunc<APIResponse<TResult>, TBody>();
+  const run = async (url: string, method: MTD, body?: TBody) => {
+    const data = await mutateAsync({ url, method, body });
+    await Promise.all(
+      [["providers"], ["hires"], ["admin", "market"], ["catalog", "service"], ["catalog", "goal-service"]].map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
+    return data.payload;
+  };
+  return { run, isPending };
+};
+
+export const useCreateHire = () => {
+  const { run, isPending } = useMarketAction<HireInput, { hire: Hire }>();
+  return { createHire: (body: HireInput) => run(apiPaths.hires.list, MTD.POST, body), isCreating: isPending };
+};
+
+// ---------------------------------------------------------------- admin
+
+export type AdminProviderSort = "queue" | "newest" | "score" | "complaints" | "expiry";
+
+export type AdminProviderParams = {
+  type?: ProviderType;
+  status?: ProviderStatus;
+  license_status?: LicenseStatus;
+  q?: string;
+  /** Approved, licence ends within this many days */
+  expiring?: number;
+  area?: string;
+  id_verified?: boolean;
+  accepting_work?: boolean;
+  /** true: ready to work; false: held back by a missing requirement */
+  ready?: boolean;
+  sort?: AdminProviderSort;
+  limit?: number;
+  offset?: number;
+};
+
+export const useAdminProviders = (params: AdminProviderParams) =>
+  useFetchData<APIResponse<Paged<AdminProviderRow>>>(
+    ["admin", "market", "providers", params],
+    withQuery(apiPaths.admin.marketProviders, params),
+    { staleTime: 0 },
+  );
+
+export const useAdminProvider = (id: string) =>
+  useFetchData<APIResponse<{ provider: AdminProvider }>>(["admin", "market", "provider", id], apiPaths.admin.marketProvider(id), {
+    enabled: !!id,
+    staleTime: 0,
+  });
+
+export const useAdminProviderDocuments = (id: string, page = 0, enabled = true, size = VETTING_HISTORY_PAGE_SIZE) =>
+  useFetchData<APIResponse<Paged<VettingDocument>>>(
+    ["admin", "market", "provider", id, "documents", page, size],
+    withQuery(apiPaths.admin.marketProviderDocuments(id), { limit: size, offset: page * size }),
+    { enabled: enabled && !!id, staleTime: 0 },
+  );
+
+export const useMarketStats = () =>
+  useFetchData<APIResponse<MarketplaceStats>>(["admin", "market", "stats"], apiPaths.admin.marketStats, { staleTime: 0 });
+
+export type AdminHireParams = {
+  status?: HireStatus;
+  disputed?: boolean;
+  /** Delivered but not paid after the follow_up_hours setting: staff call both sides */
+  follow_up?: boolean;
+  provider_id?: string;
+  payment_status?: NonNullable<Hire["payment_status"]>;
+  refund_needed?: boolean;
+  /** Title, client name or phone, provider, hire id or payment reference */
+  q?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export const useAdminHires = (params: AdminHireParams) =>
+  useFetchData<APIResponse<Paged<Hire> & { follow_up_hours: number }>>(
+    ["admin", "market", "hires", params],
+    withQuery(apiPaths.admin.marketHires, params),
+    { staleTime: 0 },
+  );
+
+export const useAdminHire = (id: string) =>
+  useFetchData<APIResponse<AdminHireDetail>>(["admin", "market", "hire", id], apiPaths.admin.marketHire(id), {
+    enabled: !!id,
+    staleTime: 0,
+    retry: false,
+  });
+
+export const CANDIDATES_PAGE_SIZE = 10;
+
+export const useAssignCandidates = (
+  id: string,
+  params: { q?: string; area?: string; specialty?: string; page?: number; size?: number },
+  enabled = true,
+) =>
+  useFetchData<APIResponse<Paged<AssignCandidate>>>(
+    ["admin", "market", "hire", id, "candidates", params],
+    withQuery(apiPaths.admin.marketHireCandidates(id), {
+      q: params.q || undefined,
+      area: params.area || undefined,
+      specialty: params.specialty || undefined,
+      limit: params.size ?? CANDIDATES_PAGE_SIZE,
+      offset: (params.page ?? 0) * (params.size ?? CANDIDATES_PAGE_SIZE),
+    }),
+    { enabled: enabled && !!id, staleTime: 0 },
+  );
+
+/** Downloads the filtered hires as CSV (built on the server; every export is logged). */
+export const useHiresExport = () => {
+  const axiosAuth = useAxiosAuth();
+  return useCallback(
+    async (params: Omit<AdminHireParams, "limit" | "offset">) => {
+      const res = await axiosAuth.get<Blob>(`/${withQuery(apiPaths.admin.marketHiresCsv, params)}`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `hires-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    [axiosAuth],
+  );
+};
+
+export const useSampleStatus = () =>
+  useFetchData<APIResponse<SampleStatus>>(["admin", "market", "samples"], apiPaths.admin.marketSamples, { staleTime: 0 });
+
+export const ADMIN_MARKET_PAGE_SIZE = 25;
+
+export const useAdminReviews = (
+  params: { hidden?: boolean; max_rating?: number; q?: string; offset?: number; limit?: number },
+  enabled = true,
+) =>
+  useFetchData<APIResponse<Paged<AdminReview>>>(
+    ["admin", "market", "reviews", params],
+    withQuery(apiPaths.admin.marketReviews, { ...params, limit: params.limit ?? ADMIN_MARKET_PAGE_SIZE }),
+    { enabled, staleTime: 0 },
+  );
+
+export type ReviewChangeStatus = ReviewChange["status"];
+
+export const useAdminReviewChanges = (status: ReviewChangeStatus, page = 0, enabled = true, size = ADMIN_MARKET_PAGE_SIZE) =>
+  useFetchData<APIResponse<Paged<ReviewChange> & { pending: number }>>(
+    ["admin", "market", "review-changes", status, page, size],
+    withQuery(apiPaths.admin.reviewChanges, { status, limit: size, offset: page * size }),
+    { enabled, staleTime: 0 },
+  );

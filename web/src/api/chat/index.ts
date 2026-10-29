@@ -1,2 +1,2 @@
-export { useSendMessage, ChatApiError } from "./use-send-message";
-export { transcribeAudio, TranscribeError } from "./use-transcribe";
+export { useSendMessage, ChatApiError } from "@/api/chat/use-send-message";
+export { transcribeAudio, TranscribeError } from "@/api/chat/use-transcribe";

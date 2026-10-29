@@ -1,0 +1,29 @@
+{
+  "name": "@cn/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Design tokens, UI primitives and shared display components",
+  "sideEffects": [
+    "*.css"
+  ],
+  "dependencies": {
+    "@base-ui/react": "^1.0.0",
+    "class-variance-authority": "^0.7.1",
+    "@hugeicons/core-free-icons": "^3.1.1",
+    "@hugeicons/react": "^1.1.4",
+    "@cn/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "next": "16.1.7",
+    "react": "19.2.9"
+  },
+  "devDependencies": {
+    "next": "16.1.7",
+    "react": "19.2.9",
+    "@types/react": "^19",
+    "typescript": "^5"
+  },
+  "scripts": {
+    "lint": "eslint ."
+  }
+}

@@ -2,11 +2,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { howItWorks } from "@/content/how-it-works";
 import { stockImages } from "@/content/stock-images";
-import { Button } from "@/components/ui/button";
+import { Button } from "@cn/ui/button";
+import { PageNavBar } from "@cn/ui/layout/page-nav";
 
 export function HowItWorksPage() {
   return (
     <div className="pb-20">
+      <PageNavBar label="How it works" className="pb-3" />
       <section className="relative h-48 w-full md:h-56">
         <Image
           src={stockImages.peopleWaiting}

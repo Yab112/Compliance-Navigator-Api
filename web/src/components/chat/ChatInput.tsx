@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@cn/ui/textarea";
+import { Button } from "@cn/ui/button";
+import { Spinner } from "@cn/ui/spinner";
 import { transcribeAudio, TranscribeError } from "@/api/chat/use-transcribe";
-import { cn } from "@/lib/utils";
+import { cn } from "@cn/core/lib/utils";
 
 type ChatInputProps = {
   onSend: (message: string) => void;
@@ -52,7 +52,7 @@ export function ChatInput({ onSend, disabled, enableVoice }: ChatInputProps) {
     chunksRef.current = [];
 
     if (blob.size < 1000) {
-      setVoiceError("Recording too short — try again.");
+      setVoiceError("Recording too short, try again.");
       return;
     }
 

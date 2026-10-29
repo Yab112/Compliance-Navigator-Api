@@ -1,0 +1,30 @@
+{
+  "name": "@cn/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API client, auth session, types, data hooks and navigation shared by the web and admin apps",
+  "sideEffects": [
+    "*.css"
+  ],
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.16",
+    "axios": "^1.13.2",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.4.0",
+    "zod": "^4.3.5",
+    "zustand": "^5.0.9"
+  },
+  "peerDependencies": {
+    "next": "16.1.7",
+    "react": "19.2.9"
+  },
+  "devDependencies": {
+    "next": "16.1.7",
+    "react": "19.2.9",
+    "@types/react": "^19",
+    "typescript": "^5"
+  },
+  "scripts": {
+    "lint": "eslint ."
+  }
+}

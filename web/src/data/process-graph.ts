@@ -39,11 +39,11 @@ const kebeleOffice = (subCity: string, subCityLabel: string): OfficeInfo =>
   );
 
 const passportOffice = (subCityLabel: string): OfficeInfo => ({
-  name: "Immigration and Citizenship Service — Main Department",
+  name: "Immigration and Citizenship Service, Main Department",
   parentInstitution: "Immigration and Citizenship Service",
   subCity: subCityLabel,
   address: "Addis Ababa, around Mexico Square, Main Department building",
-  landmark: "ICS Main Department — follow signage for passport services",
+  landmark: "ICS Main Department, follow signage for passport services",
   latitude: 9.005,
   longitude: 38.75,
   phones: ["+251 11 662 7688", "+251 11 662 7699"],
@@ -79,7 +79,7 @@ const tradeBureau = (subCity: string, subCityLabel: string): OfficeInfo =>
     subCityLabel,
   );
 
-/** Step templates — office resolved per sub-city at build time */
+/** Step templates, office resolved per sub-city at build time */
 export function getPassportSteps(
   subCity: string,
   subCityLabel: string,
@@ -148,7 +148,7 @@ export function getPassportSteps(
         "Online appointment portal (when available)",
       ],
       estimatedDays: "10–21",
-      legalBasis: "Immigration Proclamation — passport issuance",
+      legalBasis: "Immigration Proclamation, passport issuance",
       requiredInputs: [
         "Valid Kebele ID or National ID",
         "Birth certificate",
@@ -292,7 +292,7 @@ export function getBusinessSteps(
       title: "NBE fintech permit",
       issuingAuthority: "National Bank of Ethiopia",
       feeEtb: null,
-      paymentMethods: ["As per NBE directive — bank transfer"],
+      paymentMethods: ["As per NBE directive, bank transfer"],
       estimatedDays: "6–12 weeks",
       legalBasis: "NBE payment instrument issuer directive",
       sectorSpecific: true,
@@ -304,7 +304,7 @@ export function getBusinessSteps(
       ],
       prerequisiteIds: ["trade_license"],
       office: {
-        name: "National Bank of Ethiopia — Licensing",
+        name: "National Bank of Ethiopia, Licensing",
         parentInstitution: "National Bank of Ethiopia",
         subCity: "Addis Ababa",
         address: "NBE headquarters, licensing division",

@@ -3,88 +3,86 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { useLogin } from "@/api/auth";
-import { aboutProduct } from "@/content/about";
-import { MOCK_EMAIL, MOCK_PASSWORD } from "@/lib/mock-auth";
+import { Button } from "@cn/ui/button";
+import { Input } from "@cn/ui/input";
+import { Label } from "@cn/ui/label";
+import { useLogin } from "@cn/core/api/auth";
+import { getErrorMessage } from "@cn/core/lib/errors";
+import { safeReturnTo } from "@cn/core/lib/safe-redirect";
+import { useRedirectIfSignedIn } from "@cn/core/hooks/use-redirect-if-signed-in";
+import { AuthCard, FormError } from "@cn/ui/auth/auth-card";
+import { PasswordInput } from "@cn/ui/auth/password-input";
 
 export function Login() {
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get("returnTo") || "/roadmap";
+  const returnTo = safeReturnTo(searchParams.get("returnTo"));
+  const resetDone = searchParams.get("reset") === "1";
   const { login, isLoggingIn } = useLogin();
-  const [email, setEmail] = useState(MOCK_EMAIL);
-  const [password, setPassword] = useState(MOCK_PASSWORD);
+  const [submitted, setSubmitted] = useState(false);
+  // useLogin navigates itself after a submit; this covers arriving here already signed in
+  useRedirectIfSignedIn(submitted ? "" : returnTo);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div className="mx-auto flex max-w-md flex-col px-4 py-16">
-      <Card>
-        <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>
-            Save roadmaps and return to your compliance path on{" "}
-            {aboutProduct.name}.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setError(null);
-              try {
-                await login({ email, password }, returnTo);
-              } catch {
-                setError("Invalid email or password.");
-              }
-            }}
-          >
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            {error && <p className="text-destructive text-sm">{error}</p>}
-            <Button type="submit" loading={isLoggingIn}>
-              Sign in
-            </Button>
-          </form>
-          <p className="text-muted-foreground mt-4 text-center text-xs">
-            Demo credentials are pre-filled for development.
+    <AuthCard
+      title="Sign in"
+      am="ይግቡ"
+      description="Save your paths, follow your requests and manage your organization or provider profile."
+      footer={
+        <>
+          <p>
+            New here?{" "}
+            <Link href={`/register?returnTo=${encodeURIComponent(returnTo)}`} className="text-primary font-medium underline">
+              Create a free account
+            </Link>
           </p>
-          <p className="text-muted-foreground mt-2 text-center text-sm">
-            <Link href="/" className="text-primary underline">
+          <p>
+            <Link href="/" className="hover:underline">
               Continue without signing in
             </Link>
           </p>
-        </CardContent>
-      </Card>
-    </div>
+        </>
+      }
+    >
+      {resetDone && (
+        <p className="border-primary/30 bg-secondary text-primary mb-4 rounded-md border px-3 py-2 text-sm">
+          Your password was changed. Sign in with the new one.
+        </p>
+      )}
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setError(null);
+          setSubmitted(true);
+          try {
+            await login({ email: email.trim(), password }, returnTo);
+          } catch (err) {
+            setSubmitted(false);
+            setError(getErrorMessage(err, "Could not sign in. Try again."));
+          }
+        }}
+      >
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Password</Label>
+            <Link href="/forgot-password" className="text-primary text-xs hover:underline">
+              Forgot password?
+            </Link>
+          </div>
+          <PasswordInput id="password" value={password} onChange={setPassword} autoComplete="current-password" />
+        </div>
+        <FormError message={error} />
+        <Button type="submit" size="lg" loading={isLoggingIn}>
+          Sign in
+        </Button>
+      </form>
+    </AuthCard>
   );
 }

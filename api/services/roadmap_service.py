@@ -1,4 +1,4 @@
-"""Roadmap generation — Neo4j graph with in-memory/stub fallback."""
+"""Roadmap generation, Neo4j graph with in-memory/stub fallback."""
 
 from __future__ import annotations
 
@@ -11,11 +11,8 @@ from models.compliance_relationships import ForServiceRel
 from schemas.auth_user import AuthUser
 from services import graph_service
 from services.rag_service import enrich_roadmap_steps
-from services.supabase_store import (
-    get_roadmap_from_supabase,
-    save_roadmap_to_supabase,
-    update_roadmap_in_supabase,
-)
+from services import roadmap_store
+from services.catalog_service import mesob_summary_for_step
 
 PROCESS_CATALOG = [
     {"id": "passport", "label": "Passport", "description": "New or renewal passport through Immigration and Citizenship Service."},
@@ -80,7 +77,7 @@ def _generate_roadmap_stub(
             "id": "kebele_id",
             "order": 1,
             "title": "Kebele ID",
-            "issuingAuthority": f"Kebele office — {sub_label}",
+            "issuingAuthority": f"Kebele office, {sub_label}",
             "feeEtb": 0,
             "paymentMethods": ["cash"],
             "estimatedDays": "3-7",
@@ -171,10 +168,55 @@ def generate_roadmap(
             "createdAt": datetime.now(timezone.utc).isoformat(),
             **built,
         }
-        return enrich_roadmap_steps(roadmap)
+        return _attach_org_data(_attach_mesob(enrich_roadmap_steps(roadmap)))
 
     stub = _generate_roadmap_stub(goal, sub_city, documents_held, industry)
-    return enrich_roadmap_steps(stub)
+    return _attach_org_data(_attach_mesob(enrich_roadmap_steps(stub)))
+
+
+def _attach_mesob(roadmap: dict) -> dict:
+    """Show where a step can be done at a MESOB one-stop center, with its fee and time."""
+    for step in roadmap.get("steps", []):
+        summary = mesob_summary_for_step(step["id"])
+        if summary:
+            step["mesob"] = summary
+    return roadmap
+
+
+def _attach_org_data(roadmap: dict) -> dict:
+    """Where the issuing organization published the service itself, its data leads the step.
+
+    Runs on every read too, so saved paths always show the organization's current version.
+    """
+    try:
+        from services.org_service import org_data_for_steps
+
+        steps = roadmap.get("steps", [])
+        found = org_data_for_steps([s["id"] for s in steps], roadmap.get("request", {}).get("subCity"))
+    except Exception:
+        return roadmap
+    for step in steps:
+        org = found.get(step["id"])
+        if not org:
+            step.pop("orgService", None)
+            continue
+        step["orgService"] = org
+        step["issuingAuthority"] = org["orgName"]
+        if org["isFree"]:
+            step["feeEtb"] = 0
+        elif org["feeAmountMin"] is not None and org["feeCurrency"] == "ETB":
+            step["feeEtb"] = org["feeAmountMin"]
+        if org["paymentMethods"]:
+            step["paymentMethods"] = org["paymentMethods"]
+        if org["requirements"]:
+            step["requiredInputs"] = [r["name"] for r in org["requirements"] if r.get("required") == "always"] or step["requiredInputs"]
+        if org["rejectionReasons"]:
+            step["rejectionReasons"] = org["rejectionReasons"]
+        if org["legalBasis"]:
+            step["legalBasis"] = org["legalBasis"]
+        if org["confirmedAt"]:
+            step["lastVerified"] = org["confirmedAt"]
+    return roadmap
 
 
 def save_roadmap(roadmap: dict, user: AuthUser | None = None) -> dict:
@@ -197,20 +239,21 @@ def save_roadmap(roadmap: dict, user: AuthUser | None = None) -> dict:
         ForServiceRel(source=node, target=service).merge()
 
     _ROADMAP_STORE[roadmap["id"]] = roadmap
-    save_roadmap_to_supabase(roadmap, user=user)
+    roadmap_store.save_roadmap(roadmap, user=user)
     return roadmap
 
 
 def get_roadmap(roadmap_id: str) -> dict | None:
-    from_supabase = get_roadmap_from_supabase(roadmap_id)
-    if from_supabase:
-        return from_supabase
+    stored = roadmap_store.get_roadmap(roadmap_id)
+    if stored:
+        return _attach_org_data(stored)
 
     node = RoadmapNode.match(roadmap_id)
     if node and node.snapshot_json:
-        return json.loads(node.snapshot_json)
+        return _attach_org_data(json.loads(node.snapshot_json))
 
-    return _ROADMAP_STORE.get(roadmap_id)
+    found = _ROADMAP_STORE.get(roadmap_id)
+    return _attach_org_data(found) if found else None
 
 
 def mark_step(roadmap_id: str, step_id: str, completed: bool) -> dict | None:
@@ -237,7 +280,7 @@ def mark_step(roadmap_id: str, step_id: str, completed: bool) -> dict | None:
     else:
         _ROADMAP_STORE[roadmap_id] = roadmap
 
-    update_roadmap_in_supabase(roadmap)
+    roadmap_store.save_roadmap(roadmap)
     return roadmap
 
 

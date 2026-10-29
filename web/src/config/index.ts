@@ -1,3 +1,2 @@
-export * from "./env";
-export * from "./endpoints";
-export { apiPaths } from "@/lib/constants/api-paths";
+export * from "@cn/core/config/env";
+export { apiPaths } from "@cn/core/lib/constants/api-paths";
