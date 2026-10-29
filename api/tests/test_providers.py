@@ -24,6 +24,8 @@ def _join(client, user, *, verify=True, files=None, **overrides):
 
 
 def _admin(client, admin, provider_id, action, note=None):
+    if note is None and action in ("approve", "renew"):
+        note = "Checked the national ID and references by phone"
     return client.post(f"{API}/admin/marketplace/providers/{provider_id}/review",
                        json={"action": action, "note": note}, headers=admin["headers"])
 
@@ -429,3 +431,34 @@ def test_job_success_counts_only_closed_jobs(client, make_user):
     _job(client, agent, open_hire["id"], "accept")
     p = provider_service.get(provider["id"])
     assert p["closed_jobs"] == 4 and p["job_success"] == 75
+
+
+def test_renewal_needs_proof_and_only_opens_near_expiry(client, make_user):
+    from services.db import execute
+
+    admin, agent = make_user("admin"), make_user()
+    p = _approved(client, admin, agent)
+    # Just approved: valid for a year, so renewing now proves nothing
+    early = _admin(client, admin, p["id"], "renew")
+    assert early.status_code == 409 and "Renewal opens on" in early.json()["detail"]
+
+    execute("update providers set license_expires_at = current_date + 10 where id = %s", (p["id"],))
+    assert _admin(client, admin, p["id"], "renew", note="ok").status_code == 400  # say what was checked
+    r = _admin(client, admin, p["id"], "renew", note="Checked Fayda ID and called two past clients")
+    assert r.status_code == 200
+    # A second click right after is refused, so the log can't fill with repeat renewals
+    assert _admin(client, admin, p["id"], "renew").status_code == 409
+
+    detail = client.get(f"{API}/admin/marketplace/providers/{p['id']}", headers=admin["headers"]).json()["payload"]
+    renewals = [e for e in detail["provider"]["events"] if e["action"] == "renew"]
+    assert len(renewals) == 1 and "called two past clients" in renewals[0]["note"] and "->" in renewals[0]["note"]
+    assert detail["provider"]["renewal"]["blocker"].startswith("The listing is valid until")
+    assert detail["provider"]["identity"]["verified_name"]  # what Fayda returned
+
+
+def test_approval_records_what_was_checked(client, make_user):
+    admin, agent = make_user("admin"), make_user()
+    r = _join(client, agent)
+    pid = r.json()["payload"]["provider"]["id"]
+    assert _admin(client, admin, pid, "approve", note="ok").status_code == 400
+    assert _admin(client, admin, pid, "approve", note="Fayda ID matches, phone confirmed").status_code == 200

@@ -11,6 +11,7 @@ export function PrivateDocument({ fileKey, label }: { fileKey?: string | null; l
   const axiosAuth = useAxiosAuth();
   const [doc, setDoc] = useState<{ url: string; type: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [unreadable, setUnreadable] = useState(false);
   // Remote (S3) keys are already URLs; local keys need an authenticated fetch
   const remote = !!fileKey && /^(https?|s3):/.test(fileKey);
 
@@ -42,10 +43,18 @@ export function PrivateDocument({ fileKey, label }: { fileKey?: string | null; l
   }
   if (error) return <ErrorState message={error} />;
   if (!doc) return <LoadingState label="Loading document…" />;
-  if (doc.type.startsWith("image/")) {
+  if (doc.type.startsWith("image/") && !unreadable) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={doc.url} alt={label} className="border-border max-h-96 border object-contain" />
+      <img src={doc.url} alt={label} onError={() => setUnreadable(true)} className="border-border max-h-96 border object-contain" />
+    );
+  }
+  if (unreadable) {
+    return (
+      <p className="text-xs">
+        The {label.toLowerCase()} on file is not a readable image (it may be damaged or a placeholder).{" "}
+        <a href={doc.url} download className="text-primary underline">Download it</a> to check.
+      </p>
     );
   }
   return (

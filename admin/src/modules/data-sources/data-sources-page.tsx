@@ -1,375 +1,305 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Badge } from "@cn/ui/badge";
 import { Button } from "@cn/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@cn/ui/card";
-import { Pager, useUrlPage } from "@cn/ui/pager";
-import {
-  DATA_SOURCE_RUNS_PAGE_SIZE,
-  useDataSourceRuns,
-  useDataSources,
-  useRunDataSource,
-} from "@cn/core/api/admin";
+import { useDataSourceRunTotal, useDataSources } from "@cn/core/api/admin";
 import { AdminPage } from "@/modules/components/admin-page";
-import { formatDateTime, formatDay, formatDuration, humanize, timeAgo } from "@cn/core/lib/format";
+import { timeAgo } from "@cn/core/lib/format";
 import { cn } from "@cn/core/lib/utils";
-import { NativeSelect } from "@/modules/shared/native-select";
-import { ErrorState, EmptyState, LoadingState } from "@/modules/shared/states";
+import { ErrorState, LoadingState } from "@/modules/shared/states";
 import { StatTile } from "@/modules/shared/stat-tile";
-import { StatsList } from "@/modules/shared/stats-list";
 import { StatusBadge } from "@/modules/shared/status-badge";
 import { getErrorMessage } from "@cn/core/lib/errors";
-import type { DataSource, DataSourceHealth, DataSourceRun } from "@cn/core/types/admin";
+import type { DataSource } from "@cn/core/types/admin";
+import { DESTINATIONS, STUCK_AFTER_MINUTES, cardId, isFailing, percent } from "./describe";
+import { RunHistory } from "./run-history";
+import { SourceCard } from "./source-card";
+import { SourceForm } from "./source-form";
 
-const STATUSES = ["success", "failed", "running"] as const;
+type Tab = "sources" | "runs";
 
-const percent = (rate: number | null) => (rate == null ? "-" : `${Math.round(rate * 100)}%`);
-const firstLine = (text: string) => text.split("\n").find((l) => l.trim()) ?? text;
+// ---------------------------------------------------------------- "How this works", remembered per viewer
 
-/** Failing when the most recent finished run failed. */
-function isFailing(h: DataSourceHealth) {
-  return !!h.lastFailureAt && (!h.lastSuccessAt || h.lastFailureAt > h.lastSuccessAt);
-}
+const EXPLAINER_KEY = "cn.admin.data-sources.explainer-hidden";
+const EXPLAINER_EVENT = "cn-explainer-change";
 
-/** One line for a run: graph totals when present, otherwise the first few numeric stats. */
-function summarize(run: DataSourceRun): string {
-  if (run.status === "running") return "In progress";
-  if (run.error) return firstLine(run.error);
-  const stats = run.stats ?? {};
-  const n = (v: unknown) => (v as number).toLocaleString("en");
-  if (typeof stats.totalNodes === "number") {
-    return `${n(stats.totalNodes)} nodes, ${n(stats.totalRelationships ?? 0)} relationships`;
+function readExplainerHidden() {
+  try {
+    return window.localStorage.getItem(EXPLAINER_KEY) === "1";
+  } catch {
+    return false;
   }
-  const parts = Object.entries(stats)
-    .filter(([, v]) => typeof v === "number")
-    .slice(0, 3)
-    .map(([k, v]) => `${n(v)} ${humanize(k).toLowerCase()}`);
-  return parts.join(", ") || "No stats recorded";
 }
 
-function RunButton({ source, disabled }: { source: DataSource; disabled: boolean }) {
-  const { runSource } = useRunDataSource();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function subscribeExplainer(cb: () => void) {
+  window.addEventListener("storage", cb);
+  window.addEventListener(EXPLAINER_EVENT, cb);
+  return () => {
+    window.removeEventListener("storage", cb);
+    window.removeEventListener(EXPLAINER_EVENT, cb);
+  };
+}
+
+function setExplainerHidden(hidden: boolean) {
+  try {
+    if (hidden) window.localStorage.setItem(EXPLAINER_KEY, "1");
+    else window.localStorage.removeItem(EXPLAINER_KEY);
+  } catch {
+    // Storage blocked (private window): the choice just isn't remembered
+  }
+  window.dispatchEvent(new Event(EXPLAINER_EVENT));
+}
+
+function HowThisWorks() {
+  const hidden = useSyncExternalStore(subscribeExplainer, readExplainerHidden, () => false);
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        size="sm"
-        loading={busy}
-        disabled={disabled}
-        onClick={async () => {
-          setBusy(true);
-          setError(null);
-          try {
-            await runSource(source.id);
-          } catch (e) {
-            setError(getErrorMessage(e, "Couldn't start the run"));
-          } finally {
-            setBusy(false);
-          }
-        }}
+    <section className="ring-foreground/10 bg-card mb-6 ring-1" aria-labelledby="how-it-works-title">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+        aria-expanded={!hidden}
+        aria-controls="how-it-works-body"
+        onClick={() => setExplainerHidden(!hidden)}
       >
-        {disabled ? "Running…" : "Run now"}
-      </Button>
-      {error && <p className="text-destructive text-[11px]">{error}</p>}
-    </div>
-  );
-}
-
-/** 30 stacked day bars: green successes under red failures, a faint stub for days without runs. */
-function RunSparkline({ health }: { health: DataSourceHealth }) {
-  const days = health.daily;
-  const max = Math.max(1, ...days.map((d) => d.success + d.failed));
-  const W = 4;
-  const H = 24;
-  return (
-    <svg
-      viewBox={`0 0 ${days.length * W} ${H}`}
-      preserveAspectRatio="none"
-      className="h-6 w-full"
-      role="img"
-      aria-label={`Last ${health.windowDays} days: ${health.successes} successful, ${health.failures} failed runs`}
-    >
-      {days.map((d, i) => {
-        const total = d.success + d.failed;
-        const x = i * W + 0.5;
-        if (!total) return <rect key={d.day} x={x} y={H - 1} width={W - 1} height={1} className="fill-muted-foreground/25" />;
-        const failH = (d.failed / max) * H;
-        const okH = (d.success / max) * H;
-        return (
-          <g key={d.day}>
-            <title>{`${formatDay(d.day)}: ${d.success} successful, ${d.failed} failed`}</title>
-            {okH > 0 && <rect x={x} y={H - okH} width={W - 1} height={okH} className="fill-emerald-500" />}
-            {failH > 0 && <rect x={x} y={H - okH - failH} width={W - 1} height={failH} className="fill-destructive" />}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-function SourceCard({ source }: { source: DataSource }) {
-  const run = source.lastRun;
-  const h = source.health;
-  const running = run?.status === "running";
-  const failing = isFailing(h);
-  const lastDetails = run && run.status !== "running" ? run : null;
-  return (
-    <Card size="sm" className={cn("h-full", failing && "ring-destructive/40")}>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <CardTitle className="truncate" title={source.label}>
-              {source.label}
-            </CardTitle>
-            <Badge variant="outline" className="mt-1 capitalize">
-              {source.kind}
-            </Badge>
-          </div>
-          <StatusBadge status={run?.status ?? "never run"} tone={run ? undefined : "neutral"} />
-        </div>
-        <CardDescription className="line-clamp-2" title={source.description}>
-          {source.description}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-2 text-[11px]">
-        <p className="text-muted-foreground truncate">
-          Last run {run ? `${timeAgo(run.started_at)} · ${formatDuration(run.duration_s)}` : "never"}
-          {run?.triggered_by && ` · by ${run.triggered_by}`}
-        </p>
-        <dl className="grid grid-cols-3 gap-2">
+        <span id="how-it-works-title" className="text-xs font-semibold">
+          How this works
+        </span>
+        <span className="text-primary text-[11px]">{hidden ? "Show" : "Hide"}</span>
+      </button>
+      {!hidden && (
+        <div id="how-it-works-body" className="border-border grid gap-4 border-t px-3 py-3 text-[11px] leading-relaxed md:grid-cols-2 xl:grid-cols-4">
           <div>
-            <dt className="text-muted-foreground">Success ({h.windowDays}d)</dt>
-            <dd className="text-sm font-semibold tabular-nums">{percent(h.successRate)}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Runs</dt>
-            <dd className="text-sm font-semibold tabular-nums">
-              {h.runs}
-              {h.failures > 0 && <span className="text-destructive text-[11px] font-normal"> ({h.failures} failed)</span>}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Avg time</dt>
-            <dd className="text-sm font-semibold tabular-nums">{formatDuration(h.avgDurationS)}</dd>
-          </div>
-        </dl>
-        <RunSparkline health={h} />
-        {failing && h.lastFailureError ? (
-          <p className="text-destructive line-clamp-2 break-words" title={h.lastFailureError}>
-            Failed {timeAgo(h.lastFailureAt)}: {firstLine(h.lastFailureError)}
-          </p>
-        ) : (
-          <p className="text-muted-foreground">Last success {timeAgo(h.lastSuccessAt)}</p>
-        )}
-        <details className="group mt-auto">
-          <summary className="text-primary cursor-pointer select-none">Details</summary>
-          <div className="mt-2 space-y-2">
-            <p className="text-muted-foreground">{source.description}</p>
+            <h3 className="mb-1 font-semibold">What is a data source?</h3>
             <p className="text-muted-foreground">
-              All time: {source.successes} successful · {source.failures} failed · last run took{" "}
-              {formatDuration(h.lastDurationS)}
+              A place the platform gets its information from: the public MESOB website, our own lists of documents and
+              offices, selected legal texts, or a page or document your team adds with “Add data source”.
             </p>
-            {lastDetails?.status === "success" && <StatsList stats={lastDetails.stats} />}
-            {h.lastFailureError && (
-              <div>
-                <p className="text-muted-foreground">Last failure {formatDateTime(h.lastFailureAt)}</p>
-                <pre className="text-destructive mt-1 max-h-40 overflow-auto text-[10px] break-words whitespace-pre-wrap">
-                  {h.lastFailureError}
-                </pre>
-              </div>
-            )}
-            {source.url && (
-              <a href={source.url} target="_blank" rel="noreferrer" className="text-primary block break-all underline">
-                {source.url}
-              </a>
-            )}
           </div>
-        </details>
-      </CardContent>
-      <CardFooter className="justify-end">
-        <RunButton source={source} disabled={running} />
-      </CardFooter>
-    </Card>
+          <div>
+            <h3 className="mb-1 font-semibold">What does a run do?</h3>
+            <p className="text-muted-foreground">
+              A run reads the source once and updates our copy of it. It happens in the background, so you can leave
+              the page. Some sources run on a schedule; any source can be run by hand with “Run now”. Every run is
+              recorded under Run history with who started it and what it changed.
+            </p>
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold">Where the data goes</h3>
+            <ul className="text-muted-foreground space-y-1">
+              {(["catalog", "graph", "knowledge"] as const).map((d) => (
+                <li key={d}>
+                  <span className="text-foreground font-medium">{DESTINATIONS[d].label}</span>: {DESTINATIONS[d].help}.
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold">What the statuses mean</h3>
+            <dl className="text-muted-foreground space-y-1">
+              {(
+                [
+                  ["success", undefined, "The last run finished and the data is up to date."],
+                  ["failed", undefined, "The last run stopped with an error; nothing was changed. The reason is on the card."],
+                  ["running", undefined, "A run is in progress. The page refreshes by itself."],
+                  ["stuck", "warning", `Still “running” after ${STUCK_AFTER_MINUTES} minutes, so it has probably died. Use “Mark as failed”.`],
+                  ["paused", "warning", "Turned off by staff. It won't run by hand or on its schedule until resumed."],
+                  ["never run", "neutral", "Nobody has run it yet."],
+                ] as const
+              ).map(([status, tone, text]) => (
+                <div key={status} className="flex items-start gap-2">
+                  <dt className="shrink-0">
+                    <StatusBadge status={status} tone={tone} />
+                  </dt>
+                  <dd>{text}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
+
+// ---------------------------------------------------------------- summary tiles
 
 function SummaryStrip({ sources }: { sources: DataSource[] }) {
-  const ran = sources.filter((s) => s.lastRun);
+  const active = sources.filter((s) => s.enabled);
+  const ran = active.filter((s) => s.lastRun);
   const failing = ran.filter((s) => isFailing(s.health));
+  const paused = sources.filter((s) => !s.enabled);
   const runs = sources.reduce((n, s) => n + s.health.runs, 0);
   const ok = sources.reduce((n, s) => n + s.health.successes, 0);
   const bad = sources.reduce((n, s) => n + s.health.failures, 0);
   const lastFailure = sources
     .filter((s) => s.health.lastFailureAt)
     .sort((a, b) => (b.health.lastFailureAt ?? "").localeCompare(a.health.lastFailureAt ?? ""))[0];
+  const neverRun = active.length - ran.length;
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      <StatTile label="Healthy" value={`${ran.length - failing.length} of ${sources.length}`} hint="Last finished run succeeded" />
+      <StatTile
+        label="Healthy"
+        value={`${ran.length - failing.length} of ${active.length}`}
+        hint={`Turned-on sources whose last finished run succeeded${neverRun ? ` · ${neverRun} never run` : ""}`}
+      />
       <StatTile
         label="Failing"
         value={failing.length}
         hint={failing.length ? failing.map((s) => s.label).join(", ") : "Nothing failing"}
         tone={failing.length ? "attention" : "default"}
       />
-      <StatTile label="Never run" value={sources.length - ran.length} />
-      <StatTile label="Runs (30 days)" value={runs} hint={`${ok} successful · ${bad} failed`} />
-      <StatTile label="Success rate (30 days)" value={percent(ok + bad ? ok / (ok + bad) : null)} />
+      <StatTile
+        label="Paused"
+        value={paused.length}
+        hint={paused.length ? paused.map((s) => s.label).join(", ") : "All sources are turned on"}
+      />
+      <StatTile label="Runs (30 days)" value={runs} hint={`${ok} successful · ${bad} failed, across all sources`} />
+      <StatTile
+        label="Success rate (30 days)"
+        value={percent(ok + bad ? ok / (ok + bad) : null)}
+        hint="Share of finished runs that ended without an error"
+      />
       <StatTile
         label="Last failure"
         value={lastFailure ? timeAgo(lastFailure.health.lastFailureAt) : "None"}
-        hint={lastFailure?.label}
+        hint={lastFailure?.label ?? "No run has ever failed"}
       />
     </div>
   );
 }
 
-function RunRow({ run, label }: { run: DataSourceRun; label: string }) {
-  const [open, setOpen] = useState(false);
-  const panelId = `run-${run.id}`;
+// ---------------------------------------------------------------- sources tab
+
+function SourcesTab({ sources, runsHref }: { sources: DataSource[]; runsHref: (id: string) => string }) {
+  // null: form closed · "new": adding · otherwise the custom source id being edited
+  const [form, setForm] = useState<string | null>(null);
+  const open = (value: string) => {
+    setForm(value);
+    requestAnimationFrame(() =>
+      document.getElementById("source-form")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
+  const builtIn = sources.filter((s) => s.builtIn);
+  const custom = sources.filter((s) => !s.builtIn);
+
+  const grid = (list: DataSource[]) => (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {list.map((s) => (
+        <SourceCard
+          key={s.id}
+          source={s}
+          runsHref={runsHref(s.id)}
+          onEdit={s.custom ? () => open(s.custom!.id) : undefined}
+        />
+      ))}
+    </div>
+  );
+
   return (
-    <>
-      <tr className={cn("border-border border-t", open && "bg-muted/40")}>
-        <td className="py-2 pr-3">
-          <button
-            type="button"
-            className="flex items-center gap-1.5 text-left font-medium"
-            aria-expanded={open}
-            aria-controls={panelId}
-            onClick={() => setOpen((o) => !o)}
-          >
-            <span aria-hidden className={cn("text-muted-foreground inline-block transition-transform", open && "rotate-90")}>
-              ▸
-            </span>
-            {label}
-          </button>
-        </td>
-        <td className="py-2 pr-3"><StatusBadge status={run.status} /></td>
-        <td className="py-2 pr-3 whitespace-nowrap" title={formatDateTime(run.started_at)}>
-          {timeAgo(run.started_at)}
-        </td>
-        <td className="py-2 pr-3 tabular-nums">{formatDuration(run.duration_s)}</td>
-        <td className="text-muted-foreground max-w-[10rem] truncate py-2 pr-3">{run.triggered_by ?? "-"}</td>
-        <td className={cn("max-w-[18rem] truncate py-2", run.error && "text-destructive")}>{summarize(run)}</td>
-      </tr>
-      {open && (
-        <tr id={panelId} className="bg-muted/40">
-          <td colSpan={6} className="px-5 pb-3 text-[11px]">
-            <p className="text-muted-foreground mb-1.5">
-              Started {formatDateTime(run.started_at)}
-              {run.finished_at && ` · finished ${formatDateTime(run.finished_at)}`}
+    <div className="space-y-8">
+      <div id="source-form" className="scroll-mt-20">
+        {form ? (
+          <SourceForm
+            editId={form === "new" ? null : form}
+            onDone={(key) => {
+              setForm(null);
+              if (key) {
+                requestAnimationFrame(() =>
+                  document.getElementById(cardId(key))?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                );
+              }
+            }}
+          />
+        ) : (
+          <div className="ring-foreground/10 flex flex-col gap-2 p-3 ring-1 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              Need the assistant to know about a new proclamation, directive or office notice? Add it as a data source:
+              give us its web address (or paste its text) and we keep it in the AI knowledge base.
             </p>
-            {run.error ? (
-              <pre className="text-destructive max-h-60 overflow-auto text-[10px] break-words whitespace-pre-wrap">{run.error}</pre>
-            ) : (
-              <StatsList stats={run.stats} />
-            )}
-          </td>
-        </tr>
-      )}
-    </>
+            <Button size="sm" className="shrink-0" onClick={() => open("new")}>
+              Add data source
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <section aria-labelledby="builtin-title">
+        <h2 id="builtin-title" className="mb-1 text-sm font-semibold">
+          Built-in pipelines ({builtIn.length})
+        </h2>
+        <p className="text-muted-foreground mb-3 text-[11px]">
+          Part of the platform. They can be run, paused and resumed, but not edited or deleted.
+        </p>
+        {grid(builtIn)}
+      </section>
+
+      <section aria-labelledby="custom-title">
+        <h2 id="custom-title" className="mb-1 text-sm font-semibold">
+          Added by staff ({custom.length})
+        </h2>
+        <p className="text-muted-foreground mb-3 text-[11px]">
+          Official pages and documents your team added. Each one feeds the AI knowledge base.
+        </p>
+        {custom.length ? (
+          grid(custom)
+        ) : (
+          <p className="text-muted-foreground border-border border border-dashed p-4 text-center text-[11px]">
+            None yet. Use “Add data source” above to add the first one.
+          </p>
+        )}
+      </section>
+    </div>
   );
 }
 
-function RunHistory({ sources, poll }: { sources: DataSource[]; poll: boolean }) {
+// ---------------------------------------------------------------- page
+
+export function DataSourcesPage() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const source = params.get("source") ?? "";
-  const status = (STATUSES as readonly string[]).includes(params.get("status") ?? "") ? params.get("status")! : "";
-  const [page, setPage] = useUrlPage();
-  const runs = useDataSourceRuns({ source, status, page }, poll);
-  const labels = Object.fromEntries(sources.map((s) => [s.id, s.label]));
-  const items = runs.payload?.items ?? [];
-  const total = runs.payload?.total ?? 0;
+  const tab: Tab = params.get("tab") === "runs" ? "runs" : "sources";
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ sources: null, runs: null });
 
-  // A new filter always starts from the first page
-  const setFilter = (key: "source" | "status", value: string) => {
-    const next = new URLSearchParams(params.toString());
-    if (value) next.set(key, value);
-    else next.delete(key);
-    next.delete("page");
-    const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
-
-  return (
-    <section className="mt-8">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">
-          Run history
-          {runs.payload && <span className="text-muted-foreground font-normal tabular-nums"> ({total.toLocaleString("en")})</span>}
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          <NativeSelect aria-label="Filter by source" value={source} onChange={(e) => setFilter("source", e.target.value)}>
-            <option value="">All sources</option>
-            {sources.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </NativeSelect>
-          <NativeSelect aria-label="Filter by status" value={status} onChange={(e) => setFilter("status", e.target.value)}>
-            <option value="">Any status</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s} className="capitalize">
-                {humanize(s)}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-      </div>
-      {runs.isLoading ? (
-        <LoadingState />
-      ) : runs.error ? (
-        <ErrorState message={getErrorMessage(runs.error)} onRetry={() => runs.refetch()} />
-      ) : !items.length ? (
-        source || status ? (
-          <EmptyState title="No runs match" description="Try another source or status." />
-        ) : (
-          <EmptyState title="No runs yet" description="Use “Run now” on a source to start one." />
-        )
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px] text-left text-xs">
-            <thead className="text-muted-foreground text-[11px]">
-              <tr>
-                <th className="py-2 pr-3 font-medium">Source</th>
-                <th className="py-2 pr-3 font-medium">Status</th>
-                <th className="py-2 pr-3 font-medium">Started</th>
-                <th className="py-2 pr-3 font-medium">Duration</th>
-                <th className="py-2 pr-3 font-medium">Triggered by</th>
-                <th className="py-2 font-medium">Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((r) => (
-                <RunRow key={r.id} run={r} label={labels[r.source] ?? r.source} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <Pager page={page} pageSize={DATA_SOURCE_RUNS_PAGE_SIZE} total={total} onPage={setPage} />
-    </section>
-  );
-}
-
-export function DataSourcesPage() {
   // Poll while anything is running; the first fetch decides
   const [poll, setPoll] = useState(false);
   const sources = useDataSources(poll);
+  const runTotal = useDataSourceRunTotal(poll);
 
   const list = sources.payload?.sources ?? [];
   const anyRunning = list.some((s) => s.lastRun?.status === "running");
   if (anyRunning !== poll) setPoll(anyRunning);
 
+  const selectTab = (next: Tab, focus = false) => {
+    const sp = new URLSearchParams(params.toString());
+    if (next === "runs") sp.set("tab", "runs");
+    else sp.delete("tab");
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    if (focus) tabRefs.current[next]?.focus();
+  };
+
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: "sources", label: "Sources", count: sources.payload ? list.length : undefined },
+    { id: "runs", label: "Run history", count: runTotal },
+  ];
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const i = tabs.findIndex((t) => t.id === tab);
+    const moves: Record<string, number> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 };
+    if (!(e.key in moves)) return;
+    e.preventDefault();
+    selectTab(tabs[(moves[e.key] + tabs.length) % tabs.length].id, true);
+  };
+
+  /** Run history filtered to one source (other filters cleared). */
+  const runsHref = (id: string) => `${pathname}?${new URLSearchParams({ tab: "runs", source: id })}`;
+
   return (
     <AdminPage
       title="Data sources"
-      description="Pipelines that keep the platform's knowledge current: the MESOB catalog scraper, Neo4j graph sync, AI knowledge-base embedding and maintenance checks. Runs execute in the background and are logged below."
+      description="Where the platform's information comes from and how fresh it is: the MESOB service catalog, the knowledge graph used for roadmaps, the AI assistant's knowledge base, daily housekeeping, and any official pages your team adds."
     >
       {sources.isLoading ? (
         <LoadingState />
@@ -378,14 +308,43 @@ export function DataSourcesPage() {
       ) : (
         <>
           <SummaryStrip sources={list} />
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {list.map((s) => (
-              <SourceCard key={s.id} source={s} />
+          <HowThisWorks />
+          <div
+            role="tablist"
+            aria-label="Data sources and run history"
+            className="border-border mb-4 flex gap-1 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none]"
+            onKeyDown={onKeyDown}
+          >
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                ref={(el) => {
+                  tabRefs.current[t.id] = el;
+                }}
+                id={`ds-tab-${t.id}`}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                aria-controls={`ds-panel-${t.id}`}
+                tabIndex={tab === t.id ? 0 : -1}
+                onClick={() => selectTab(t.id)}
+                className={cn(
+                  "-mb-px shrink-0 border-b-2 border-transparent px-3 py-2 text-xs",
+                  tab === t.id ? "border-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t.label}
+                {t.count != null && (
+                  <span className="text-muted-foreground tabular-nums"> ({t.count.toLocaleString("en")})</span>
+                )}
+              </button>
             ))}
+          </div>
+          <div role="tabpanel" id={`ds-panel-${tab}`} aria-labelledby={`ds-tab-${tab}`} tabIndex={0} className="outline-none">
+            {tab === "sources" ? <SourcesTab sources={list} runsHref={runsHref} /> : <RunHistory sources={list} poll={poll} />}
           </div>
         </>
       )}
-      <RunHistory sources={list} poll={poll} />
     </AdminPage>
   );
 }

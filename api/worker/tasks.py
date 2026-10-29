@@ -11,7 +11,11 @@ def _run_source(source: str, triggered_by: str) -> dict:
     from services import data_sources
 
     initiate_database()
-    run = data_sources.start_run(source, triggered_by)
+    try:
+        run = data_sources.start_run(source, triggered_by)
+    except data_sources.SourcePaused:
+        logger.info("Skipping %s: paused by staff", source)
+        return {"source": source, "status": "paused"}
     data_sources.execute_run(run["id"], source)
     runs = data_sources.list_runs(source, limit=1)
     return runs[0] if runs else {"source": source}
@@ -44,3 +48,13 @@ def flag_stale_graph_nodes(self) -> dict:
     """Mark Document nodes where last_verified > 30 days as stale."""
     logger.info("Checking stale nodes task_id=%s", self.request.id)
     return _run_source("stale_check", f"celery:{self.request.id}")
+
+
+@celery_app.task(name="worker.tasks.run_scheduled_custom_sources", bind=True)
+def run_scheduled_custom_sources(self) -> dict:
+    """Refresh staff-added data sources whose daily or weekly schedule is due."""
+    from database.database import initiate_database
+    from services import data_sources
+
+    initiate_database()
+    return data_sources.run_due_custom_sources(f"schedule:celery:{self.request.id}")

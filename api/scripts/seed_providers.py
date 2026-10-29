@@ -121,7 +121,7 @@ def seed() -> None:
             **spec, "national_id": f"FIN •••• {random.randint(1000, 9999)}", "national_id_verified": True,
             "id_verification_method": "fayda_sandbox", "verified_name": spec["display_name"], "is_sample": True,
         }, user_id=owner["id"], actor="seed")
-        svc.review_provider(provider["id"], "approve", actor="seed", note="Sample data")
+        svc.review_provider(provider["id"], "approve", actor="seed", note="Sample data, not a real provider")
         execute("update providers set approved_at = now() - make_interval(days => %s) where id = %s",
                 (int(months * 30.4), provider["id"]))
         if license_verified is not None:

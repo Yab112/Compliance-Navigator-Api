@@ -20,7 +20,7 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
-# Nightly MESOB refresh and stale check (run `celery -A worker.celery_app beat` alongside the worker)
+# Nightly MESOB refresh, daily maintenance and due staff-added sources (run `celery -A worker.celery_app beat` alongside the worker)
 celery_app.conf.beat_schedule = {
     "mesob-nightly": {
         "task": "worker.tasks.scrape_government_source",
@@ -30,5 +30,10 @@ celery_app.conf.beat_schedule = {
     "stale-check-daily": {
         "task": "worker.tasks.flag_stale_graph_nodes",
         "schedule": 60 * 60 * 24,
+    },
+    # Staff-added sources with a daily or weekly schedule; each one runs only when it is due
+    "custom-sources-hourly": {
+        "task": "worker.tasks.run_scheduled_custom_sources",
+        "schedule": 60 * 60,
     },
 }

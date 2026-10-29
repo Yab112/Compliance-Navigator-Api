@@ -8,6 +8,8 @@ import type {
   AIStatus,
   AITestResult,
   AuthSummary,
+  CustomDataSource,
+  CustomDataSourceInput,
   DataSource,
   DataSourceRun,
   FeedbackFlag,
@@ -34,25 +36,69 @@ export const useDataSources = (poll: boolean) =>
 
 export const DATA_SOURCE_RUNS_PAGE_SIZE = 20;
 
-export const useDataSourceRuns = (
-  filters: { source?: string; status?: string; page?: number },
-  poll: boolean,
-) => {
-  const { source = "", status = "", page = 0 } = filters;
+export type DataSourceRunFilters = { source?: string; status?: string; from?: string; to?: string; page?: number };
+
+export const useDataSourceRuns = (filters: DataSourceRunFilters, poll: boolean) => {
+  const { source = "", status = "", from = "", to = "", page = 0 } = filters;
   const params = new URLSearchParams({
     limit: String(DATA_SOURCE_RUNS_PAGE_SIZE),
     offset: String(page * DATA_SOURCE_RUNS_PAGE_SIZE),
   });
   if (source) params.set("source", source);
   if (status) params.set("status", status);
-  return useAdminQuery<Paged<DataSourceRun>>(["data-source-runs", source, status, page], `${p.dataSourceRuns}?${params}`, {
-    refetchInterval: poll ? 3000 : false,
-  });
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  return useAdminQuery<Paged<DataSourceRun>>(
+    ["data-source-runs", source, status, from, to, page],
+    `${p.dataSourceRuns}?${params}`,
+    { refetchInterval: poll ? 3000 : false },
+  );
 };
+
+/** Total number of runs ever recorded, for the tab label. */
+export const useDataSourceRunTotal = (poll: boolean) =>
+  useAdminQuery<Paged<DataSourceRun>>(["data-source-runs", "total"], `${p.dataSourceRuns}?limit=1`, {
+    refetchInterval: poll ? 3000 : false,
+  }).payload?.total;
 
 export const useRunDataSource = () => {
   const { run, isPending } = useAdminMutation<{ run: DataSourceRun }, undefined>();
   return { runSource: (id: string) => run(p.runDataSource(id), MTD.POST), isPending };
+};
+
+/** Pause stops both "Run now" and the schedule; resume turns them back on. */
+export const usePauseDataSource = () => {
+  const { run, isPending } = useAdminMutation<{ source: string; enabled: boolean }, undefined>();
+  return {
+    setPaused: (id: string, paused: boolean) =>
+      run(paused ? p.pauseDataSource(id) : p.resumeDataSource(id), MTD.POST),
+    isPending,
+  };
+};
+
+export const useMarkRunFailed = () => {
+  const { run, isPending } = useAdminMutation<{ run: DataSourceRun }, undefined>();
+  return { markFailed: (runId: string) => run(p.markRunFailed(runId), MTD.POST), isPending };
+};
+
+/** One staff-added source with its pasted text, for the edit form. */
+export const useCustomDataSource = (id: string | null) =>
+  useAdminQuery<{ source: CustomDataSource }>(["custom-data-source", id], p.customDataSource(id ?? ""), {
+    enabled: !!id,
+  });
+
+export const useSaveCustomDataSource = () => {
+  const { run, isPending } = useAdminMutation<{ source: CustomDataSource; key?: string }, CustomDataSourceInput>();
+  return {
+    save: (id: string | null, body: CustomDataSourceInput) =>
+      id ? run(p.customDataSource(id), MTD.PUT, body) : run(p.customDataSources, MTD.POST, body),
+    isPending,
+  };
+};
+
+export const useDeleteCustomDataSource = () => {
+  const { run, isPending } = useAdminMutation<{ deleted: { id: string; name: string; chunks_removed: number } }, undefined>();
+  return { remove: (id: string) => run(p.customDataSource(id), MTD.DELETE), isPending };
 };
 
 export const useGraphStats = () => useAdminQuery<GraphCounts>(["graph-stats"], p.graphStats);

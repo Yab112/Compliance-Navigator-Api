@@ -720,6 +720,15 @@ def admin_detail(provider_id: str) -> dict | None:
     provider["services"] = _services(provider["service_ids"])
     provider["team"] = team(provider_id, include_pending=True)
     provider["agency"] = agency_of(provider_id, include_pending=True)
+    provider["renewal"] = {"opens_on": renewal_opens_on(provider), "blocker": renewal_blocker(provider)}
+    # What Fayda returned when this person verified their national ID: the proof of identity
+    provider["identity"] = fetch_one(
+        """
+        select method, id_type, id_last4, verified_name, birthdate, gender, phone, verified_at
+        from id_verifications where user_id = %s and status = 'verified' order by verified_at desc limit 1
+        """,
+        (provider["user_id"],),
+    ) if provider.get("user_id") else None
     provider["name_mismatch"] = names_differ(provider["display_name"], provider.get("verified_name")) \
         if provider["entity_type"] == "individual" else False
     return provider
@@ -741,6 +750,14 @@ def review_provider(provider_id: str, action: str, *, actor: str, note: str | No
         raise MarketplaceError(f"Cannot {action} a provider that is {provider['status']}", 409)
     if action in ("reject", "suspend") and not note:
         raise MarketplaceError(f"A reason is required to {action}")
+    if action in ("approve", "renew") and len((note or "").strip()) < 10:
+        # The audit log is the proof: say what was checked (ID, licence, references)
+        raise MarketplaceError(f"Write what you checked before you {action} (at least 10 characters)")
+    old_expiry = provider.get("license_expires_at")
+    if action == "renew":
+        blocker = renewal_blocker(provider)
+        if blocker:
+            raise MarketplaceError(blocker, 409)
 
     with connection() as conn, conn.transaction():
         updates = {"reviewed_by": actor, "review_note": note}
@@ -768,9 +785,33 @@ def review_provider(provider_id: str, action: str, *, actor: str, note: str | No
                 "where provider_id = %s and status = any(%s)",
                 (provider_id, list(ACTIVE_ENGAGEMENT)),
             )
+        if action in ("approve", "renew", "reinstate"):
+            # Keep the before and after in the log so a renewal can be traced
+            note = f"{note or ''} (valid until {old_expiry or 'not set'} -> {updates['license_expires_at']})".strip()
         _log(conn, provider_id, action, actor, note)
     recompute(provider_id)
     return get(provider_id)
+
+
+def renewal_opens_on(provider: dict) -> date | None:
+    """A listing can be renewed from this many days before it expires (platform setting license_renew_window_days)."""
+    expires = provider.get("license_expires_at")
+    if not expires:
+        return None
+    return expires - timedelta(days=platform_settings.get_int("license_renew_window_days"))
+
+
+def renewal_blocker(provider: dict) -> str | None:
+    """Why a listing can't be renewed now, or None. Renewing early or twice proves nothing, so it isn't allowed."""
+    opens = renewal_opens_on(provider)
+    if opens and date.today() < opens:
+        return (f"The listing is valid until {provider['license_expires_at']:%d %b %Y}. "
+                f"Renewal opens on {opens:%d %b %Y}.")
+    if provider["entity_type"] == "individual" and not provider.get("id_verified"):
+        return "Verify the provider's national ID with Fayda before renewing."
+    if provider["entity_type"] != "individual" and not provider.get("trade_license_no"):
+        return "Add the company's trade licence number before renewing."
+    return None
 
 
 def verify_external_license(provider_id: str, decision: str, *, actor: str, note: str | None) -> dict:

@@ -93,7 +93,7 @@ def test_agent_registration_requires_verification(client, make_user):
     assert fin not in _all_text(client, user, admin, agent["id"])
 
     # Approved agents show as ID-verified publicly
-    client.post(f"{API}/admin/marketplace/providers/{agent['id']}/review", json={"action": "approve"}, headers=admin["headers"])
+    client.post(f"{API}/admin/marketplace/providers/{agent['id']}/review", json={"action": "approve", "note": "Fayda verified, references checked"}, headers=admin["headers"])
     public = client.get(f"{API}/providers/{agent['slug']}").json()["payload"]["provider"]
     assert public["id_verified"] is True and "national_id" not in public
 

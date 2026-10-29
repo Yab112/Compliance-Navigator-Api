@@ -173,7 +173,22 @@ export type MyProvider = Provider & {
   completeness: { percent: number; items: { key: string; label: string; done: boolean }[] };
 };
 
+/** What Fayda returned when the person verified their national ID: the proof of identity. */
+export type FaydaIdentity = {
+  method: "fayda" | "fayda_sandbox";
+  id_type: string | null;
+  id_last4: string | null;
+  verified_name: string | null;
+  birthdate: string | null;
+  gender: string | null;
+  phone: string | null;
+  verified_at: string;
+};
+
 export type AdminProvider = Provider & {
+  /** When renewal opens, and why it can't happen now (null when it can) */
+  renewal?: { opens_on: string | null; blocker: string | null };
+  identity?: FaydaIdentity | null;
   open_jobs?: number;
   open_disputes?: number;
   events?: AgentEvent[];

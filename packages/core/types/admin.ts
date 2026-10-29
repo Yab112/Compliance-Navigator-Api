@@ -12,14 +12,68 @@ export type DataSourceRun = {
   started_at: string;
   finished_at?: string | null;
   duration_s?: number;
+  /** Readable source name; "Deleted source" for a staff-added source that was removed */
+  source_label?: string;
+};
+
+export type DataSourceKind = "scraper" | "graph" | "rag" | "maintenance" | "web_page" | "pasted_text";
+export type DataSourceSchedule = "manual" | "daily" | "weekly";
+/** Where a source's data ends up */
+export type DataSourceDestination = "catalog" | "graph" | "knowledge" | "records";
+
+/** A source staff added from the admin app (stored in the database, not in code). */
+export type CustomDataSource = {
+  id: string;
+  name: string;
+  description: string;
+  kind: "web_page" | "pasted_text";
+  url: string | null;
+  issuing_body: string | null;
+  language: "en" | "am";
+  tags: string[];
+  schedule: DataSourceSchedule;
+  enabled: boolean;
+  paused_by: string | null;
+  paused_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  text_length: number;
+  /** Passages it currently has in the AI knowledge base (list only) */
+  passages?: number;
+  /** Pasted document text (single-source fetch only) */
+  text?: string | null;
+};
+
+export type CustomDataSourceInput = {
+  name: string;
+  description: string;
+  kind: "web_page" | "pasted_text";
+  url: string | null;
+  text: string | null;
+  issuing_body: string | null;
+  language: "en" | "am";
+  tags: string[];
+  schedule: DataSourceSchedule;
+  enabled: boolean;
 };
 
 export type DataSource = {
+  /** Pipeline key, or "custom:<uuid>" for staff-added sources */
   id: string;
   label: string;
   description: string;
-  kind: "scraper" | "graph" | "rag" | "maintenance";
+  kind: DataSourceKind;
   url?: string | null;
+  builtIn: boolean;
+  schedule: DataSourceSchedule;
+  destinations: DataSourceDestination[];
+  /** false when paused: it can't be run by hand or by the schedule */
+  enabled: boolean;
+  pausedBy: string | null;
+  pausedAt: string | null;
+  custom: CustomDataSource | null;
   lastRun: DataSourceRun | null;
   successes: number;
   failures: number;

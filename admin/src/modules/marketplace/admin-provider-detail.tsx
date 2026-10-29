@@ -27,19 +27,32 @@ import type { AdminProvider, ProviderAdminAction, Review } from "@cn/core/types/
 import { PrivateDocument } from "@/modules/marketplace/private-document";
 import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
 
-const ACTIONS: Record<string, { action: ProviderAdminAction; label: string; needsNote?: boolean; tone?: "destructive" }[]> = {
+type ActionDef = {
+  action: ProviderAdminAction;
+  label: string;
+  tone?: "destructive";
+  /** What staff must write, and how much */
+  prompt: string;
+  minNote: number;
+};
+
+// Approving and renewing are only as good as the checks behind them, so both ask what was checked;
+// the note goes into the audit log as the proof.
+const CHECKED = "What did you check? For example: Fayda ID matches, licence confirmed with the office, references called. Kept in the audit log.";
+const REASON = "Reason. The provider sees this.";
+const ACTIONS: Record<string, ActionDef[]> = {
   pending: [
-    { action: "approve", label: "Approve and list" },
-    { action: "reject", label: "Reject", needsNote: true, tone: "destructive" },
+    { action: "approve", label: "Approve and list", prompt: CHECKED, minNote: 10 },
+    { action: "reject", label: "Reject", tone: "destructive", prompt: REASON, minNote: 3 },
   ],
-  rejected: [{ action: "approve", label: "Approve after all" }],
+  rejected: [{ action: "approve", label: "Approve after all", prompt: CHECKED, minNote: 10 }],
   approved: [
-    { action: "renew", label: "Renew listing (1 year)" },
-    { action: "suspend", label: "Suspend", needsNote: true, tone: "destructive" },
+    { action: "renew", label: "Renew listing", prompt: CHECKED, minNote: 10 },
+    { action: "suspend", label: "Suspend", tone: "destructive", prompt: REASON, minNote: 3 },
   ],
   suspended: [
-    { action: "reinstate", label: "Reinstate" },
-    { action: "renew", label: "Renew listing" },
+    { action: "reinstate", label: "Reinstate", prompt: "Why is it safe to reinstate? Optional, kept in the audit log.", minNote: 0 },
+    { action: "renew", label: "Renew listing", prompt: CHECKED, minNote: 10 },
   ],
 };
 
@@ -88,29 +101,65 @@ function ReviewModeration({ review }: { review: Review }) {
 
 function Actions({ p }: { p: AdminProvider }) {
   const { run, isPending } = useMarketAction<{ action?: string; decision?: string; note?: string }>();
+  const [open, setOpen] = useState<ActionDef | "license_rejected" | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const call = async (url: string, body: { action?: string; decision?: string; note?: string }, needsNote?: boolean) => {
+  const [done, setDone] = useState<string | null>(null);
+  const call = async (url: string, body: { action?: string; decision?: string }, success: string) => {
     setError(null);
-    if (needsNote && note.trim().length < 3) return setError("Write a reason first. The provider will see it.");
     try {
       await run(url, MTD.POST, { ...body, note: note.trim() || undefined });
       setNote("");
+      setOpen(null);
+      setDone(success);
     } catch (err) {
       setError(getErrorMessage(err));
     }
   };
+  const renewBlocked = p.renewal?.blocker;
+  const actions = (ACTIONS[p.status] ?? []).filter((a) => a.action !== "renew" || !renewBlocked);
+
   return (
     <Panel title="Decision">
-      <Input placeholder="Note or reason (shown to the provider when rejecting or suspending)" value={note} onChange={(e) => setNote(e.target.value)} />
-      <div className="mt-3 flex flex-wrap gap-2">
-        {(ACTIONS[p.status] ?? []).map((a) => (
-          <Button key={a.action} size="sm" variant={a.tone ?? "default"} loading={isPending}
-            onClick={() => call(apiPaths.admin.marketProviderReview(p.id), { action: a.action }, a.needsNote)}>
-            {a.label}
-          </Button>
-        ))}
-      </div>
+      {/* The blocker already names the expiry date when renewal is not open yet */}
+      <p className="text-muted-foreground text-xs">
+        {renewBlocked ?? (
+          <>
+            Listing valid until <strong className="text-foreground">{formatDate(p.license_expires_at)}</strong>
+            {p.renewal?.opens_on ? ". Renewal is open." : "."}
+          </>
+        )}
+      </p>
+      {!open && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {actions.map((a) => (
+            <Button key={a.action} size="sm" variant={a.tone ?? "default"} onClick={() => { setOpen(a); setDone(null); setError(null); }}>
+              {a.label}
+            </Button>
+          ))}
+        </div>
+      )}
+      {open && open !== "license_rejected" && (
+        <form
+          className="bg-secondary/50 mt-3 space-y-2 rounded-md p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void call(apiPaths.admin.marketProviderReview(p.id), { action: open.action }, `${open.label}: done.`);
+          }}
+        >
+          <label htmlFor="decision-note" className="block text-xs font-medium">{open.prompt}</label>
+          <textarea id="decision-note" rows={3} className="border-input bg-background w-full rounded-md border p-2 text-sm"
+            value={note} onChange={(e) => setNote(e.target.value)} autoFocus />
+          <div className="flex gap-2">
+            {/* Disabled while saving, so a double click can't apply the action twice */}
+            <Button type="submit" size="sm" variant={open.tone ?? "default"} loading={isPending} disabled={isPending || note.trim().length < open.minNote}>
+              {open.label}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" disabled={isPending} onClick={() => { setOpen(null); setNote(""); }}>Cancel</Button>
+          </div>
+        </form>
+      )}
+      {done && <p className="text-primary mt-2 text-xs" role="status">{done}</p>}
       {p.external_license_no && (
         <div className="border-border mt-4 border-t pt-3">
           <p className="text-xs">
@@ -118,19 +167,68 @@ function Actions({ p }: { p: AdminProvider }) {
             <span className="text-muted-foreground">({p.external_license_status}{p.external_license_verified_by ? ` by ${p.external_license_verified_by}` : ""})</span>
           </p>
           <p className="text-muted-foreground mt-1 text-[11px]">Confirm the number with the issuing office before verifying. A verified licence adds 7 points to the trust score.</p>
-          <div className="mt-2 flex gap-2">
-            <Button size="sm" variant="outline" loading={isPending} disabled={p.external_license_status === "verified"}
-              onClick={() => call(apiPaths.admin.marketProviderLicense(p.id), { decision: "verified" })}>
-              Mark licence verified
-            </Button>
-            <Button size="sm" variant="ghost" loading={isPending}
-              onClick={() => call(apiPaths.admin.marketProviderLicense(p.id), { decision: "rejected" }, true)}>
-              Licence not valid
-            </Button>
-          </div>
+          {open === "license_rejected" ? (
+            <form className="mt-2 space-y-2" onSubmit={(e) => { e.preventDefault(); void call(apiPaths.admin.marketProviderLicense(p.id), { decision: "rejected" }, "Licence marked not valid."); }}>
+              <label htmlFor="license-note" className="block text-xs font-medium">{REASON}</label>
+              <Input id="license-note" value={note} onChange={(e) => setNote(e.target.value)} autoFocus />
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" variant="destructive" loading={isPending} disabled={isPending || note.trim().length < 3}>Licence not valid</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => { setOpen(null); setNote(""); }}>Cancel</Button>
+              </div>
+            </form>
+          ) : (
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" variant="outline" loading={isPending} disabled={isPending || p.external_license_status === "verified"}
+                onClick={() => call(apiPaths.admin.marketProviderLicense(p.id), { decision: "verified" }, "Licence verified.")}>
+                Mark licence verified
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => { setOpen("license_rejected"); setDone(null); }}>Licence not valid</Button>
+            </div>
+          )}
         </div>
       )}
-      {error && <p className="text-destructive mt-2 text-xs">{error}</p>}
+      {error && <p className="text-destructive mt-2 text-xs" role="alert">{error}</p>}
+    </Panel>
+  );
+}
+
+/** Proof of identity: what Fayda returned, not a photo of a card. */
+function IdentityPanel({ p }: { p: AdminProvider }) {
+  const id = p.identity;
+  if (!id) {
+    return (
+      <Panel title="National ID (Fayda)">
+        <p className="text-destructive text-xs font-medium">Not verified with Fayda.</p>
+        <p className="text-muted-foreground mt-1 text-xs">
+          Ask the provider to verify from their account. Fayda confirms the name, birth date and phone straight from the national ID
+          system, so no photo of the card is needed.
+        </p>
+        {p.national_id && <p className="mt-2 text-xs">ID number they typed: <span className="font-mono">{p.national_id}</span> (not confirmed)</p>}
+        {p.id_document_url && (
+          <div className="mt-2">
+            <p className="text-muted-foreground mb-1 text-[11px]">Uploaded copy from an older sign-up:</p>
+            <PrivateDocument fileKey={p.id_document_url} label="ID copy" />
+          </div>
+        )}
+      </Panel>
+    );
+  }
+  return (
+    <Panel title="National ID (Fayda)">
+      <p className="text-primary text-xs font-medium">
+        Verified {formatDate(id.verified_at)} through {id.method === "fayda_sandbox" ? "the Fayda sandbox (test system, not a real ID)" : "Fayda"}
+      </p>
+      <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+        <InfoRow label="Name on the ID">{id.verified_name}</InfoRow>
+        <InfoRow label="ID number">{id.id_last4 ? `•••• ${id.id_last4}` : "-"}{id.id_type ? ` (${id.id_type})` : ""}</InfoRow>
+        <InfoRow label="Birth date">{id.birthdate}</InfoRow>
+        <InfoRow label="Gender">{id.gender}</InfoRow>
+        <InfoRow label="Phone on the ID">{id.phone}</InfoRow>
+        <InfoRow label="Phone on the profile">{p.phone}</InfoRow>
+      </dl>
+      <p className="text-muted-foreground mt-3 text-[11px]">
+        These details come from the national ID system. The full ID number is never stored, only the last four digits.
+      </p>
     </Panel>
   );
 }
@@ -175,8 +273,6 @@ export function AdminProviderDetail({ id }: { id: string }) {
             <dl className="mt-4 grid gap-3 sm:grid-cols-3">
               <InfoRow label="Phone">{p.phone}</InfoRow>
               <InfoRow label="Email">{p.email}</InfoRow>
-              <InfoRow label="National ID">{p.national_id}</InfoRow>
-              <InfoRow label="Fayda name">{p.verified_name}</InfoRow>
               <InfoRow label="TIN">{p.tin}</InfoRow>
               {p.entity_type === "company" && (
                 <>
@@ -200,7 +296,7 @@ export function AdminProviderDetail({ id }: { id: string }) {
           </Panel>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Panel title="National ID copy"><PrivateDocument fileKey={p.id_document_url} label="ID copy" /></Panel>
+            <IdentityPanel p={p} />
             <Panel title="Trade licence copy"><PrivateDocument fileKey={p.license_document_url} label="Licence copy" /></Panel>
           </div>
 

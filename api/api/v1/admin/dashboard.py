@@ -1,5 +1,7 @@
 """Admin dashboard API, every route requires role=admin."""
 
+from datetime import date
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -12,11 +14,12 @@ from schemas.auth_user import AuthUser
 from services import (
     ai_admin,
     catalog_service,
+    custom_sources,
     data_sources,
     feedback_service,
     graph_admin,
-    provider_service,
     org_service,
+    provider_service,
     user_store,
 )
 from services.db import fetch_all, fetch_one
@@ -111,10 +114,25 @@ def list_data_sources():
 def list_data_source_runs(
     source: str | None = None,
     status: str | None = Query(None, pattern="^(success|failed|running)$"),
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    return _ok(data_sources.page_runs(source, status, limit, offset))
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="The “from” date must be on or before the “to” date")
+    return _ok(data_sources.page_runs(source, status, limit, offset, date_from, date_to))
+
+
+@router.post("/data-sources/runs/{run_id}/mark-failed")
+def mark_data_source_run_failed(run_id: UUID, admin: AuthUser = Depends(require_admin)):
+    try:
+        run = data_sources.mark_run_failed(str(run_id), admin.email)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _ok({"run": run})
 
 
 @router.post("/data-sources/{source}/run", status_code=status.HTTP_202_ACCEPTED)
@@ -127,6 +145,75 @@ def run_data_source(source: str, background: BackgroundTasks, admin: AuthUser = 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     background.add_task(data_sources.execute_run, run["id"], source)
     return _ok({"run": run})
+
+
+@router.post("/data-sources/{source}/pause")
+def pause_data_source(source: str, admin: AuthUser = Depends(require_admin)):
+    try:
+        data_sources.set_paused(source, True, admin.email)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown data source") from None
+    return _ok({"source": source, "enabled": False})
+
+
+@router.post("/data-sources/{source}/resume")
+def resume_data_source(source: str, admin: AuthUser = Depends(require_admin)):
+    try:
+        data_sources.set_paused(source, False, admin.email)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown data source") from None
+    return _ok({"source": source, "enabled": True})
+
+
+class CustomSourceBody(BaseModel):
+    name: str = Field(..., min_length=3, max_length=120)
+    description: str = Field("", max_length=1000)
+    kind: Literal["web_page", "pasted_text"]
+    url: str | None = Field(None, max_length=2000)
+    text: str | None = Field(None, max_length=custom_sources.MAX_TEXT_CHARS)
+    issuing_body: str | None = Field(None, max_length=200)
+    language: Literal["en", "am"] = "en"
+    tags: list[str] = Field(default_factory=list, max_length=10)
+    schedule: Literal["manual", "daily", "weekly"] = "manual"
+    enabled: bool = True
+
+
+def _custom_or_422(fn):
+    try:
+        return fn()
+    except ValueError as exc:  # includes UnsafeURL
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/data-sources/custom/{source_id}")
+def get_custom_source(source_id: UUID):
+    source = custom_sources.get_custom(str(source_id), with_text=True)
+    if not source:
+        raise HTTPException(status_code=404, detail="Data source not found")
+    source["text"] = source.pop("body")
+    return _ok({"source": source})
+
+
+@router.post("/data-sources/custom", status_code=status.HTTP_201_CREATED)
+def create_custom_source(body: CustomSourceBody, admin: AuthUser = Depends(require_admin)):
+    source = _custom_or_422(lambda: custom_sources.create_custom(body.model_dump(), admin.email))
+    return _ok({"source": source, "key": custom_sources.source_key(source["id"])})
+
+
+@router.put("/data-sources/custom/{source_id}")
+def update_custom_source(source_id: UUID, body: CustomSourceBody, admin: AuthUser = Depends(require_admin)):
+    source = _custom_or_422(lambda: custom_sources.update_custom(str(source_id), body.model_dump(), admin.email))
+    if not source:
+        raise HTTPException(status_code=404, detail="Data source not found")
+    return _ok({"source": source})
+
+
+@router.delete("/data-sources/custom/{source_id}")
+def delete_custom_source(source_id: UUID):
+    deleted = custom_sources.delete_custom(str(source_id))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Data source not found")
+    return _ok({"deleted": deleted})
 
 
 # ---------------------------------------------------------------- knowledge graph
