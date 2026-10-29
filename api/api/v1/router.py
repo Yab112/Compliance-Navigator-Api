@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from api.v1 import assistant, auth, catalog, organizations, chat, feedback, guday, notifications, offices, payments, processes, providers, reputation, roadmaps, support
-from api.v1.admin import assistant as admin_assistant, dashboard, organizations as admin_organizations, jobs, marketplace as admin_marketplace, rag, references, tasks
+from api.v1.admin import assistant as admin_assistant, dashboard, organizations as admin_organizations, jobs, marketplace as admin_marketplace, rag, references, settings as admin_settings, tasks
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -29,3 +29,4 @@ api_router.include_router(support.router)
 api_router.include_router(payments.router)
 api_router.include_router(reputation.router)
 api_router.include_router(support.admin_router)
+api_router.include_router(admin_settings.router)

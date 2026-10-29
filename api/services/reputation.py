@@ -2,8 +2,8 @@
 
 Client record: what a provider sees before taking a client's request (never public):
   hire rate      paid jobs / decided accepted requests; "decided" = paid, cancelled after the
-                 provider accepted, or delivered but left unpaid for STALE_DAYS. Shown from
-                 MIN_DECIDED decided requests; "New client" before that.
+                 provider accepted, or delivered but left unpaid (setting client_unpaid_days). Shown from
+                 client_record_min decided requests; "New client" before that.
   paid jobs, cancellations after acceptance, rating from providers, member since.
 
 Provider -> client ratings: one per closed job.
@@ -14,9 +14,8 @@ from __future__ import annotations
 
 from services import notifications
 from services.db import connection, execute, fetch_all, fetch_one
+from services import platform_settings
 
-STALE_DAYS = 7
-MIN_DECIDED = 3
 
 
 class ReputationError(Exception):
@@ -36,7 +35,7 @@ def client_record(user_id: str | None) -> dict | None:
         select count(*) filter (where payment_status = 'paid') as paid,
                count(*) filter (where status = 'cancelled' and accepted_at is not null) as cancelled_after_accept,
                count(*) filter (where status = 'completed' and payment_status <> 'paid' and client_confirmed_at is null
-                                  and completed_at < now() - interval '{STALE_DAYS} days') as left_unpaid,
+                                  and completed_at < now() - interval '{platform_settings.get_int("client_unpaid_days")} days') as left_unpaid,
                count(*) filter (where status = 'completed' and client_confirmed_at is not null) as closed
         from engagements where client_user_id = %s and provider_id is not null
         """,
@@ -54,7 +53,7 @@ def client_record(user_id: str | None) -> dict | None:
         "cancelled_after_accept": jobs["cancelled_after_accept"],
         "left_unpaid": jobs["left_unpaid"],
         "decided": decided,
-        "hire_rate": round(100 * jobs["paid"] / decided) if decided >= MIN_DECIDED else None,
+        "hire_rate": round(100 * jobs["paid"] / decided) if decided >= platform_settings.get_int("client_record_min") else None,
         "rating_avg": round(ratings["avg"], 1) if ratings["n"] else None,
         "rating_count": ratings["n"],
         "member_since": member["created_at"] if member else None,

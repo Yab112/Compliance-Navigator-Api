@@ -156,13 +156,97 @@ def execute_run(run_id: str, source: str) -> None:
         )
 
 
+HEALTH_WINDOW_DAYS = 30
+
+
+def _source_health(keys: list[str]) -> dict[str, dict]:
+    """Per-source reliability over the last HEALTH_WINDOW_DAYS plus a zero-filled daily series."""
+    totals = {
+        r["source"]: r
+        for r in fetch_all(
+            """
+            select source,
+                   count(*) as runs,
+                   count(*) filter (where status = 'success') as successes,
+                   count(*) filter (where status = 'failed') as failures,
+                   round(avg(extract(epoch from (finished_at - started_at)))
+                         filter (where finished_at is not null))::int as avg_duration_s
+            from data_source_runs
+            where started_at > now() - make_interval(days => %s)
+            group by source
+            """,
+            (HEALTH_WINDOW_DAYS,),
+        )
+    }
+    # "Last" values look at all history so an old failure is still visible
+    last = {
+        r["source"]: r
+        for r in fetch_all(
+            """
+            select s.source,
+                   (select extract(epoch from (finished_at - started_at))::int
+                      from data_source_runs where source = s.source and finished_at is not null
+                      order by started_at desc limit 1) as last_duration_s,
+                   (select max(finished_at) from data_source_runs
+                      where source = s.source and status = 'success') as last_success_at,
+                   f.finished_at as last_failure_at,
+                   f.error as last_failure_error
+            from unnest(%s::text[]) s(source)
+            left join lateral (
+              select finished_at, error from data_source_runs
+              where source = s.source and status = 'failed'
+              order by started_at desc limit 1
+            ) f on true
+            """,
+            (keys,),
+        )
+    }
+    daily: dict[str, list[dict]] = {k: [] for k in keys}
+    for r in fetch_all(
+        """
+        select s.source, d::date as day,
+               count(r.id) filter (where r.status = 'success') as success,
+               count(r.id) filter (where r.status = 'failed') as failed
+        from unnest(%s::text[]) s(source)
+        cross join generate_series(current_date - (%s - 1), current_date, interval '1 day') d
+        left join data_source_runs r
+          on r.source = s.source and r.started_at >= d and r.started_at < d + interval '1 day'
+        group by s.source, d
+        order by s.source, d
+        """,
+        (keys, HEALTH_WINDOW_DAYS),
+    ):
+        daily[r["source"]].append({"day": r["day"], "success": r["success"], "failed": r["failed"]})
+
+    out = {}
+    for key in keys:
+        t, l = totals.get(key, {}), last.get(key, {})
+        successes, failures = t.get("successes", 0), t.get("failures", 0)
+        finished = successes + failures
+        out[key] = {
+            "windowDays": HEALTH_WINDOW_DAYS,
+            "runs": t.get("runs", 0),
+            "successes": successes,
+            "failures": failures,
+            "successRate": round(successes / finished, 4) if finished else None,
+            "avgDurationS": t.get("avg_duration_s"),
+            "lastDurationS": l.get("last_duration_s"),
+            "lastSuccessAt": l.get("last_success_at"),
+            "lastFailureAt": l.get("last_failure_at"),
+            "lastFailureError": l.get("last_failure_error"),
+            "daily": daily[key],
+        }
+    return out
+
+
 def list_sources() -> list[dict]:
     last_runs = {
         r["source"]: r
         for r in fetch_all(
             """
             select distinct on (source) id::text, source, status, stats, error,
-                   triggered_by, started_at, finished_at
+                   triggered_by, started_at, finished_at,
+                   extract(epoch from (coalesce(finished_at, now()) - started_at))::int as duration_s
             from data_source_runs
             order by source, started_at desc
             """
@@ -180,6 +264,7 @@ def list_sources() -> list[dict]:
             """
         )
     }
+    health = _source_health(list(SOURCES))
     out = []
     for key, meta in SOURCES.items():
         counts = success_counts.get(key, {})
@@ -193,19 +278,36 @@ def list_sources() -> list[dict]:
             "successes": counts.get("successes", 0),
             "failures": counts.get("failures", 0),
             "lastSuccessAt": counts.get("last_success_at"),
+            "health": health[key],
         })
     return out
 
 
-def list_runs(source: str | None = None, limit: int = 50) -> list[dict]:
+_RUN_FILTER = """
+    where (%(source)s::text is null or source = %(source)s)
+      and (%(status)s::text is null or status = %(status)s)
+"""
+
+
+def list_runs(
+    source: str | None = None, limit: int = 50, *, status: str | None = None, offset: int = 0
+) -> list[dict]:
     return fetch_all(
-        """
+        f"""
         select id::text, source, status, stats, error, triggered_by, started_at, finished_at,
                extract(epoch from (coalesce(finished_at, now()) - started_at))::int as duration_s
         from data_source_runs
-        where %(source)s::text is null or source = %(source)s
-        order by started_at desc
-        limit %(limit)s
+        {_RUN_FILTER}
+        order by started_at desc, id desc
+        limit %(limit)s offset %(offset)s
         """,
-        {"source": source, "limit": limit},
+        {"source": source, "status": status, "limit": limit, "offset": offset},
     )
+
+
+def page_runs(source: str | None = None, status: str | None = None, limit: int = 20, offset: int = 0) -> dict:
+    """One page of run history, newest first, with the total for the same filters."""
+    total = fetch_one(
+        f"select count(*) as c from data_source_runs {_RUN_FILTER}", {"source": source, "status": status}
+    )["c"]
+    return {"items": list_runs(source, limit, status=status, offset=offset), "total": total}

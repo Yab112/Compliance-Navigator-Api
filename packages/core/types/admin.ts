@@ -24,6 +24,23 @@ export type DataSource = {
   successes: number;
   failures: number;
   lastSuccessAt?: string | null;
+  health: DataSourceHealth;
+};
+
+/** Reliability over the last `windowDays`; the "last" fields look at all history. */
+export type DataSourceHealth = {
+  windowDays: number;
+  runs: number;
+  successes: number;
+  failures: number;
+  /** 0..1 over finished runs, null when nothing finished in the window */
+  successRate: number | null;
+  avgDurationS: number | null;
+  lastDurationS: number | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureError: string | null;
+  daily: { day: string; success: number; failed: number }[];
 };
 
 export type GraphCounts = {

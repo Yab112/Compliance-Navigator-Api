@@ -121,6 +121,9 @@ export const apiPaths = {
   },
   admin: {
     overview: "admin/overview",
+    settings: "admin/settings",
+    settingsHistory: "admin/settings/history",
+    setting: (key: string) => `admin/settings/${key}`,
     dataSources: "admin/data-sources",
     dataSourceRuns: "admin/data-sources/runs",
     runDataSource: (id: string) => `admin/data-sources/${id}/run`,

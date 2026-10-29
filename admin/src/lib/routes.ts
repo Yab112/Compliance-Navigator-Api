@@ -21,6 +21,7 @@ const ADMIN_ROUTES: RouteDef[] = [
   { pattern: "/catalog", label: "MESOB catalog", parent: "/" },
   { pattern: "/data-sources", label: "Data sources", parent: "/" },
   { pattern: "/graph", label: "Knowledge graph", parent: "/" },
+  { pattern: "/settings", label: "Platform settings", parent: "/" },
 ];
 
 registerRoutes(ADMIN_ROUTES);

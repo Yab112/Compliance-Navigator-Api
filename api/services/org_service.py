@@ -19,6 +19,7 @@ from typing import Any
 
 from services import catalog_service
 from services.db import Jsonb, connection, execute, fetch_all, fetch_one
+from services import platform_settings
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +53,6 @@ REQUIREMENT_FIELDS = (
     "copies", "notarized", "translated", "max_age_days", "photo_specs", "applies_to", "alternatives",
 )
 # An organization confirms each live service is still accurate at least this often
-CONFIRM_EVERY_DAYS = 90
 
 PUBLIC_ORG_COLUMNS = """
   o.id::text, o.slug, o.name, o.name_am, o.org_type, o.sector, o.description, o.logo_url,
@@ -455,7 +455,7 @@ def _confirmation(last_confirmed_at: datetime | None, is_live: bool) -> dict:
     if not last_confirmed_at:
         return {"confirmed_days_ago": None, "confirmation_due": True}
     days = (datetime.now(timezone.utc) - last_confirmed_at).days
-    return {"confirmed_days_ago": days, "confirmation_due": days >= CONFIRM_EVERY_DAYS}
+    return {"confirmed_days_ago": days, "confirmation_due": days >= platform_settings.get_int("org_confirm_every_days")}
 
 
 def list_org_services(org_id: str) -> list[dict]:
@@ -803,7 +803,7 @@ def count_services_due_for_confirmation() -> int:
         f"""
         select count(*) as c from org_services s join organizations o on o.id = s.org_id
         where s.published_snapshot is not null and s.status <> 'archived' and o.status = 'verified'
-          and (s.last_confirmed_at is null or s.last_confirmed_at < now() - interval '{CONFIRM_EVERY_DAYS} days')
+          and (s.last_confirmed_at is null or s.last_confirmed_at < now() - interval '{platform_settings.get_int("org_confirm_every_days")} days')
         """
     )["c"]
 
@@ -814,7 +814,7 @@ def services_due_for_confirmation(limit: int = 200) -> list[dict]:
         select s.id::text, s.name, s.last_confirmed_at, o.id::text as org_id, o.name as org_name
         from org_services s join organizations o on o.id = s.org_id
         where s.published_snapshot is not null and s.status <> 'archived' and o.status = 'verified'
-          and (s.last_confirmed_at is null or s.last_confirmed_at < now() - interval '{CONFIRM_EVERY_DAYS} days')
+          and (s.last_confirmed_at is null or s.last_confirmed_at < now() - interval '{platform_settings.get_int("org_confirm_every_days")} days')
         order by s.last_confirmed_at nulls first
         limit %s
         """,

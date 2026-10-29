@@ -16,4 +16,5 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: "/ai", label: "AI assistant", group: "Data" },
   { href: "/feedback", label: "Feedback queue", group: "Operations" },
   { href: "/users", label: "Users & roles", group: "Operations" },
+  { href: "/settings", label: "Platform settings", group: "Operations" },
 ];

@@ -32,12 +32,23 @@ export const useDataSources = (poll: boolean) =>
     refetchInterval: poll ? 3000 : false,
   });
 
-export const useDataSourceRuns = (source: string | null, poll: boolean) =>
-  useAdminQuery<{ runs: DataSourceRun[] }>(
-    ["data-source-runs", source],
-    source ? `${p.dataSourceRuns}?source=${encodeURIComponent(source)}&limit=100` : `${p.dataSourceRuns}?limit=100`,
-    { refetchInterval: poll ? 3000 : false },
-  );
+export const DATA_SOURCE_RUNS_PAGE_SIZE = 20;
+
+export const useDataSourceRuns = (
+  filters: { source?: string; status?: string; page?: number },
+  poll: boolean,
+) => {
+  const { source = "", status = "", page = 0 } = filters;
+  const params = new URLSearchParams({
+    limit: String(DATA_SOURCE_RUNS_PAGE_SIZE),
+    offset: String(page * DATA_SOURCE_RUNS_PAGE_SIZE),
+  });
+  if (source) params.set("source", source);
+  if (status) params.set("status", status);
+  return useAdminQuery<Paged<DataSourceRun>>(["data-source-runs", source, status, page], `${p.dataSourceRuns}?${params}`, {
+    refetchInterval: poll ? 3000 : false,
+  });
+};
 
 export const useRunDataSource = () => {
   const { run, isPending } = useAdminMutation<{ run: DataSourceRun }, undefined>();
@@ -114,7 +125,7 @@ export const useAdminUsers = (q: string, role: string, page: number, pageSize: n
   const params = new URLSearchParams({ limit: String(pageSize), offset: String(page * pageSize) });
   if (q) params.set("q", q);
   if (role) params.set("role", role);
-  return useAdminQuery<Paged<AdminUser>>(["users", q, role, page], `${p.users}?${params}`);
+  return useAdminQuery<Paged<AdminUser>>(["users", q, role, page, pageSize], `${p.users}?${params}`);
 };
 
 export const useUpdateUser = () => {
@@ -127,11 +138,19 @@ export const useUpdateUser = () => {
 
 export const useAuthSummary = () => useAdminQuery<AuthSummary>(["auth", "summary"], p.authSummary);
 
-export const useAuthEvents = (userId?: string) =>
-  useAdminQuery<{ events: AuthEvent[] }>(
-    ["auth", "events", userId ?? "all"],
-    userId ? `${p.authEvents}?user_id=${userId}&limit=50` : `${p.authEvents}?limit=50`,
+export const AUTH_EVENTS_PAGE_SIZE = 25;
+
+export const useAuthEvents = (userId?: string, page = 0) => {
+  const params = new URLSearchParams({
+    limit: String(AUTH_EVENTS_PAGE_SIZE),
+    offset: String(page * AUTH_EVENTS_PAGE_SIZE),
+  });
+  if (userId) params.set("user_id", userId);
+  return useAdminQuery<{ events: AuthEvent[]; total: number }>(
+    ["auth", "events", userId ?? "all", page],
+    `${p.authEvents}?${params}`,
   );
+};
 
 export const useUserSecurityActions = () => {
   const { run, isPending } = useAdminMutation<{ signedOut?: number; link?: string; expiresInMinutes?: number }, undefined>();

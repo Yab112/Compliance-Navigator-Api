@@ -80,8 +80,11 @@ def list_events(user_id: str | None = None, limit: int = 100, offset: int = 0) -
     )
 
 
-def count_events(user_id: str) -> int:
-    return fetch_one("select count(*) as n from auth_events where user_id = %s", (user_id,))["n"]
+def count_events(user_id: str | None = None) -> int:
+    """Events for one user, or every event when user_id is None."""
+    if user_id:
+        return fetch_one("select count(*) as n from auth_events where user_id = %s", (user_id,))["n"]
+    return fetch_one("select count(*) as n from auth_events")["n"]
 
 
 def _recent_failures(column: str, value: str | None) -> int:

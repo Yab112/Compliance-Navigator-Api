@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from core.deps import get_current_user, require_admin
 from schemas.auth_user import AuthUser
-from services import payment_service
+from services import payment_service, platform_settings
 from services.payment_service import PaymentError
 
 router = APIRouter(tags=["Payments"])
@@ -35,13 +35,11 @@ class SimulateBody(BaseModel):
 
 @router.get("/payments/config")
 def config():
-    from config.config import settings
-
     return _ok({"mode": payment_service.mode(), "enabled": payment_service.enabled(),
-                "commission_percent": settings.platform_commission_percent,
+                "commission_percent": platform_settings.get("commission_percent"),
                 # So price estimates match exactly what payment_service.breakdown() will charge
-                "vat_rate_percent": settings.vat_rate_percent,
-                "platform_vat_registered": settings.platform_vat_registered})
+                "vat_rate_percent": platform_settings.get("vat_rate_percent"),
+                "platform_vat_registered": platform_settings.get("platform_vat_registered")})
 
 
 @router.get("/payments/banks")

@@ -19,10 +19,10 @@ from psycopg.types.json import Jsonb
 
 from services import catalog_service, trust_score
 from services.db import connection, execute, fetch_all, fetch_one
+from services import platform_settings
 
 log = logging.getLogger(__name__)
 
-LICENSE_VALIDITY_DAYS = 365
 
 PROVIDER_TYPES = ("guday_geday", "agency")
 ENTITY_TYPES = ("individual", "company")
@@ -323,8 +323,7 @@ def _provider_group(conn, provider_id: str) -> list[str]:
 #   success  closed, no upheld complaint, rated 4-5 stars or not rated
 #   failure  upheld complaint, or rated 1-2 stars
 #   neutral  3 stars (not counted); requests cancelled before payment never close, so never count
-# Shown once a provider has JOB_SUCCESS_MIN_JOBS closed jobs; "New" before that.
-JOB_SUCCESS_MIN_JOBS = 3
+# Shown once a provider has enough closed jobs (platform setting job_success_min_jobs); "New" before that.
 JOB_SUCCESS_SQL = """
 select count(*) as closed,
        count(*) filter (where not coalesce(e.disputed and e.dispute_status = 'upheld', false)
@@ -369,7 +368,7 @@ def recompute(provider_id: str) -> dict | None:
         ).fetchone()
         js = conn.execute(JOB_SUCCESS_SQL, (group,)).fetchone()
         job_success = (round(100 * js["success"] / (js["success"] + js["failure"]))
-                       if js["closed"] >= JOB_SUCCESS_MIN_JOBS and js["success"] + js["failure"] else None)
+                       if js["closed"] >= platform_settings.get_int("job_success_min_jobs") and js["success"] + js["failure"] else None)
         suspensions = conn.execute(
             "select count(*) as c from provider_events where provider_id = %s and action = 'suspend'",
             (provider_id,),
@@ -748,7 +747,7 @@ def review_provider(provider_id: str, action: str, *, actor: str, note: str | No
         if new_status:
             updates["status"] = new_status
         if action in ("approve", "renew", "reinstate"):
-            updates["license_expires_at"] = date.today() + timedelta(days=LICENSE_VALIDITY_DAYS)
+            updates["license_expires_at"] = date.today() + timedelta(days=platform_settings.get_int("license_validity_days"))
         if action == "approve":
             if not provider["registration_no"]:
                 updates["registration_no"] = _next_registration_no(conn, provider["provider_type"])
@@ -1033,9 +1032,11 @@ def attention(user_id: str) -> dict:
     return {"hires": hires, "jobs": jobs}
 
 
-# Delivered but not paid for 48 hours: staff call both sides
-FOLLOW_UP = ("e.status = 'completed' and e.client_confirmed_at is null and e.payment_status <> 'paid' "
-             "and coalesce(e.completed_at, e.updated_at) < now() - interval '48 hours'")
+def follow_up_sql() -> str:
+    """Delivered but not paid for a while (platform setting follow_up_hours): staff call both sides."""
+    hours = platform_settings.get_int("follow_up_hours")
+    return ("e.status = 'completed' and e.client_confirmed_at is null and e.payment_status <> 'paid' "
+            f"and coalesce(e.completed_at, e.updated_at) < now() - interval '{hours} hours'")
 
 
 def list_engagements(
@@ -1051,7 +1052,7 @@ def list_engagements(
     if where_sql:
         where.append(where_sql)
     if follow_up:
-        where.append(FOLLOW_UP)
+        where.append(follow_up_sql())
     if status:
         where.append("e.status = %(status)s")
         params["status"] = status

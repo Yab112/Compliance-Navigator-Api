@@ -27,13 +27,12 @@ from decimal import ROUND_HALF_UP, Decimal
 import httpx
 
 from config.config import settings
-from services import notifications
+from services import notifications, platform_settings
 from services.db import Jsonb, connection, execute, fetch_all, fetch_one
 
 log = logging.getLogger(__name__)
 
 PAYABLE = ("accepted", "in_progress", "completed")
-CHECKOUT_REUSE_MINUTES = 30
 
 
 class PaymentError(Exception):
@@ -202,7 +201,7 @@ def payout_view(provider: dict) -> dict:
         "account_name": provider.get("payout_account_name"),
         "account_last4": provider.get("payout_account_last4"),
         "set_at": provider.get("payout_set_at"),
-        "commission_percent": settings.platform_commission_percent,
+        "commission_percent": platform_settings.get("commission_percent"),
         "mode": mode(),
     }
 
@@ -251,11 +250,11 @@ def breakdown(price, provider_vat_registered: bool) -> dict:
       provider gets  price - commission - VAT on commission + the provider VAT they collected (they file it)
     """
     price = _money(price)
-    rate = Decimal(str(settings.vat_rate_percent))
-    pct = Decimal(str(settings.platform_commission_percent))
+    rate = Decimal(str(platform_settings.get("vat_rate_percent")))
+    pct = Decimal(str(platform_settings.get("commission_percent")))
     provider_vat = _money(price * rate / 100) if provider_vat_registered else Decimal("0.00")
     commission = _money(price * pct / 100)
-    commission_vat = _money(commission * rate / 100) if settings.platform_vat_registered else Decimal("0.00")
+    commission_vat = _money(commission * rate / 100) if platform_settings.get("platform_vat_registered") else Decimal("0.00")
     return {
         "price": price, "vat_rate": rate, "provider_vat": provider_vat, "total": price + provider_vat,
         "commission_percent": pct, "commission": commission, "commission_vat": commission_vat,
@@ -291,7 +290,7 @@ def start(engagement_id: str, *, user) -> dict:
     pending = fetch_one(
         "select tx_ref, checkout_url from payments where engagement_id = %s and status = 'pending' "
         "and created_at > now() - make_interval(mins => %s) order by created_at desc limit 1",
-        (engagement_id, CHECKOUT_REUSE_MINUTES),
+        (engagement_id, platform_settings.get_int("checkout_reuse_minutes")),
     )
     if pending and pending["checkout_url"]:
         return {"tx_ref": pending["tx_ref"], "checkout_url": pending["checkout_url"]}
@@ -462,12 +461,15 @@ def admin_list(status: str | None = None, limit: int = 50, offset: int = 0) -> d
         """
     )
     return {"items": rows, "total": total, "totals": totals, "mode": mode(),
-            "commission_percent": settings.platform_commission_percent}
+            "commission_percent": platform_settings.get("commission_percent")}
 
 
 # ---------------------------------------------------------------- earnings and payouts
 
-MIN_PAYOUT = Decimal("100")
+
+
+def _min_payout() -> Decimal:
+    return Decimal(str(platform_settings.get("min_payout_etb")))
 PAYOUT_COLUMNS = """
   po.id::text, po.provider_id::text, po.amount::float, po.status, po.bank_name, po.account_name, po.account_last4,
   po.reference, po.gateway, po.gateway_reference, po.note, po.decided_by, po.decided_at, po.paid_at, po.created_at
@@ -515,8 +517,8 @@ def earnings(user_id: str) -> dict:
     )
     payouts = fetch_all(f"select {PAYOUT_COLUMNS} from payouts po where po.provider_id = %s order by po.created_at desc limit 50",
                         (provider["id"],))
-    return {**_balances(provider["id"]), "ledger": ledger, "payouts": payouts, "min_payout": float(MIN_PAYOUT),
-            "payout_account": payout_view(provider), "commission_percent": settings.platform_commission_percent}
+    return {**_balances(provider["id"]), "ledger": ledger, "payouts": payouts, "min_payout": float(_min_payout()),
+            "payout_account": payout_view(provider), "commission_percent": platform_settings.get("commission_percent")}
 
 
 def ledger_page(user_id: str, limit: int = 20, offset: int = 0) -> dict:
@@ -563,8 +565,8 @@ def request_payout(user_id: str, amount: float) -> dict:
     if not provider.get("payout_ready"):
         raise PaymentError("Add the bank account to send your money to first", 409)
     amount = _money(amount)
-    if amount < MIN_PAYOUT:
-        raise PaymentError(f"The smallest payout is {MIN_PAYOUT:,.0f} ETB")
+    if amount < _min_payout():
+        raise PaymentError(f"The smallest payout is {_min_payout():,.0f} ETB")
     with connection() as conn, conn.transaction():
         # Lock the provider row so two requests at once can't both pass the balance check
         conn.execute("select 1 from providers where id = %s for update", (provider["id"],))
@@ -694,6 +696,7 @@ def payout_review(payout_id: str) -> dict:
 def _payout_checks(payout: dict, provider: dict, history: dict) -> list[dict]:
     """block: approving needs a written reason. warn: look before approving. info: worth knowing."""
     checks = []
+    new_account_days = platform_settings.get_int("payout_new_account_days")
     if not names_match(payout["account_name"], provider["verified_name"], provider["legal_name"], provider["display_name"]):
         checks.append({"level": "block", "code": "name_mismatch",
                        "text": f"The bank account is in the name of {payout['account_name']}, not "
@@ -707,9 +710,9 @@ def _payout_checks(payout: dict, provider: dict, history: dict) -> list[dict]:
         checks.append({"level": "warn", "code": "no_tin",
                        "text": "No TIN on file. Ethiopian income tax rules require 30% withholding on payments to "
                                "suppliers without a TIN; get it before paying."})
-    if provider["payout_set_at"] and (payout["created_at"] - provider["payout_set_at"]).total_seconds() < 7 * 24 * 3600:
+    if provider["payout_set_at"] and (payout["created_at"] - provider["payout_set_at"]).total_seconds() < new_account_days * 24 * 3600:
         checks.append({"level": "warn", "code": "new_account",
-                       "text": "The bank account was added or changed less than 7 days before this request."})
+                       "text": f"The bank account was added or changed less than {new_account_days} days before this request."})
     if not history["paid_count"]:
         checks.append({"level": "info", "code": "first_payout", "text": "First payout to this provider."})
     if _test_money():
@@ -785,9 +788,9 @@ RECEIPT_NOTICE = ("This is a payment receipt from Compliance Navigator. It is no
 
 
 def _issuer() -> dict:
-    return {"legal_name": settings.platform_legal_name, "tin": settings.platform_tin,
-            "vat_number": settings.platform_vat_number, "address": settings.platform_address,
-            "vat_registered": settings.platform_vat_registered}
+    get = platform_settings.get
+    return {"legal_name": get("legal_name"), "tin": get("tin") or None, "vat_number": get("vat_number") or None,
+            "address": get("address"), "vat_registered": get("platform_vat_registered")}
 
 
 def payment_receipt(tx_ref: str, *, user) -> dict:

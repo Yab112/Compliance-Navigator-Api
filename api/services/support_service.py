@@ -11,6 +11,7 @@ import re
 
 from services import notifications
 from services.db import Jsonb, connection, execute, fetch_all, fetch_one
+from services import platform_settings
 
 QUEUES = {
     "customer_support": ("General help", "አጠቃላይ እገዛ",
@@ -32,7 +33,6 @@ ACTIVE = ("new", "open", "waiting_customer")
 PRIORITIES = ("low", "normal", "high", "urgent")
 SLA_HOURS = {"urgent": 2, "high": 8, "normal": 24, "low": 72}
 PRIORITY_ORDER = "case t.priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end"
-TICKETS_PER_IP_PER_HOUR = 10
 
 CONTACT = {
     "phone": os.environ.get("SUPPORT_PHONE", "+251 11 000 0000"),
@@ -152,7 +152,7 @@ def create_ticket(
         recent = fetch_one(
             "select count(*) as c from support_tickets where ip = %s and created_at > now() - interval '1 hour'", (ip,)
         )["c"]
-        if recent >= TICKETS_PER_IP_PER_HOUR:
+        if recent >= platform_settings.get_int("support_tickets_per_ip_hour"):
             raise SupportError("Too many requests from this connection. Please try again later.", 429)
     if user_id and not (name and phone):
         u = fetch_one("select fullname, phone, email from users where id = %s", (user_id,)) or {}

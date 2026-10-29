@@ -108,8 +108,13 @@ def list_data_sources():
 
 
 @router.get("/data-sources/runs")
-def list_data_source_runs(source: str | None = None, limit: int = Query(50, ge=1, le=200)):
-    return _ok({"runs": data_sources.list_runs(source, limit)})
+def list_data_source_runs(
+    source: str | None = None,
+    status: str | None = Query(None, pattern="^(success|failed|running)$"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    return _ok(data_sources.page_runs(source, status, limit, offset))
 
 
 @router.post("/data-sources/{source}/run", status_code=status.HTTP_202_ACCEPTED)
@@ -251,8 +256,13 @@ def admin_reset_link(user_id: UUID, admin: AuthUser = Depends(require_admin)):
 
 
 @router.get("/auth/events")
-def admin_auth_events(user_id: UUID | None = None, limit: int = Query(100, ge=1, le=500)):
-    return _ok({"events": auth_service.list_events(str(user_id) if user_id else None, limit)})
+def admin_auth_events(
+    user_id: UUID | None = None,
+    limit: int = Query(25, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    uid = str(user_id) if user_id else None
+    return _ok({"events": auth_service.list_events(uid, limit, offset), "total": auth_service.count_events(uid)})
 
 
 @router.get("/auth/summary")
