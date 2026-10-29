@@ -113,6 +113,8 @@ function Legend({ n, title, am }: { n: number; title: string; am: string }) {
   );
 }
 
+const BIO_MIN = 40;
+
 export function ProviderForm({
   providerType,
   entityType,
@@ -139,6 +141,8 @@ export function ProviderForm({
     // Clients message providers on Telegram once a job is accepted, so every provider needs one
     if (!v.telegram_username?.trim()) e.telegram_username = "Add your Telegram username so clients can message you";
     else if (!TELEGRAM_RE.test(cleanTelegram(v.telegram_username))) e.telegram_username = TELEGRAM_HINT;
+    // Part of a complete profile: providers without it are not listed (api provider_service.BIO_MIN)
+    if ((v.bio ?? "").trim().length < BIO_MIN) e.bio = `Write at least ${BIO_MIN} characters about how you work`;
     if (!v.service_areas.length) e.service_areas = "Pick at least one area";
     if (providerType === "guday_geday" && !services.length) e.service_ids = "Pick at least one service";
     if (providerType !== "guday_geday" && !v.specialties.length) e.specialties = "Pick at least one specialty";
@@ -190,7 +194,7 @@ export function ProviderForm({
           <Field label="Headline" htmlFor="pf-headline" hint="One line clients see first, for example: Apartments for rent in Bole" className="sm:col-span-2">
             <Input id="pf-headline" maxLength={140} value={v.headline ?? ""} onChange={(e) => set("headline", e.target.value)} />
           </Field>
-          <Field label="About" htmlFor="pf-bio" hint="How you work, what you are good at, which offices you know." className="sm:col-span-2">
+          <Field label="About" htmlFor="pf-bio" required error={errors.bio} hint={`How you work, what you are good at, which offices you know. At least ${BIO_MIN} characters.`} className="sm:col-span-2">
             <Textarea id="pf-bio" rows={4} maxLength={3000} value={v.bio ?? ""} onChange={(e) => set("bio", e.target.value)} />
           </Field>
           <Field label="Mobile phone" htmlFor="pf-phone" required error={errors.phone}>

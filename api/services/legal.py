@@ -9,7 +9,9 @@ version and effective date that are currently in force, and which ones a person 
 
 When a document changes in a way people must agree to again, bump its version here AND in the matching
 web content file (tests/test_legal.py checks they agree). Everyone is then asked to accept the new
-version the next time they open the site. Agreement rows are never updated or deleted.
+version the next time they open the site. Agreement rows are never updated or deleted. Providers who
+have not accepted the current version are hidden from clients until they do: the API checks everyone
+on startup (provider_service.refresh_readiness_all), so a new version takes effect with the release.
 """
 
 from __future__ import annotations
@@ -118,6 +120,12 @@ def accept(user_id: str, accept_: dict[str, str] | None, ip: str | None, user_ag
     with connection() as conn, conn.transaction():
         record_consents(conn, user_id, accepted, ip, user_agent)
     log.info("user %s accepted %s", user_id, accepted)
+    # A provider who was hidden for an out-of-date agreement is listed again at once
+    provider = fetch_one("select id::text from providers where user_id = %s", (user_id,))
+    if provider:
+        from services import provider_service
+
+        provider_service.refresh_readiness(provider["id"])
 
 
 def _is_provider(user_id: str) -> bool:

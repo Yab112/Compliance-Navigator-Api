@@ -6,7 +6,16 @@ import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
-import type { AdminProvider, EducationLevel, Vetting, VettingDocument, VettingItem, VettingReference, VettingStatus } from "@cn/core/types/provider";
+import type {
+  AdminProvider,
+  EducationLevel,
+  Vetting,
+  VettingDocument,
+  VettingGuarantor,
+  VettingItem,
+  VettingReference,
+  VettingStatus,
+} from "@cn/core/types/provider";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Pager } from "@cn/ui/pager";
@@ -176,6 +185,110 @@ function ReferenceRow({ p, r }: { p: AdminProvider; r: VettingReference }) {
   );
 }
 
+const GUARANTOR_STATUS: Record<VettingGuarantor["status"], string> = {
+  pending: "not called yet",
+  confirmed: "confirmed by phone",
+  failed: "could not confirm",
+  superseded: "replaced",
+};
+
+function GuarantorDetails({ g }: { g: VettingGuarantor }) {
+  const where = [g.address, g.woreda && `Woreda ${g.woreda}`, g.sub_city].filter(Boolean).join(", ");
+  return (
+    <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] sm:grid-cols-3">
+      <div><dt className="text-muted-foreground">Name</dt><dd className="font-medium">{g.full_name}</dd></div>
+      <div><dt className="text-muted-foreground">Phone</dt><dd><a className="text-primary underline" href={`tel:${g.phone}`}>{g.phone}</a></dd></div>
+      <div><dt className="text-muted-foreground">Relationship</dt><dd>{g.relationship}</dd></div>
+      <div><dt className="text-muted-foreground">ID number</dt><dd>ending {g.id_last4}</dd></div>
+      <div><dt className="text-muted-foreground">Occupation</dt><dd>{g.occupation}{g.employer ? `, ${g.employer}` : ""}</dd></div>
+      <div><dt className="text-muted-foreground">Lives in</dt><dd>{where || "-"}</dd></div>
+      <div><dt className="text-muted-foreground">Entered</dt><dd>{formatDateTime(g.created_at)}</dd></div>
+      <div className="col-span-2">
+        <dt className="text-muted-foreground">Phone check</dt>
+        <dd>{GUARANTOR_STATUS[g.status]}{g.checked_by ? ` by ${g.checked_by}, ${formatDate(g.checked_at)}` : ""}</dd>
+      </div>
+      {g.note && <div className="col-span-full"><dt className="text-muted-foreground">Call note</dt><dd>{g.note}</dd></div>}
+    </dl>
+  );
+}
+
+/** The guarantor (ተያዥ): details, the phone check, and the papers. Verified only when all three agree. */
+function GuarantorBlock({ p, item, levels }: { p: AdminProvider; item: VettingItem; levels: Vetting["education_levels"] }) {
+  const { run, isPending } = useMarketAction<{ decision: "confirmed" | "failed"; note: string }>();
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [showOld, setShowOld] = useState(false);
+  const g = item.guarantor;
+  const decide = async (decision: "confirmed" | "failed") => {
+    if (!g) return;
+    setError(null);
+    try {
+      await run(apiPaths.admin.marketProviderGuarantor(p.id, g.id), MTD.POST, { decision, note: note.trim() });
+      setNote("");
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+  return (
+    <div className="mt-2 space-y-3">
+      {g ? <GuarantorDetails g={g} /> : <p className="text-muted-foreground text-xs">No guarantor entered yet.</p>}
+      {g && g.status !== "superseded" && (
+        <div className="bg-secondary/40 space-y-2 rounded-md p-3">
+          <label htmlFor={`g-note-${g.id}`} className="block text-xs font-medium">
+            {g.status === "pending" ? "After calling the guarantor: what you confirmed, or what went wrong" : "Call again and record a new result"}
+          </label>
+          <Input id={`g-note-${g.id}`} value={note} maxLength={500} placeholder="Called 09…, she confirmed she signed the letter and works at…"
+            onChange={(e) => setNote(e.target.value)} />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" loading={isPending} disabled={isPending || note.trim().length < 10} onClick={() => decide("confirmed")}>Confirmed by phone</Button>
+            <Button size="sm" variant="ghost" disabled={isPending || note.trim().length < 5} onClick={() => decide("failed")}>Could not confirm</Button>
+          </div>
+          <p className="text-muted-foreground text-[11px]">A failed check is shown to the provider with your note.</p>
+          {error && <p className="text-destructive text-xs" role="alert">{error}</p>}
+        </div>
+      )}
+      {item.documents?.map((d) => (
+        <div key={d.key} className="border-border border-t pt-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="text-xs font-medium">
+              {d.label} <span className="text-muted-foreground font-normal">· {d.label_am}</span>
+              {!d.required && <span className="text-muted-foreground font-normal"> (optional)</span>}
+            </p>
+            <Badge status={d.status} />
+          </div>
+          {d.how_to_verify && (
+            <details className="mt-1 text-xs">
+              <summary className="text-primary cursor-pointer">How to verify</summary>
+              <p className="text-muted-foreground mt-1">{d.how_to_verify}</p>
+            </details>
+          )}
+          <p className="mt-1 text-[11px] text-amber-800">Someone else&apos;s personal data. Each time you open it, your name and the time go into the audit log.</p>
+          {d.waiting && <DocBlock p={p} item={d} doc={d.waiting} title={d.waiting.status === "pending" ? "Waiting for your check" : "Rejected copy"} levels={levels} />}
+          {d.current && <DocBlock p={p} item={d} doc={d.current} title="Verified copy in force" levels={levels} />}
+          {!d.waiting && !d.current && <p className="text-muted-foreground text-xs">Not uploaded.</p>}
+        </div>
+      ))}
+      {!!item.history?.length && (
+        <div>
+          <button type="button" className="text-primary text-xs underline" aria-expanded={showOld} onClick={() => setShowOld(!showOld)}>
+            {showOld ? "Hide" : "Show"} replaced guarantors ({item.history.length})
+          </button>
+          {showOld && (
+            <ul className="mt-2 space-y-2">
+              {item.history.map((h) => (
+                <li key={h.id} className="border-border border-l-2 pl-3">
+                  <GuarantorDetails g={h} />
+                  {h.superseded_at && <p className="text-muted-foreground text-[11px]">Replaced {formatDateTime(h.superseded_at)}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function History({ p }: { p: AdminProvider }) {
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(VETTING_HISTORY_PAGE_SIZE);
@@ -242,6 +355,7 @@ export function VettingPanel({ p }: { p: AdminProvider }) {
             )}
             {item.waiting && <DocBlock p={p} item={item} doc={item.waiting} title={item.waiting.status === "pending" ? "Waiting for your check" : "Rejected copy"} levels={v.education_levels} />}
             {item.current && <DocBlock p={p} item={item} doc={item.current} title="Verified copy in force" levels={v.education_levels} />}
+            {item.type === "guarantor" && <GuarantorBlock p={p} item={item} levels={v.education_levels} />}
             {item.type === "references" && (
               item.references?.length ? <ul className="mt-1">{item.references.map((r) => <ReferenceRow key={r.id} p={p} r={r} />)}</ul>
                 : <p className="text-muted-foreground text-xs">No references given.</p>
@@ -255,6 +369,40 @@ export function VettingPanel({ p }: { p: AdminProvider }) {
         </button>
         {history && <div className="mt-2"><History p={p} /></div>}
       </div>
+    </section>
+  );
+}
+
+const FIX_LABEL: Record<string, string> = {
+  listing: "Listing",
+  vetting: "Vetting",
+  profile: "Profile",
+  agreement: "Agreement",
+};
+
+/** Ready to work or not, and every reason, as the provider sees it on their dashboard. */
+export function ReadinessPanel({ p }: { p: AdminProvider }) {
+  const r = p.readiness;
+  if (!r) return null;
+  return (
+    <section
+      className={cn("border p-4", r.listed ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-amber-400 bg-amber-50 text-amber-950")}
+      aria-labelledby="readiness-title"
+    >
+      <h2 id="readiness-title" className="text-sm font-semibold">
+        {r.listed ? "Ready to work: listed for clients" : "Not ready: hidden from clients and from assigning"}
+      </h2>
+      {!r.listed && (
+        <>
+          <p className="mt-1 text-xs">
+            They can still finish and get paid for work already started, but can&apos;t be requested, assigned, or accept new work until all of these are fixed:
+          </p>
+          <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">
+            {r.reasons.map((x) => <li key={x.key}><span className="font-medium">{FIX_LABEL[x.fix] ?? x.fix}:</span> {x.label}</li>)}
+          </ul>
+        </>
+      )}
+      {r.checked_at && <p className="mt-2 text-[11px] opacity-80">Checked {formatDateTime(r.checked_at)}</p>}
     </section>
   );
 }

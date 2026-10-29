@@ -34,6 +34,15 @@ async def lifespan(app: FastAPI):
     from services.id_verification import retire_sandbox_verifications
 
     retire_sandbox_verifications()
+    # Who may work can change with a release (a new legal version, new rules): check every provider
+    from services.provider_service import refresh_readiness_all
+
+    try:
+        refresh_readiness_all()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("Provider readiness check failed on startup")
     yield
     print("App shutdown complete.")
 

@@ -189,6 +189,7 @@ ROUTE_POLICY: dict[str, Policy] = {
     "GET /admin/marketplace/providers/{provider_id}/documents/{document_id}/file": P("providers.view_documents"),
     "POST /admin/marketplace/providers/{provider_id}/documents/{document_id}/review": P("vetting.manage"),
     "POST /admin/marketplace/providers/{provider_id}/references/{reference_id}": P("vetting.manage"),
+    "POST /admin/marketplace/providers/{provider_id}/guarantor/{guarantor_id}": P("vetting.manage"),
     "GET /admin/marketplace/engagements": P("hires.view"),
     "GET /admin/marketplace/engagements.csv": P("hires.export"),
     "GET /admin/marketplace/engagements/{engagement_id}": P("hires.view"),

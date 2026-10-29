@@ -11,6 +11,9 @@ more than a sign-up. The requirements depend on who the provider is:
     - passport-style photo
     - Telegram username, so clients and staff can reach them
     - two references staff phoned, only when the setting vetting_references_required is on
+    - a guarantor (ተያዥ), when the setting vetting_guarantor_required is on (it is by default): the
+      guarantor's details confirmed by staff on the phone, a signed guarantee letter and a copy of the
+      guarantor's ID, both verified. Companies need one only when vetting_guarantor_required_company is on.
 
   Company (agency)
     - the representative's national ID verified with Fayda
@@ -20,7 +23,11 @@ more than a sign-up. The requirements depend on who the provider is:
 Every document is checked by a person: staff verify or reject each one (a rejection always has a
 reason the provider sees). Approving or renewing a listing is refused until every required item is
 verified and in date. Nothing is deleted: a new upload supersedes the old one, which stays on file.
-Opening a police clearance is written to the provider's audit log, because it is criminal record data.
+Opening a police clearance is written to the provider's audit log, because it is criminal record data;
+so is opening a guarantor's ID or papers, because they belong to someone who is not our user.
+
+Vetting must hold all the time, not only on the day of approval: provider_service.refresh_readiness()
+hides a provider from clients as soon as an item stops being verified or in date.
 """
 
 from __future__ import annotations
@@ -53,7 +60,10 @@ class Kind:
     needs_expires_on: bool = False
     needs_level: bool = False
     images_only: bool = False
-    sensitive: bool = False  # every staff view is logged
+    sensitive: bool = False  # criminal record data: staff need a permission to open it, every view is logged
+    log_views: bool = False  # someone else's personal data: every staff view is logged
+    guarantor: bool = False  # belongs to the current guarantor, shown inside the guarantor item
+    optional: bool = False  # helps staff, never required
 
 
 KINDS: dict[str, Kind] = {
@@ -109,7 +119,38 @@ KINDS: dict[str, Kind] = {
         "stronger; prefer it when available.",
         reference_label="ID number",
     ),
+    # The guarantor's papers. A guarantee (suretyship) falls under the Civil Code; Article 1922 asks
+    # for the most the guarantor answers for to be stated, so staff check the letter names an amount.
+    "guarantee_letter": Kind(
+        "Signed guarantee letter", "የዋስትና ደብዳቤ / ውል",
+        "The letter or form in which your guarantor promises to answer for your conduct and for any loss "
+        "you cause while working through Compliance Navigator, up to an amount written in the letter. It "
+        "must carry the guarantor's full name, signature and date. A letter authenticated at the Documents "
+        "Authentication and Registration Service (ሰነዶች ማረጋገጫና ምዝገባ አገልግሎት) is preferred: it has their "
+        "stamp and a registration number.",
+        "Check the names match the provider and the guarantor details on file, that it is signed and dated, "
+        "and that it states the most the guarantor answers for. If it was authenticated, check the "
+        "Documents Authentication and Registration Service (DARS) stamp and registration number, and scan "
+        "its QR code when it has one, and write in your note whether it was authenticated or not. Then "
+        "call the guarantor (see the guarantor details).",
+        reference_label="Authentication (DARS) number, if any", log_views=True, guarantor=True,
+    ),
+    "guarantor_id": Kind(
+        "Guarantor's ID copy", "የተያዡ መታወቂያ ቅጂ",
+        "A clear copy of your guarantor's national ID, Fayda card or kebele ID, both sides.",
+        "Check the name and the last 4 digits match the guarantor details, and that the ID is in date.",
+        reference_label="ID number", log_views=True, guarantor=True,
+    ),
+    "guarantor_employment": Kind(
+        "Guarantor's employment or property proof", "የተያዡ የሥራ ወይም የንብረት ማስረጃ",
+        "Optional but helps: a letter from the guarantor's employer stating their position and salary, "
+        "or proof that they own property (for example a house title deed).",
+        "Check it names the guarantor. For an employer letter, call the employer on the number printed on "
+        "the letterhead (not one the provider gives you) to confirm the person works there.",
+        log_views=True, guarantor=True, optional=True,
+    ),
 }
+GUARANTOR_KINDS = tuple(k for k, m in KINDS.items() if m.guarantor)
 
 # Lowest to highest. Staff confirm the level on the certificate when they verify it.
 EDUCATION_LEVELS = ("grade_10", "grade_12", "tvet", "diploma", "degree")
@@ -144,6 +185,16 @@ def references_required() -> bool:
     return bool(platform_settings.get("vetting_references_required"))
 
 
+def guarantor_required(provider: dict) -> bool:
+    key = "vetting_guarantor_required_company" if provider.get("entity_type") == "company" else "vetting_guarantor_required"
+    return bool(platform_settings.get(key))
+
+
+def guarantor_applies(provider: dict) -> bool:
+    """Individuals can always add a guarantor (it counts toward trust); companies only when required."""
+    return provider.get("entity_type") != "company" or guarantor_required(provider)
+
+
 def _fayda_on() -> bool:
     from services import id_verification
 
@@ -174,6 +225,8 @@ def document_kinds(provider: dict) -> list[str]:
         else ["police_clearance", "education", "photo"]
     if not _fayda_on():
         kinds.append("id_copy")
+    if guarantor_applies(provider):
+        kinds += list(GUARANTOR_KINDS)
     return kinds
 
 
@@ -207,11 +260,64 @@ def references(provider_id: str) -> list[dict]:
     )
 
 
-def checklist(provider: dict, *, for_staff: bool = False) -> dict:
-    """Every requirement with its status, plus whether the provider can be approved now."""
-    max_age, remind = max_age_days(), platform_settings.get_int("police_clearance_remind_days")
+def _doc_item(provider: dict, kind: str, docs: list[dict], max_age: int, *, for_staff: bool) -> dict:
+    """One document requirement: its status from the copies on file, and what the provider must do."""
+    remind = platform_settings.get_int("police_clearance_remind_days")
     min_level = min_education()
     today = date.today()
+    meta = KINDS[kind]
+    mine = [d for d in docs if d["kind"] == kind]
+    verified = next((d for d in mine if d["status"] == "verified"), None)
+    waiting = next((d for d in mine if d["status"] in ("pending", "rejected")), None)
+    if waiting and verified and waiting["uploaded_at"] < verified["uploaded_at"]:
+        waiting = None  # an older rejected copy that the verified one already replaced
+    expired = next((d for d in mine if d["status"] == "expired"), None)
+    expiry = effective_expiry(verified, max_age) if verified else None
+    message = None
+    if verified and expiry and expiry < today:
+        status, message = "expired", f"Expired on {expiry:%d %b %Y}. Upload a new one."
+    elif verified and kind == "education" and verified.get("level") and \
+            EDUCATION_LEVELS.index(verified["level"]) < EDUCATION_LEVELS.index(min_level):
+        status = "below_minimum"
+        message = f"We now need at least {EDUCATION_LABELS[min_level]}. Upload a higher certificate."
+    elif verified:
+        status = "expiring" if expiry and (expiry - today).days <= remind else "verified"
+        if status == "expiring":
+            message = f"Valid until {expiry:%d %b %Y}. Upload a new one before then to stay listed."
+    elif waiting and waiting["status"] == "pending":
+        status, message = "pending", "Uploaded. Staff will check it."
+    elif waiting:
+        status = "rejected"
+        message = f"Not accepted: {waiting['review_note']}" if waiting.get("review_note") else "Not accepted. Upload a new copy."
+    elif expired:
+        status, message = "expired", "Expired. Upload a new one."
+    else:
+        status = "missing"
+    item = {
+        "key": kind, "type": "document", "kind": kind, "label": meta.label, "label_am": meta.am,
+        "required": not meta.optional and (kind != "id_copy" or not _fayda_on()),
+        "status": status, "message": message, "help": meta.help,
+        "needs": {"issued_on": meta.needs_issued_on, "expires_on": meta.needs_expires_on,
+                  "reference_no": meta.needs_reference, "level": meta.needs_level,
+                  "images_only": meta.images_only},
+        "reference_label": meta.reference_label,
+        "current": _public_doc(verified, max_age), "waiting": _public_doc(waiting, max_age),
+    }
+    if kind == "police_clearance":
+        item["label"] = "Representative's police clearance" if _is_company(provider) else meta.label
+        item["max_age_days"] = max_age
+    if kind == "education":
+        item["min_level"] = min_level
+        item["min_level_label"] = EDUCATION_LABELS[min_level]
+    if for_staff:
+        item["how_to_verify"] = meta.how_to_verify
+        item["sensitive"] = meta.sensitive
+    return item
+
+
+def checklist(provider: dict, *, for_staff: bool = False) -> dict:
+    """Every requirement with its status, plus whether the provider can be approved now."""
+    max_age = max_age_days()
     docs = _docs(provider["id"])
     items: list[dict] = []
 
@@ -228,56 +334,9 @@ def checklist(provider: dict, *, for_staff: bool = False) -> dict:
     for kind in document_kinds(provider):
         if kind == "id_copy" and fayda:
             continue
-        meta = KINDS[kind]
-        mine = [d for d in docs if d["kind"] == kind]
-        verified = next((d for d in mine if d["status"] == "verified"), None)
-        waiting = next((d for d in mine if d["status"] in ("pending", "rejected")), None)
-        if waiting and verified and waiting["uploaded_at"] < verified["uploaded_at"]:
-            waiting = None  # an older rejected copy that the verified one already replaced
-        expired = next((d for d in mine if d["status"] == "expired"), None)
-        expiry = effective_expiry(verified, max_age) if verified else None
-        message = None
-        if verified and expiry and expiry < today:
-            status, message = "expired", f"Expired on {expiry:%d %b %Y}. Upload a new one."
-        elif verified and kind == "education" and verified.get("level") and \
-                EDUCATION_LEVELS.index(verified["level"]) < EDUCATION_LEVELS.index(min_level):
-            status = "below_minimum"
-            message = f"We now need at least {EDUCATION_LABELS[min_level]}. Upload a higher certificate."
-        elif verified:
-            status = "expiring" if expiry and (expiry - today).days <= remind else "verified"
-            if status == "expiring":
-                message = f"Valid until {expiry:%d %b %Y}. Upload a new one before then to stay listed."
-        elif waiting and waiting["status"] == "pending":
-            status, message = "pending", "Uploaded. Staff will check it."
-        elif waiting:
-            status = "rejected"
-            message = f"Not accepted: {waiting['review_note']}" if waiting.get("review_note") else "Not accepted. Upload a new copy."
-        elif expired:
-            status, message = "expired", "Expired. Upload a new one."
-        else:
-            status = "missing"
-        if kind == "photo" and _is_company(provider):
-            continue
-        item = {
-            "key": kind, "type": "document", "kind": kind, "label": meta.label, "label_am": meta.am,
-            "required": kind != "id_copy" or not _fayda_on(),
-            "status": status, "message": message, "help": meta.help,
-            "needs": {"issued_on": meta.needs_issued_on, "expires_on": meta.needs_expires_on,
-                      "reference_no": meta.needs_reference, "level": meta.needs_level,
-                      "images_only": meta.images_only},
-            "reference_label": meta.reference_label,
-            "current": _public_doc(verified, max_age), "waiting": _public_doc(waiting, max_age),
-        }
-        if kind == "police_clearance":
-            item["label"] = "Representative's police clearance" if _is_company(provider) else meta.label
-            item["max_age_days"] = max_age
-        if kind == "education":
-            item["min_level"] = min_level
-            item["min_level_label"] = EDUCATION_LABELS[min_level]
-        if for_staff:
-            item["how_to_verify"] = meta.how_to_verify
-            item["sensitive"] = meta.sensitive
-        items.append(item)
+        if KINDS[kind].guarantor or (kind == "photo" and _is_company(provider)):
+            continue  # guarantor papers are listed inside the guarantor item below
+        items.append(_doc_item(provider, kind, docs, max_age, for_staff=for_staff))
 
     if not _is_company(provider):
         has_tg = bool(provider.get("telegram_username"))
@@ -296,7 +355,7 @@ def checklist(provider: dict, *, for_staff: bool = False) -> dict:
         else:
             ref_status = "missing"
         ref_item = {
-            "key": "references", "type": "references", "label": "Two references", "label_am": "ሁለት ዋስ/ምስክሮች",
+            "key": "references", "type": "references", "label": "Two references", "label_am": "ሁለት ምስክሮች",
             "required": required, "status": ref_status,
             "message": None if ref_status == "verified" else (
                 f"{confirmed} of {REFERENCES_NEEDED} confirmed by phone." if refs else
@@ -305,6 +364,9 @@ def checklist(provider: dict, *, for_staff: bool = False) -> dict:
                            for r in refs],
         }
         items.append(ref_item)
+
+    if guarantor_applies(provider):
+        items.append(_guarantor_item(provider, docs, max_age, for_staff=for_staff))
 
     missing = [i for i in items if i["required"] and i["status"] not in ("verified", "expiring")]
     return {
@@ -322,6 +384,8 @@ def template(entity_type: str) -> dict:
     items = []
     for kind in document_kinds({"entity_type": entity_type}):
         meta = KINDS[kind]
+        if meta.guarantor:
+            continue  # one guarantor item below
         items.append({
             "key": kind, "type": "document", "kind": kind,
             "label": "Representative's police clearance" if kind == "police_clearance" and company else meta.label,
@@ -332,6 +396,14 @@ def template(entity_type: str) -> dict:
             "max_age_days": max_age_days() if kind == "police_clearance" else None,
             "min_level": min_education() if kind == "education" else None,
             "min_level_label": EDUCATION_LABELS[min_education()] if kind == "education" else None,
+        })
+    if guarantor_applies({"entity_type": entity_type}):
+        items.append({
+            "key": "guarantor", "type": "guarantor", "label": "Guarantor", "label_am": "ተያዥ",
+            "required": guarantor_required({"entity_type": entity_type}), "status": "missing",
+            "help": GUARANTOR_HELP, "documents": [
+                {"kind": k, "label": KINDS[k].label, "label_am": KINDS[k].am, "help": KINDS[k].help,
+                 "required": not KINDS[k].optional} for k in GUARANTOR_KINDS],
         })
     return {
         "complete": False, "blocker": None, "items": items,
@@ -410,6 +482,12 @@ def upload(provider: dict, kind: str, content: bytes, *, actor: str, issued_on: 
             raise VettingError(f"Guday Geday need at least {EDUCATION_LABELS[need]}. Upload that certificate or a higher one.")
     else:
         level = None
+    guarantor_id = None
+    if meta.guarantor:
+        current = current_guarantor(provider["id"])
+        if not current:
+            raise VettingError("Enter your guarantor's details first, then upload their papers")
+        guarantor_id = current["id"]
     try:
         key, content_type = storage_service.save_vetting_file(content, images_only=meta.images_only)
     except ValueError as exc:
@@ -427,11 +505,11 @@ def upload(provider: dict, kind: str, content: bytes, *, actor: str, issued_on: 
             row = conn.execute(
                 """
                 insert into provider_documents (provider_id, kind, level, file_key, content_type, size_bytes,
-                  issued_on, expires_on, reference_no, issuer, uploaded_by, consent_at)
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, case when %s then now() end) returning id::text
+                  issued_on, expires_on, reference_no, issuer, uploaded_by, consent_at, guarantor_id)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, case when %s then now() end, %s) returning id::text
                 """,
                 (provider["id"], kind, level, key, content_type, len(content), issued_on, expires_on,
-                 reference_no, issuer, actor, consent),
+                 reference_no, issuer, actor, consent, guarantor_id),
             ).fetchone()
             conn.execute(
                 "insert into provider_events (provider_id, action, actor, note) values (%s, 'document_uploaded', %s, %s)",
@@ -447,6 +525,7 @@ def upload(provider: dict, kind: str, content: bytes, *, actor: str, issued_on: 
     except Exception:
         storage_service.delete_vetting_file(key)
         raise
+    _recompute(provider["id"])
     return get_document(provider["id"], row["id"])
 
 
@@ -488,7 +567,7 @@ def read_file(provider_id: str, document_id: str, *, actor: str, by_staff: bool,
     found = storage_service.read_private_file(row["file_key"])
     if not found:
         raise VettingError("The file is missing from storage", 404)
-    if by_staff and KINDS[row["kind"]].sensitive:
+    if by_staff and (KINDS[row["kind"]].sensitive or KINDS[row["kind"]].log_views):
         with connection() as conn, conn.transaction():
             conn.execute(
                 "insert into provider_events (provider_id, action, actor, note) values (%s, 'document_viewed', %s, %s)",
@@ -537,7 +616,197 @@ def set_references(provider: dict, refs: list[dict], *, actor: str) -> list[dict
             "insert into provider_events (provider_id, action, actor, note) values (%s, 'references_updated', %s, %s)",
             (provider["id"], actor, f"{len(refs)} reference(s)"),
         )
+    _recompute(provider["id"])
     return references(provider["id"])
+
+
+# ---------------------------------------------------------------- guarantor (ተያዥ)
+
+# In Ethiopia a guarantor (ተያዥ) signs that they will answer for a worker's conduct and losses, as
+# employers ask of cashiers, drivers and domestic workers. Usually an employed person (with an employer
+# letter stating their salary) or a property owner; the letter is often authenticated at the Documents
+# Authentication and Registration Service; and the employer phones the guarantor to confirm.
+GUARANTOR_HELP = (
+    "A guarantor (ተያዥ) is someone who signs that they will answer for your conduct and for losses you cause "
+    "a client, as employers in Ethiopia often ask. Choose an adult who knows you well and has a steady job "
+    "or owns property. They sign a guarantee letter (better if it is authenticated at the Documents "
+    "Authentication and Registration Service), and our staff will phone them to confirm they signed it "
+    "knowingly. Ask them first: you share their name, phone and ID number with us."
+)
+GUARANTOR_STAFF_HELP = (
+    "Call the guarantor on the phone number given (not one the provider passes you on the day). Confirm "
+    "their full name and the last 4 digits of their ID, that they know the provider and how, that they "
+    "signed the guarantee letter themselves and understand they answer for losses up to the amount in it, "
+    "and where they work. Check the letter's Documents Authentication and Registration Service stamp and "
+    "number when it has one. Confirm only when the call and the papers agree; write what you checked."
+)
+GUARANTOR_COLUMNS = ("id::text, provider_id::text, full_name, phone, relationship, sub_city, woreda, address, "
+                     "occupation, employer, id_last4, status, checked_by, checked_at, note, created_by, created_at, "
+                     "superseded_at")
+
+
+def current_guarantor(provider_id: str) -> dict | None:
+    return fetch_one(
+        f"select {GUARANTOR_COLUMNS} from provider_guarantors where provider_id = %s and status <> 'superseded'",
+        (provider_id,),
+    )
+
+
+def guarantor_history(provider_id: str) -> list[dict]:
+    """Replaced guarantors, kept on file, newest first (staff only)."""
+    return fetch_all(
+        f"select {GUARANTOR_COLUMNS} from provider_guarantors where provider_id = %s and status = 'superseded' "
+        "order by created_at desc limit 20",
+        (provider_id,),
+    )
+
+
+def _guarantor_item(provider: dict, docs: list[dict], max_age: int, *, for_staff: bool) -> dict:
+    """Verified only when staff confirmed the guarantor by phone AND the letter and ID copy are verified."""
+    g = current_guarantor(provider["id"])
+    papers = [_doc_item(provider, k, docs, max_age, for_staff=for_staff) for k in GUARANTOR_KINDS]
+    needed = [d for d in papers if d["required"]]
+    papers_ok = all(d["status"] in ("verified", "expiring") for d in needed)
+    if not g:
+        status, message = "missing", "Add your guarantor's details, then upload the signed letter and their ID."
+    elif g["status"] == "failed":
+        status = "rejected"
+        message = "We could not confirm your guarantor" + (f": {g['note']}" if g.get("note") else ".") + \
+            " Add another guarantor or correct the details."
+    elif any(d["status"] in ("rejected", "expired") for d in needed):
+        status, message = "rejected", "A guarantor paper was not accepted. Upload a new copy."
+    elif g["status"] == "confirmed" and papers_ok:
+        status, message = "verified", None
+    elif any(d["status"] == "missing" for d in needed):
+        status, message = "missing", "Upload the signed guarantee letter and your guarantor's ID."
+    else:
+        status = "pending"
+        message = "Staff will phone your guarantor and check the papers." if g["status"] == "pending" \
+            else "Guarantor confirmed. Staff will check the papers."
+    if g:
+        g = dict(g)
+        if not for_staff:
+            # The provider sees what they entered; staff's call notes stay internal unless it failed
+            g.pop("checked_by", None)
+            if g["status"] != "failed":
+                g.pop("note", None)
+    item = {
+        "key": "guarantor", "type": "guarantor", "label": "Guarantor", "label_am": "ተያዥ",
+        "required": guarantor_required(provider), "status": status, "message": message,
+        "help": GUARANTOR_HELP, "guarantor": g, "documents": papers,
+    }
+    if for_staff:
+        item["how_to_verify"] = GUARANTOR_STAFF_HELP
+        item["history"] = guarantor_history(provider["id"])
+    return item
+
+
+def _clean_id_number(value: str) -> str:
+    digits = "".join(ch for ch in (value or "") if ch.isalnum())
+    if not 6 <= len(digits) <= 32:
+        raise VettingError("Enter the guarantor's national ID or Fayda number (6 to 32 letters and digits)")
+    return digits
+
+
+def set_guarantor(provider: dict, data: dict, *, actor: str, consent: bool) -> dict:
+    """Add or change the guarantor. The same person (same ID number) is updated in place and keeps their
+    papers; a different person replaces the old one, whose record and papers stay on file as superseded.
+    Either way a change goes back to staff to confirm."""
+    from core.crypto import decrypt, encrypt
+
+    if not guarantor_applies(provider):
+        raise VettingError("A guarantor isn't needed for your kind of profile")
+    if not consent:
+        raise VettingError("Tick the box to confirm your guarantor agreed that you share their details with us")
+    fields = {k: _clean_text(data.get(k), limit) for k, limit in (
+        ("full_name", 120), ("phone", 20), ("relationship", 80), ("sub_city", 80), ("woreda", 40),
+        ("address", 200), ("occupation", 120), ("employer", 160))}
+    for k, label in (("full_name", "full name"), ("phone", "phone number"), ("relationship", "relationship to you"),
+                     ("occupation", "occupation"), ("sub_city", "sub-city or town")):
+        if not fields[k]:
+            raise VettingError(f"Enter your guarantor's {label}")
+    if provider.get("phone") and fields["phone"] == provider["phone"]:
+        raise VettingError("Your guarantor needs their own phone number, not yours")
+    if (fields["full_name"] or "").lower() == (provider.get("display_name") or "").lower() or \
+            (provider.get("verified_name") and fields["full_name"].lower() == provider["verified_name"].lower()):
+        raise VettingError("You can't be your own guarantor")
+    id_number = _clean_id_number(data.get("id_number") or "")
+    current = fetch_one(
+        "select id::text, id_number_enc, status, full_name, phone, relationship, sub_city, woreda, address, "
+        "occupation, employer from provider_guarantors where provider_id = %s and status <> 'superseded'",
+        (provider["id"],),
+    )
+    same_person = bool(current and decrypt(current["id_number_enc"]) == id_number)
+    with connection() as conn, conn.transaction():
+        if same_person:
+            changed = [k for k, v in fields.items() if v != current[k]]
+            if not changed:
+                return current_guarantor(provider["id"])
+            assignments = ", ".join(f"{k} = %({k})s" for k in fields)
+            # Different details need a new call; a failed check can be retried with corrected details
+            conn.execute(
+                f"update provider_guarantors set {assignments}, status = 'pending', checked_by = null, "
+                "checked_at = null, note = null where id = %(id)s",
+                {**fields, "id": current["id"]},
+            )
+            note = f"{fields['full_name']}: changed {', '.join(changed)}"
+            action = "guarantor_updated"
+        else:
+            if current:
+                conn.execute("update provider_guarantors set status = 'superseded', superseded_at = now() where id = %s",
+                             (current["id"],))
+                # The old guarantor's papers stay on file but no longer count
+                conn.execute(
+                    "update provider_documents set status = 'superseded' where provider_id = %s "
+                    "and kind = any(%s) and status <> 'superseded'",
+                    (provider["id"], list(GUARANTOR_KINDS)),
+                )
+            conn.execute(
+                """
+                insert into provider_guarantors (provider_id, full_name, phone, relationship, sub_city, woreda, address,
+                  occupation, employer, id_number_enc, id_last4, created_by)
+                values (%(pid)s, %(full_name)s, %(phone)s, %(relationship)s, %(sub_city)s, %(woreda)s, %(address)s,
+                  %(occupation)s, %(employer)s, %(enc)s, %(last4)s, %(actor)s)
+                """,
+                {**fields, "pid": provider["id"], "enc": encrypt(id_number), "last4": id_number[-4:], "actor": actor},
+            )
+            note = f"{fields['full_name']}, ID ending {id_number[-4:]}" + (" (replaced the previous guarantor)" if current else "")
+            action = "guarantor_replaced" if current else "guarantor_added"
+        conn.execute(
+            "insert into provider_events (provider_id, action, actor, note) values (%s, %s, %s, %s)",
+            (provider["id"], action, actor, note),
+        )
+    _recompute(provider["id"])
+    return current_guarantor(provider["id"])
+
+
+def check_guarantor(provider_id: str, guarantor_id: str, decision: str, *, actor: str, note: str | None) -> dict:
+    """Staff phoned the guarantor: confirmed (they knowingly signed) or failed (with what happened)."""
+    if decision not in ("confirmed", "failed"):
+        raise VettingError("Choose confirmed or failed")
+    note = (note or "").strip()
+    if decision == "confirmed" and len(note) < 10:
+        raise VettingError("Write what you confirmed on the call (at least 10 characters)")
+    if decision == "failed" and len(note) < 5:
+        raise VettingError("Write what happened on the call. The provider sees this.")
+    if not (_uuid_like(guarantor_id) and _uuid_like(provider_id)):
+        raise VettingError("Guarantor not found", 404)
+    with connection() as conn, conn.transaction():
+        row = conn.execute(
+            "update provider_guarantors set status = %s, checked_by = %s, checked_at = now(), note = %s "
+            "where id = %s and provider_id = %s and status <> 'superseded' returning full_name",
+            (decision, actor, note, guarantor_id, provider_id),
+        ).fetchone()
+        if not row:
+            raise VettingError("Guarantor not found, or replaced by a newer one", 404)
+        conn.execute(
+            "insert into provider_events (provider_id, action, actor, note) values (%s, %s, %s, %s)",
+            (provider_id, f"guarantor_{decision}", actor, f"{row['full_name']}: {note}"),
+        )
+    _notify_provider(provider_id, "Your guarantor was confirmed" if decision == "confirmed"
+                     else "We could not confirm your guarantor", None if decision == "confirmed" else note)
+    _recompute(provider_id)
+    return current_guarantor(provider_id)
 
 
 # ---------------------------------------------------------------- staff side
@@ -635,6 +904,7 @@ def check_reference(provider_id: str, reference_id: str, decision: str, *, actor
             "insert into provider_events (provider_id, action, actor, note) values (%s, %s, %s, %s)",
             (provider_id, f"reference_{decision}", actor, f"{row['name']}" + (f": {note}" if note else "")),
         )
+    _recompute(provider_id)
     return {"references": references(provider_id)}
 
 
@@ -731,4 +1001,8 @@ def run_daily(only: list[str] | None = None) -> dict:
                          f"It counts until {d['valid_until']:%d %b %Y}. Upload a new one before then to stay listed.")
     for pid in {e["provider_id"] for e in expired}:
         _recompute(pid)
+    # Everyone is checked again every day: dates pass, settings and legal documents change
+    from services import provider_service
+
+    provider_service.refresh_readiness_all(only=only)
     return {"documents_expired": len(expired), "listings_suspended": len(suspended), "reminders_sent": len(due)}

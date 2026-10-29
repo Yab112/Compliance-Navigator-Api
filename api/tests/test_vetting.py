@@ -51,6 +51,25 @@ def _item(client, user, key):
     return next(i for i in v["items"] if i["key"] == key)
 
 
+GUARANTOR = {"full_name": "Almaz Tesfaye", "phone": "0944112233", "relationship": "Former employer",
+             "sub_city": "Kirkos", "woreda": "05", "occupation": "Bank cashier", "employer": "Test Bank",
+             "id_number": "1111 2222 3333 4444", "consent": True}
+
+
+def _add_verified_guarantor(client, admin, user, pid, **overrides):
+    """Provider enters the guarantor and uploads the letter and ID; staff verify both and confirm by phone."""
+    r = client.put(f"{API}/providers/me/guarantor", json={**GUARANTOR, **overrides}, headers=user["headers"])
+    assert r.status_code == 200, r.text
+    item = next(i for i in r.json()["payload"]["vetting"]["items"] if i["key"] == "guarantor")
+    for kind in ("guarantee_letter", "guarantor_id"):
+        doc = _upload(client, user, kind, reference_no="DARS-77").json()["payload"]["document"]
+        assert _decide(client, admin, pid, doc["id"], "verified", note="DARS stamp checked").status_code == 200
+    r = client.post(f"{API}/admin/marketplace/providers/{pid}/guarantor/{item['guarantor']['id']}",
+                    json={"decision": "confirmed", "note": "Called her, she signed it knowingly"}, headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    return item["guarantor"]
+
+
 def test_upload_checks_the_real_file_type_size_and_dates(client, make_user):
     user = make_user()
     _provider(client, user)
@@ -130,6 +149,15 @@ def test_approval_waits_for_every_required_document(client, make_user):
         still = _admin(client, admin, p["id"], "approve", vet=False)
         assert still.status_code == 409  # uploaded is not enough, staff must check it
         assert _decide(client, admin, p["id"], doc["id"], "verified").status_code == 200
+    # The guarantor (ተያዥ) is required for individuals by default
+    blocked = _admin(client, admin, p["id"], "approve", vet=False)
+    assert blocked.status_code == 409 and "Guarantor" in blocked.json()["detail"]
+    _add_verified_guarantor(client, admin, user, p["id"])
+    # The profile must be complete too: About is missing
+    blocked = _admin(client, admin, p["id"], "approve", vet=False)
+    assert blocked.status_code == 409 and "About" in blocked.json()["detail"]
+    assert client.patch(f"{API}/providers/me", json={"bio": "I handle passport renewals at the Bole office for families."},
+                        headers=user["headers"]).status_code == 200
     r = _admin(client, admin, p["id"], "approve", vet=False)
     assert r.status_code == 200, r.text
     score = r.json()["payload"]["provider"]["score_breakdown"]

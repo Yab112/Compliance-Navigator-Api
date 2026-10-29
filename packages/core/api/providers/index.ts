@@ -238,6 +238,8 @@ export type AdminProviderParams = {
   area?: string;
   id_verified?: boolean;
   accepting_work?: boolean;
+  /** true: ready to work; false: held back by a missing requirement */
+  ready?: boolean;
   sort?: AdminProviderSort;
   limit?: number;
   offset?: number;

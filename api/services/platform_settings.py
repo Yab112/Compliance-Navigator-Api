@@ -51,7 +51,8 @@ GROUPS = [
     {"key": "marketplace", "title": "Marketplace rules", "am": "የገበያ ደንቦች",
      "description": "Timings and thresholds behind hires, Job Success and client records."},
     {"key": "vetting", "title": "Vetting Guday Geday and agencies", "am": "የአገልግሎት ሰጪዎች ማጣሪያ",
-     "description": "What a provider must hand in before staff can approve or renew a listing."},
+     "description": "What a provider must hand in to be approved and to stay listed. A change here is checked "
+                    "against every provider at once."},
     {"key": "operations", "title": "Organizations and support", "am": "ድርጅቶች እና ድጋፍ",
      "description": "Upkeep of organization data and limits on the support desk."},
 ]
@@ -116,6 +117,13 @@ FIELDS: list[Field] = [
     Field("vetting_references_required", "vetting", "References required",
           "When on, individuals need two references that staff have phoned and confirmed.",
           "bool", lambda: False, applies="Approvals and renewals from now on"),
+    Field("vetting_guarantor_required", "vetting", "Guarantor (ተያዥ) required for individuals",
+          "When on, Guday Geday and one-person agencies need a guarantor: details staff confirmed by phone, "
+          "a signed guarantee letter and a copy of the guarantor's ID, both verified.",
+          "bool", lambda: True, applies="At once: providers without one are hidden until it is verified"),
+    Field("vetting_guarantor_required_company", "vetting", "Guarantor (ተያዥ) required for companies",
+          "When on, agencies registered as companies need a verified guarantor too.",
+          "bool", lambda: False, applies="At once: providers without one are hidden until it is verified"),
 
     Field("org_confirm_every_days", "operations", "Ask organizations to confirm services every",
           "Services not confirmed this long are flagged as due.", "int", lambda: 90, 7, 365, "days"),
@@ -226,7 +234,17 @@ def update(values: dict[str, Any], actor: str) -> dict:
                 (key, json.dumps(old), json.dumps(value), actor))
         changed.append(key)
     clear_cache()
+    _requirements_changed(changed)
     return {**admin_view(), "changed": changed}
+
+
+def _requirements_changed(keys) -> None:
+    """A vetting setting decides who may work: check every provider again (services/provider_service.py)."""
+    if not any(BY_KEY[k].group == "vetting" for k in keys):
+        return
+    from services import provider_service
+
+    provider_service.refresh_readiness_all()
 
 
 def reset(key: str, actor: str) -> dict:
@@ -238,6 +256,7 @@ def reset(key: str, actor: str) -> dict:
         execute("insert into platform_settings_history (key, old_value, new_value, changed_by) values (%s, %s, %s, %s)",
                 (key, json.dumps(old), json.dumps(BY_KEY[key].default()), f"{actor} (reset to default)"))
     clear_cache()
+    _requirements_changed([key])
     return admin_view()
 
 

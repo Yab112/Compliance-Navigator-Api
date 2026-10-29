@@ -3,6 +3,8 @@ Seed SAMPLE marketplace data so the directory, profiles and scores aren't empty 
 
 Run from api/:  uv run python -m scripts.seed_providers
 Remove with:    uv run python -m scripts.seed_providers --purge   (or Admin > Marketplace)
+Make the existing sample providers ready to work again (after new rules or a new legal version):
+                uv run python -m scripts.seed_providers --make-ready
 
 Every name here is fictional. Rows are flagged is_sample and the accounts use
 @sample.invalid emails, so they can't sign in and are easy to purge.
@@ -99,6 +101,69 @@ def _user(email: str, name: str) -> dict:
     return user_store.get_user_by_email(email) or user_store.create_user(email, name, None)
 
 
+SAMPLE_FILE = "sample/none"  # sample documents have no file behind them
+
+
+def make_ready(provider_id: str) -> None:
+    """Give a SAMPLE provider everything the ready-to-work rules ask for: verified sample documents, a
+    confirmed sample guarantor, a complete profile and the current legal documents. Never for real rows."""
+    from datetime import date, timedelta
+
+    from core.crypto import encrypt
+    from services import legal, vetting
+    from services.db import connection
+
+    p = svc.get(provider_id)
+    if not p or not fetch_one("select is_sample from providers where id = %s", (provider_id,))["is_sample"]:
+        raise SystemExit("make_ready is only for sample providers")
+    today = date.today()
+    extra = {
+        "police_clearance": (today - timedelta(days=20), None, "FPC-SAMPLE"),
+        "trade_licence": (None, today + timedelta(days=300), p.get("trade_license_no") or "AA/SAMPLE"),
+        "tin_certificate": (None, None, p.get("tin") or "0000000000"),
+    }
+    with connection() as conn, conn.transaction():
+        conn.execute("update providers set telegram_username = coalesce(telegram_username, %s), "
+                     "bio = case when length(coalesce(bio, '')) < %s then %s else bio end where id = %s",
+                     (f"sample_{p['slug'].replace('-', '_')[:20]}", svc.BIO_MIN,
+                      "Sample provider for demos. Not a real person or business.", provider_id))
+        if vetting.guarantor_applies(p) and not vetting.current_guarantor(provider_id):
+            conn.execute(
+                "insert into provider_guarantors (provider_id, full_name, phone, relationship, sub_city, occupation, "
+                "id_number_enc, id_last4, status, checked_by, checked_at, note, created_by) values "
+                "(%s, 'Sample Guarantor', '0900000000', 'Sample', 'Bole', 'Sample', %s, '0000', 'confirmed', 'seed', "
+                "now(), 'Sample data', 'seed')", (provider_id, encrypt("0000000000000000")))
+        g = vetting.current_guarantor(provider_id) if vetting.guarantor_applies(p) else None
+        for kind in vetting.document_kinds(p):
+            meta = vetting.KINDS[kind]
+            if meta.optional or kind == "id_copy" or (kind == "photo" and p["entity_type"] == "company"):
+                continue
+            if conn.execute("select 1 from provider_documents where provider_id = %s and kind = %s "
+                            "and status = 'verified'", (provider_id, kind)).fetchone():
+                continue
+            issued, expires, ref = extra.get(kind, (None, None, None))
+            conn.execute(
+                "insert into provider_documents (provider_id, kind, level, file_key, content_type, issued_on, expires_on, "
+                "reference_no, status, reviewed_by, reviewed_at, review_note, uploaded_by, consent_at, guarantor_id) "
+                "values (%s, %s, %s, %s, 'image/png', %s, %s, %s, 'verified', 'seed', now(), 'Sample data', 'seed', now(), %s)",
+                (provider_id, kind, "degree" if kind == "education" else None, SAMPLE_FILE, issued, expires, ref,
+                 g["id"] if g and meta.guarantor else None))
+        legal.record_consents(conn, p["user_id"], legal.current_versions(legal.CLIENT_REQUIRED + legal.PROVIDER_REQUIRED),
+                              None, "scripts/seed_providers.py")
+    svc.recompute(provider_id)
+
+
+def make_all_ready() -> None:
+    initiate_database()
+    run_migrations()
+    from services.db import fetch_all
+
+    for row in fetch_all("select id::text, display_name from providers where is_sample"):
+        make_ready(row["id"])
+        p = svc.get(row["id"])
+        print(f"  {'ready' if p['ready_to_work'] else 'NOT ready':9s} {p['display_name']}")
+
+
 def seed() -> None:
     initiate_database()
     run_migrations()
@@ -121,6 +186,7 @@ def seed() -> None:
             **spec, "national_id": f"FIN •••• {random.randint(1000, 9999)}", "national_id_verified": True,
             "id_verification_method": "fayda_sandbox", "verified_name": spec["display_name"], "is_sample": True,
         }, user_id=owner["id"], actor="seed")
+        make_ready(provider["id"])
         svc.review_provider(provider["id"], "approve", actor="seed", note="Sample data, not a real provider")
         execute("update providers set approved_at = now() - make_interval(days => %s) where id = %s",
                 (int(months * 30.4), provider["id"]))
@@ -188,7 +254,9 @@ def p_months(key: str) -> float:
 
 
 if __name__ == "__main__":
-    if "--purge" in sys.argv:
+    if "--make-ready" in sys.argv:
+        make_all_ready()
+    elif "--purge" in sys.argv:
         initiate_database()
         print(svc.purge_samples(actor="scripts/seed_providers.py"))
     else:

@@ -26,7 +26,7 @@ import { cn } from "@cn/core/lib/utils";
 import { AgentStatusBadge, EmptyState, ErrorState, LoadingState, formatDate, formatDateTime } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
 import { formatBirr, priceBreakdown, priceRules, usePaymentsConfig, type JobPriceBody } from "@cn/core/api/payments";
-import type { ClientRecord, Hire, MyProvider, Review } from "@cn/core/types/provider";
+import type { ClientRecord, Hire, MyProvider, NotReadyReason, Review } from "@cn/core/types/provider";
 import { PhotoUploader } from "@/modules/marketplace/components/photo-uploader";
 import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
 import { ProviderForm, cleanForm, providerToForm } from "@/modules/marketplace/components/provider-form";
@@ -53,6 +53,54 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 const asTab = (value: string | null): Tab | null => TABS.find((t) => t.key === value)?.key ?? null;
+
+const LEGAL_PATHS: Record<string, string> = {
+  terms: "/legal/terms",
+  privacy: "/legal/privacy",
+  marketplace_rules: "/legal/marketplace-rules",
+  provider_agreement: "/legal/provider-agreement",
+};
+
+/** Listed or not, and for each reason a link to where it is fixed. */
+function ReadinessBanner({ p, onOpen }: { p: MyProvider; onOpen: (t: Tab) => void }) {
+  const r = p.readiness;
+  if (!r || r.listed) return null;
+  const neverListed = !p.approved_at;
+  const fix = (x: NotReadyReason) => {
+    const btn = "font-medium underline";
+    if (x.fix === "profile") return <button type="button" className={btn} onClick={() => onOpen("profile")}>Edit profile</button>;
+    if (x.fix === "vetting") return <button type="button" className={btn} onClick={() => onOpen("vetting")}>Open documents</button>;
+    if (x.fix === "agreement") {
+      const href = LEGAL_PATHS[x.key.replace("agreement:", "")] ?? "/legal";
+      return <Link className={btn} href={href}>Read it</Link>;
+    }
+    return null;
+  };
+  return (
+    <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950" role="status">
+      <p className="font-semibold">
+        {neverListed ? "You are not listed yet · ገና አልተዘረዘሩም" : "You are hidden from clients · ለደንበኞች አይታዩም"}
+      </p>
+      <p className="mt-1 text-xs">
+        {neverListed
+          ? "Clients can find and hire you once all of these are done:"
+          : "Clients can't find or request you, and you can't accept new jobs, until you fix these. Jobs you already started can still be delivered and paid."}
+      </p>
+      <ul className="mt-2 space-y-1 text-xs">
+        {r.reasons.map((x) => (
+          <li key={x.key} className="flex flex-wrap items-baseline gap-x-2">
+            <span aria-hidden="true">•</span>
+            <span className="min-w-0">{x.label}</span>
+            {fix(x)}
+          </li>
+        ))}
+      </ul>
+      {r.reasons.some((x) => x.fix === "agreement") && (
+        <p className="mt-2 text-xs">To accept an updated document, reload this page: a window asks you to accept it.</p>
+      )}
+    </div>
+  );
+}
 
 function Card({ title, children, className }: { title?: string; children: React.ReactNode; className?: string }) {
   return (
@@ -839,13 +887,15 @@ export function MyProviderPage() {
                 <button type="button" onClick={() => setTab("overview")} title="Profile completeness" className="shrink-0">
                   <CompletenessRing percent={p.completeness.percent} size={72} />
                 </button>
-                {p.status === "approved" && (
+                {(p.readiness ? p.readiness.listed : p.status === "approved") && (
                   <Link href={`/providers/${p.slug}`}><Button variant="outline">View public profile</Button></Link>
                 )}
               </div>
             </div>
             <QuickStats p={p} onOpen={setTab} />
-            {p.vetting && !p.vetting.complete && (
+            {p.readiness ? (
+              <ReadinessBanner p={p} onOpen={setTab} />
+            ) : p.vetting && !p.vetting.complete && (
               <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
                 {p.status === "approved" ? "Some of your documents need attention to stay listed." : "Staff can approve your listing once your documents are verified."}{" "}
                 <button type="button" className="font-medium underline" onClick={() => setTab("vetting")}>Open documents</button>

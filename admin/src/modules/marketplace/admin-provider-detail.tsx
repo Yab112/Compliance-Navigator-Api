@@ -25,7 +25,7 @@ import { HireStatusBadge, ScoreBreakdown, SpecialtyChips, Stars } from "@cn/ui/m
 import { TYPE_META, areaLabel, formatFee } from "@cn/ui/marketplace/constants";
 import type { AdminProvider, ProviderAdminAction, Review } from "@cn/core/types/provider";
 import { PrivateDocument } from "@/modules/marketplace/private-document";
-import { PendingChangePanel, VettingPanel } from "@/modules/marketplace/admin-vetting-panel";
+import { PendingChangePanel, ReadinessPanel, VettingPanel } from "@/modules/marketplace/admin-vetting-panel";
 import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
 
 type ActionDef = {
@@ -303,6 +303,7 @@ export function AdminProviderDetail({ id }: { id: string }) {
             {p.bio && <p className="text-muted-foreground mt-3 text-xs whitespace-pre-line">{p.bio}</p>}
           </Panel>
 
+          <ReadinessPanel p={p} />
           <PendingChangePanel p={p} />
           <VettingPanel p={p} />
           <div className="grid gap-4 md:grid-cols-2">

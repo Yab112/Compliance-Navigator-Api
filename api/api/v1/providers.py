@@ -32,7 +32,7 @@ from schemas.providers import (
     ReviewReply,
     TeamInvite,
 )
-from schemas.vetting import ReferencesIn
+from schemas.vetting import GuarantorIn, ReferencesIn
 from services import id_verification, vetting
 from services import provider_service as svc
 from services.provider_service import MarketplaceError
@@ -268,7 +268,8 @@ def my_vetting(user: AuthUser = Depends(get_current_user)):
 
 @router.post("/providers/me/documents", status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    kind: str = Form(..., pattern="^(police_clearance|education|photo|trade_licence|tin_certificate|id_copy)$"),
+    kind: str = Form(..., pattern="^(police_clearance|education|photo|trade_licence|tin_certificate|id_copy|"
+                                  "guarantee_letter|guarantor_id|guarantor_employment)$"),
     file: UploadFile = File(...),
     issued_on: str | None = Form(None),
     expires_on: str | None = Form(None),
@@ -317,6 +318,19 @@ def set_my_references(body: ReferencesIn, user: AuthUser = Depends(get_current_u
     except VettingError as exc:
         _raise(exc)
     return _ok({"vetting": vetting.checklist(me)})
+
+
+@router.put("/providers/me/guarantor")
+def set_my_guarantor(body: GuarantorIn, user: AuthUser = Depends(get_current_user)):
+    """Add or change the guarantor (ተያዥ). A different person replaces the old one, whose papers stay on file."""
+    me = _me(user)
+    data = body.model_dump()
+    consent = data.pop("consent")
+    try:
+        vetting.set_guarantor(me, data, actor=user.email, consent=consent)
+    except VettingError as exc:
+        _raise(exc)
+    return _ok({"vetting": vetting.checklist(svc.get(me["id"]))})
 
 
 @router.get("/providers/me/jobs")

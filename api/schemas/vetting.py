@@ -17,6 +17,27 @@ class ReferencesIn(BaseModel):
     references: list[ReferenceIn] = Field(..., max_length=3)
 
 
+class GuarantorIn(BaseModel):
+    """The provider's guarantor (ተያዥ). The ID number is stored encrypted; only its last 4 digits are shown."""
+
+    full_name: str = Field(..., min_length=3, max_length=120)
+    phone: str = Field(..., pattern=PHONE_PATTERN)
+    relationship: str = Field(..., min_length=3, max_length=80)
+    sub_city: str = Field(..., min_length=2, max_length=80)
+    woreda: str | None = Field(None, max_length=40)
+    address: str | None = Field(None, max_length=200)
+    occupation: str = Field(..., min_length=2, max_length=120)
+    employer: str | None = Field(None, max_length=160)
+    id_number: str = Field(..., min_length=6, max_length=40)
+    # The guarantor agreed that their details are shared with us
+    consent: bool = False
+
+
+class GuarantorDecision(BaseModel):
+    decision: str = Field(..., pattern="^(confirmed|failed)$")
+    note: str | None = Field(None, max_length=500)
+
+
 class DocumentDecision(BaseModel):
     decision: str = Field(..., pattern="^(verified|rejected)$")
     note: str | None = Field(None, max_length=500)

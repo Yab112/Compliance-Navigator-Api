@@ -13,8 +13,10 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import type {
   EducationLevel,
+  GuarantorInput,
   Vetting,
   VettingDocKind,
+  VettingGuarantor,
   VettingItem,
   VettingReference,
   VettingStatus,
@@ -217,6 +219,139 @@ function ReferencesForm({ refs, onDone }: { refs: VettingReference[]; onDone: ()
   );
 }
 
+const PHONE_RE = /^(\+251|0)[79]\d{8}$/;
+const EMPTY_GUARANTOR: GuarantorInput = {
+  full_name: "", phone: "", relationship: "", sub_city: "", woreda: "", address: "", occupation: "", employer: "", id_number: "", consent: false,
+};
+
+function guarantorError(g: GuarantorInput): string | null {
+  if (g.full_name.trim().length < 3) return "Enter your guarantor's full name.";
+  if (!PHONE_RE.test(g.phone.replace(/\s/g, ""))) return "Enter your guarantor's Ethiopian mobile number (09… or 07…).";
+  if (g.relationship.trim().length < 3) return "Say how the guarantor knows you.";
+  if (g.sub_city.trim().length < 2) return "Enter the sub-city or town where the guarantor lives.";
+  if (g.occupation.trim().length < 2) return "Enter the guarantor's occupation.";
+  if (g.id_number.replace(/[^0-9A-Za-z]/g, "").length < 6) return "Enter the guarantor's national ID or Fayda number.";
+  if (!g.consent) return "Tick the box to confirm your guarantor agreed to share their details.";
+  return null;
+}
+
+/** Add or change the guarantor. Entering a different ID number replaces the guarantor and their papers. */
+function GuarantorForm({ current, onDone }: { current: VettingGuarantor | null | undefined; onDone: () => void }) {
+  const { run, isPending } = useMarketAction<GuarantorInput>();
+  const [g, setG] = useState<GuarantorInput>(current ? {
+    ...EMPTY_GUARANTOR, full_name: current.full_name, phone: current.phone, relationship: current.relationship,
+    sub_city: current.sub_city ?? "", woreda: current.woreda ?? "", address: current.address ?? "",
+    occupation: current.occupation, employer: current.employer ?? "",
+  } : EMPTY_GUARANTOR);
+  const [error, setError] = useState<string | null>(null);
+  const set = (patch: Partial<GuarantorInput>) => setG({ ...g, ...patch });
+  const field = (key: keyof GuarantorInput, label: string, opts: { required?: boolean; hint?: string; placeholder?: string; max?: number; tel?: boolean } = {}) => (
+    <Field label={label} htmlFor={`g-${key}`} required={opts.required} hint={opts.hint}>
+      <Input id={`g-${key}`} value={String(g[key] ?? "")} maxLength={opts.max ?? 120} placeholder={opts.placeholder}
+        inputMode={opts.tel ? "tel" : undefined} aria-required={opts.required || undefined}
+        onChange={(e) => set({ [key]: e.target.value } as Partial<GuarantorInput>)} />
+    </Field>
+  );
+  return (
+    <form
+      className="bg-secondary/40 mt-3 space-y-3 rounded-md p-3"
+      noValidate
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const problem = guarantorError(g);
+        if (problem) return setError(problem);
+        setError(null);
+        const trim = (v?: string) => v?.trim() || undefined;
+        try {
+          await run(apiPaths.providers.myGuarantor, MTD.PUT, {
+            full_name: g.full_name.trim(), phone: g.phone.replace(/\s/g, ""), relationship: g.relationship.trim(),
+            sub_city: g.sub_city.trim(), woreda: trim(g.woreda), address: trim(g.address), occupation: g.occupation.trim(),
+            employer: trim(g.employer), id_number: g.id_number.trim(), consent: g.consent,
+          });
+          onDone();
+        } catch (err) {
+          setError(getErrorMessage(err, "Could not save your guarantor"));
+        }
+      }}
+    >
+      {current && (
+        <p className="text-muted-foreground text-xs">
+          To correct the details of the same person, enter their ID number again. A different ID number replaces your guarantor:
+          the old one stays on file, and you upload the new guarantor&apos;s letter and ID.
+        </p>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {field("full_name", "Full name · ሙሉ ስም", { required: true })}
+        {field("phone", "Mobile phone · ስልክ", { required: true, placeholder: "09XXXXXXXX", tel: true, max: 20 })}
+        {field("relationship", "How they know you · ዝምድና", { required: true, placeholder: "Former employer, uncle, neighbour", max: 80 })}
+        {field("id_number", "National ID or Fayda number", { required: true, max: 40, hint: "Kept encrypted. Only the last 4 digits are shown." })}
+        {field("sub_city", "Sub-city or town · ክፍለ ከተማ", { required: true, max: 80 })}
+        {field("woreda", "Woreda · ወረዳ", { max: 40 })}
+        {field("address", "House number or landmark", { max: 200 })}
+        {field("occupation", "Occupation · ሥራ", { required: true, placeholder: "Teacher, accountant, business owner" })}
+        {field("employer", "Employer", { max: 160, hint: "Where they work, if employed." })}
+      </div>
+      <label htmlFor="g-consent" className="flex items-start gap-2 text-xs">
+        <input id="g-consent" type="checkbox" className="mt-0.5 size-4 shrink-0" checked={g.consent} aria-required="true"
+          onChange={(e) => set({ consent: e.target.checked })} />
+        <span>
+          My guarantor agreed to be my guarantor and that I share their name, phone, address and ID number with Compliance Navigator,
+          and that staff will phone them. <span className="text-destructive">*</span>
+        </span>
+      </label>
+      {error && <p className="text-destructive text-xs" role="alert">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" loading={isPending} disabled={isPending}>Save guarantor</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone} disabled={isPending}>Cancel</Button>
+      </div>
+    </form>
+  );
+}
+
+const GUARANTOR_STATUS: Record<VettingGuarantor["status"], string> = {
+  pending: "staff will phone them",
+  confirmed: "confirmed by staff on the phone",
+  failed: "could not confirm",
+  superseded: "replaced",
+};
+
+function GuarantorBlock({ item, vetting }: { item: VettingItem; vetting: Vetting }) {
+  const [editing, setEditing] = useState(false);
+  const g = item.guarantor;
+  return (
+    <div className="mt-2 space-y-2">
+      {item.help && <p className="text-muted-foreground text-xs">{item.help}</p>}
+      {g && (
+        <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+          <div><dt className="text-muted-foreground inline">Name: </dt><dd className="inline">{g.full_name}</dd></div>
+          <div><dt className="text-muted-foreground inline">Phone: </dt><dd className="inline">{g.phone}</dd></div>
+          <div><dt className="text-muted-foreground inline">Relationship: </dt><dd className="inline">{g.relationship}</dd></div>
+          <div><dt className="text-muted-foreground inline">ID: </dt><dd className="inline">ending {g.id_last4}</dd></div>
+          <div className="sm:col-span-2">
+            <dt className="text-muted-foreground inline">Status: </dt>
+            <dd className={cn("inline", g.status === "failed" && "text-destructive")}>{GUARANTOR_STATUS[g.status]}{g.status === "failed" && g.note ? `: ${g.note}` : ""}</dd>
+          </div>
+        </dl>
+      )}
+      {editing ? (
+        <GuarantorForm current={g} onDone={() => setEditing(false)} />
+      ) : (
+        <Button size="sm" variant={g ? "outline" : "default"} onClick={() => setEditing(true)}>
+          {g ? "Change guarantor details" : "Add your guarantor"}
+        </Button>
+      )}
+      {g && !!item.documents?.length && (
+        <div>
+          <p className="mt-2 text-xs font-medium">Your guarantor&apos;s papers</p>
+          <ul className="border-border mt-1 rounded-md border px-3">
+            {item.documents.map((d) => <ItemRow key={d.key} item={d} vetting={vetting} />)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ItemRow({ item, vetting }: { item: VettingItem; vetting: Vetting }) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -281,6 +416,7 @@ function ItemRow({ item, vetting }: { item: VettingItem; vetting: Vetting }) {
           )}
         </>
       )}
+      {item.type === "guarantor" && <GuarantorBlock item={item} vetting={vetting} />}
       {saved && <p className="text-primary mt-2 text-xs" role="status">{saved}</p>}
     </li>
   );
@@ -325,7 +461,8 @@ export function VettingChecklist({ vetting }: { vetting: Vetting }) {
       </div>
       <p className="text-muted-foreground text-xs">
         Clients trust a Guday Geday with their papers and money, so every agent is checked by a person. Your documents are
-        private: only marketplace staff can open them, and every look at a police clearance is recorded.
+        private: only marketplace staff can open them, and every look at a police clearance or your guarantor&apos;s papers is
+        recorded. Everything must stay verified and in date: if something runs out, you are hidden from clients until it is fixed.
       </p>
       <ul>
         {vetting.items.map((item) => <ItemRow key={item.key} item={item} vetting={vetting} />)}

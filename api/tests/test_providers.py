@@ -52,10 +52,22 @@ def _vet(provider_id: str) -> None:
     from services.db import execute, fetch_all
 
     p = provider_service.get(provider_id)
-    if vetting.checklist(p)["complete"]:
-        return
-    if p["entity_type"] == "individual" and not p.get("telegram_username"):
+    # A complete profile is part of being ready to work (provider_service.PROFILE_REQUIRED)
+    if not p.get("telegram_username"):
         execute("update providers set telegram_username = 'test_agent_tg' where id = %s", (provider_id,))
+    if len(p.get("bio") or "") < provider_service.BIO_MIN:
+        execute("update providers set bio = %s where id = %s",
+                ("I renew passports and IDs at the Bole and Arada offices every week.", provider_id))
+    p = provider_service.get(provider_id)
+    if vetting.checklist(p)["complete"]:
+        provider_service.refresh_readiness(provider_id)
+        return
+    if vetting.guarantor_required(p) and not vetting.current_guarantor(provider_id):
+        g = vetting.set_guarantor(p, {"full_name": "Test Guarantor", "phone": "0933000111", "relationship": "Former employer",
+                                      "sub_city": "Bole", "woreda": "03", "occupation": "Accountant",
+                                      "employer": "Test Bank", "id_number": "1234567890123456"},
+                                  actor="test", consent=True)
+        vetting.check_guarantor(provider_id, g["id"], "confirmed", actor="test", note="Called, confirmed she signed it")
     today = date.today()
     extra = {
         "police_clearance": {"issued_on": today - timedelta(days=10), "reference_no": "FPC-TEST-1"},
@@ -63,7 +75,10 @@ def _vet(provider_id: str) -> None:
         "trade_licence": {"reference_no": "AA/14/1234", "expires_on": today + timedelta(days=300)},
         "tin_certificate": {"reference_no": "0012345678"},
     }
-    for item in vetting.checklist(provider_service.get(provider_id))["items"]:
+    items = vetting.checklist(provider_service.get(provider_id))["items"]
+    # The guarantor's papers sit inside the guarantor item
+    items += [d for i in items if i["type"] == "guarantor" and i["required"] for d in i["documents"]]
+    for item in items:
         if item["type"] != "document" or not item["required"] or item["status"] in ("verified", "expiring"):
             continue
         doc = vetting.upload(p, item["kind"], PNG, actor="test", consent=True, **extra.get(item["kind"], {}))

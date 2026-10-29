@@ -17,7 +17,12 @@ from schemas.providers import (
     ProviderReview,
     ReviewModeration,
 )
-from schemas.vetting import ChangeDecision, DocumentDecision, ReferenceDecision
+from schemas.vetting import (
+    ChangeDecision,
+    DocumentDecision,
+    GuarantorDecision,
+    ReferenceDecision,
+)
 from services import provider_service as svc
 from services import vetting
 from services.provider_service import MarketplaceError
@@ -50,13 +55,15 @@ def list_providers(
     area: str | None = Query(None, max_length=40),
     id_verified: bool | None = None,
     accepting_work: bool | None = None,
+    ready: bool | None = Query(None, description="Ready to work (true) or held back by a missing requirement (false)"),
     sort: str = Query("queue", pattern="^(queue|newest|score|complaints|expiry)$"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
     return _ok(svc.admin_list(provider_type=type, status=status_, q=q, license_status=license_status,
                               expiring_days=expiring, area=area, id_verified=id_verified,
-                              accepting_work=accepting_work, sort=sort, limit=limit, offset=offset))
+                              accepting_work=accepting_work, sort=sort, limit=limit, offset=offset,
+                              ready=ready))
 
 
 @router.get("/providers/{provider_id}")
@@ -162,6 +169,18 @@ def check_reference(provider_id: str, reference_id: str, body: ReferenceDecision
     _provider_or_404(provider_id)
     try:
         vetting.check_reference(provider_id, reference_id, body.decision, actor=admin.email, note=body.note)
+    except VettingError as exc:
+        _raise(exc)
+    return _ok({"provider": svc.admin_detail(provider_id)})
+
+
+@router.post("/providers/{provider_id}/guarantor/{guarantor_id}")
+def check_guarantor(provider_id: str, guarantor_id: str, body: GuarantorDecision,
+                    admin: AuthUser = Depends(require_admin)):
+    """Staff phoned the guarantor (ተያዥ): confirmed or failed, with a note. Logged on the provider."""
+    _provider_or_404(provider_id)
+    try:
+        vetting.check_guarantor(provider_id, guarantor_id, body.decision, actor=admin.email, note=body.note)
     except VettingError as exc:
         _raise(exc)
     return _ok({"provider": svc.admin_detail(provider_id)})

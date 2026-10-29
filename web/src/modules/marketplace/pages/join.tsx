@@ -112,7 +112,9 @@ export function JoinMarketplace() {
   const requirements = useVettingRequirements(confirmed ? entity : null);
   const vetting = requirements.data?.payload.vetting;
   // ID copies are handled by the national ID fields below when Fayda is off
-  const docItems = (vetting?.items ?? []).filter((i) => i.kind !== "id_copy");
+  const docItems = (vetting?.items ?? []).filter((i) => i.type === "document" && i.kind !== "id_copy");
+  // The guarantor (ተያዥ) is added after joining, from the Vetting tab
+  const guarantorItem = (vetting?.items ?? []).find((i) => i.type === "guarantor");
   const existing = mine.data?.payload.provider;
   useEffect(() => {
     if (existing) router.replace("/me/provider");
@@ -288,6 +290,23 @@ export function JoinMarketplace() {
                           />
                         </fieldset>
                       ))}
+                      {guarantorItem && (
+                        <div className="border-border rounded-md border p-3 text-xs">
+                          <p className="text-sm font-medium">
+                            {guarantorItem.label} <span className="text-muted-foreground font-normal">· {guarantorItem.label_am}</span>
+                            {!guarantorItem.required && <span className="text-muted-foreground font-normal"> (optional)</span>}
+                          </p>
+                          {guarantorItem.help && <p className="text-muted-foreground mt-1">{guarantorItem.help}</p>}
+                          <p className="mt-2">After joining, on the Vetting tab you will add:</p>
+                          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                            <li>your guarantor&apos;s name, phone, address, occupation and ID number</li>
+                            {guarantorItem.documents?.map((d) => (
+                              <li key={d.kind}>{d.label} · {d.label_am}{!d.required && " (optional)"}</li>
+                            ))}
+                          </ul>
+                          {guarantorItem.required && <p className="text-muted-foreground mt-2">You are listed only once staff have confirmed your guarantor.</p>}
+                        </div>
+                      )}
                       {vetting?.references_required && entity === "individual" && (
                         <p className="text-muted-foreground text-xs">You will also add two references (people who know your work) on your profile after joining.</p>
                       )}

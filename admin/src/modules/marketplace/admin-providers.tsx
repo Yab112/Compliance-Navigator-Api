@@ -100,6 +100,8 @@ export function AdminProviders() {
   const expiring = params.get("expiring") === "30";
   const area = params.get("area") ?? "";
   const idUnverified = params.get("id") === "unverified";
+  // Ready to work (listed) or held back by a missing requirement
+  const ready = params.get("ready") === "yes" ? true : params.get("ready") === "no" ? false : undefined;
   const sort = (SORTS.some((o) => o.value === params.get("sort")) ? params.get("sort") : "queue") as AdminProviderSort;
   const [page, setPage] = useUrlPage();
   const [size, setSize] = useUrlPageSize(PAGE_SIZE);
@@ -130,6 +132,7 @@ export function AdminProviders() {
     expiring: expiring ? 30 : undefined,
     area: area || undefined,
     id_verified: idUnverified ? false : undefined,
+    ready,
     sort,
     q: q || undefined,
     limit: size,
@@ -196,11 +199,16 @@ export function AdminProviders() {
         ))}
       </div>
 
-      <div className="mb-4 grid gap-2 text-xs sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="mb-4 grid gap-2 text-xs sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <Input aria-label="Search providers" placeholder="Name, phone, registration no., TIN or ID" value={query} onChange={(e) => setQuery(e.target.value)} />
         <NativeSelect aria-label="Area" value={area} onChange={(e) => setParam({ area: e.target.value || null })}>
           <option value="">Any area</option>
           {AREA_OPTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+        </NativeSelect>
+        <NativeSelect aria-label="Ready to work" value={params.get("ready") ?? ""} onChange={(e) => setParam({ ready: e.target.value || null })}>
+          <option value="">Ready or not</option>
+          <option value="yes">Ready to work</option>
+          <option value="no">Not ready (hidden)</option>
         </NativeSelect>
         <NativeSelect aria-label="Sort" value={sort} onChange={(e) => setParam({ sort: e.target.value === "queue" ? null : e.target.value })}>
           {SORTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -242,7 +250,20 @@ export function AdminProviders() {
                     </div>
                   </td>
                   <td className="py-2 pr-3">{TYPE_META[p.provider_type].label} · {p.entity_type === "company" ? "Company" : "Individual"}</td>
-                  <td className="py-2 pr-3"><AgentStatusBadge status={p.status} /></td>
+                  <td className="py-2 pr-3">
+                    <AgentStatusBadge status={p.status} />
+                    {!p.ready_to_work && (
+                      <p className="mt-1">
+                        <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-900">Not ready</span>
+                        {p.not_ready_reasons?.[0] && (
+                          <span className="text-muted-foreground block max-w-[14rem] text-[11px]">
+                            {p.not_ready_reasons[0].label}
+                            {p.not_ready_reasons.length > 1 ? ` (+${p.not_ready_reasons.length - 1} more)` : ""}
+                          </span>
+                        )}
+                      </p>
+                    )}
+                  </td>
                   <td className="py-2 pr-3"><IdVerifiedBadge verified={p.id_verified} method={p.id_verification_method} /></td>
                   <td className="py-2 pr-3">
                     {p.has_external_license ? (

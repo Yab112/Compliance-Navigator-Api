@@ -70,7 +70,7 @@ PRIVATE_COLUMNS = PUBLIC_COLUMNS + """,
   p.external_license_verified_by, p.external_license_verified_at, p.reviewed_by,
   p.reviewed_at, p.review_note, p.updated_at, p.id_verification_method, p.verified_name,
   (p.payout_account_enc is not null) as payout_ready, p.payout_bank_code, p.payout_bank_name, p.payout_account_name, p.payout_account_last4,
-  p.payout_set_at
+  p.payout_set_at, p.ready_to_work, p.not_ready_reasons, p.ready_until, p.readiness_checked_at
 """
 
 # The staff providers list shows only these: no national ID, TIN, documents, address or payout details
@@ -81,7 +81,7 @@ ADMIN_LIST_COLUMNS = """
   (p.tin is not null and (p.entity_type = 'individual' or p.trade_license_no is not null)) as registered_business,
   (p.external_license_no is not null) as has_external_license, p.external_license_status,
   p.trust_score, p.rating_avg::float, p.rating_count, p.completed_count, p.license_expires_at,
-  p.approved_at, p.created_at, p.is_sample
+  p.approved_at, p.created_at, p.is_sample, p.ready_to_work, p.not_ready_reasons
 """
 
 # Dates follow the Addis Ababa calendar day, not the database's UTC day
@@ -391,11 +391,20 @@ def owner_view(user_id: str) -> dict | None:
     ) if provider["score_breakdown"] else []
     provider["completeness"] = completeness(provider)
     provider["vetting"] = vetting.checklist(provider)
+    provider["readiness"] = _readiness_view(provider)
     provider["pending_change"] = pending_change(provider["id"])
     provider["rejected_change"] = None if provider["pending_change"] else last_rejected_change(provider["id"])
     if provider["status"] not in ("rejected", "suspended"):
         provider.pop("review_note", None)
     return provider
+
+
+def _readiness_view(provider: dict) -> dict:
+    """What the dashboard banner and the staff page show: listed or not, and why."""
+    live = provider["status"] == "approved" and provider.get("ready_to_work") and (
+        not provider.get("ready_until") or provider["ready_until"] >= date.today())
+    return {"listed": bool(live), "reasons": provider.get("not_ready_reasons") or [],
+            "checked_at": provider.get("readiness_checked_at"), "profile_required": PROFILE_REQUIRED}
 
 
 def completeness(provider: dict) -> dict:
@@ -512,7 +521,140 @@ def recompute(provider_id: str) -> dict | None:
         ).fetchall()
     for a in agencies:
         recompute(a["agency_id"])
+    refresh_readiness(provider_id)
     return result
+
+
+# ---------------------------------------------------------------- ready to work
+#
+# A provider is listed, offered to staff for assigning, requestable by clients, and may accept or start
+# new work only while ALL of these hold (product decision, 2026-10-29):
+#   1. listing  approved by staff and the listing (licence) date not passed
+#   2. vetting  every required item in vetting.checklist() verified and in date, all the time
+#   3. legal    the current version of the Terms, Privacy Policy, Marketplace Rules and Provider Agreement
+#   4. profile  every field the join form asks for (PROFILE_REQUIRED below)
+# The answer is stored on the provider (ready_to_work, not_ready_reasons, ready_until) so list queries
+# stay simple, and refreshed whenever one of the inputs changes: recompute() (documents, references,
+# guarantor, profile edits, listing actions), accepting a legal document, the daily run, a vetting
+# setting change, and for everyone on startup (a new legal version ships with a new release).
+
+# What a complete profile has. Joining already asks for most of it; About became required with this rule.
+BIO_MIN = 40
+PROFILE_REQUIRED = {
+    "display_name": "Name",
+    "phone": "Mobile phone",
+    "telegram_username": "Telegram username",
+    "service_areas": "Areas you work in",
+    "work": "Services (Guday Geday) or specialties (agencies)",
+    "bio": f"About you (at least {BIO_MIN} characters)",
+    # Companies only
+    "legal_name": "Registered legal name",
+    "tin": "TIN",
+    "trade_license_no": "Trade licence number",
+}
+
+
+def profile_gaps(provider: dict) -> list[str]:
+    """Keys of PROFILE_REQUIRED this profile is missing."""
+    gaps = [k for k in ("display_name", "phone", "telegram_username", "service_areas") if not provider.get(k)]
+    work = provider.get("service_ids") if provider["provider_type"] == "guday_geday" else provider.get("specialties")
+    if not work:
+        gaps.append("work")
+    if len((provider.get("bio") or "").strip()) < BIO_MIN:
+        gaps.append("bio")
+    if provider["entity_type"] == "company":
+        gaps += [k for k in ("legal_name", "tin", "trade_license_no") if not provider.get(k)]
+    return gaps
+
+
+def _listing_reason(provider: dict) -> dict | None:
+    status = provider["status"]
+    expires = provider.get("license_expires_at")
+    if status == "pending":
+        return {"key": "listing", "fix": "listing", "label": "Staff have not approved your listing yet"}
+    if status == "rejected":
+        return {"key": "listing", "fix": "listing",
+                "label": "Your application was not accepted" + (f": {provider['review_note']}" if provider.get("review_note") else "")}
+    if status == "suspended":
+        return {"key": "listing", "fix": "listing",
+                "label": "Your listing is paused" + (f": {provider['review_note']}" if provider.get("review_note") else "")}
+    if expires and expires < date.today():
+        return {"key": "listing", "fix": "listing", "label": f"Your listing expired on {expires:%d %b %Y}. Staff must renew it."}
+    return None
+
+
+def readiness(provider: dict) -> dict:
+    """{ready, reasons: [{key, label, fix}], until}. fix tells the page where to send the person:
+    listing (wait for or ask staff), vetting, profile, agreement."""
+    from services import legal
+
+    reasons: list[dict] = []
+    listing = _listing_reason(provider)
+    if listing:
+        reasons.append(listing)
+    words = {"missing": "missing", "pending": "waiting for staff to check", "rejected": "not accepted",
+             "expired": "expired", "below_minimum": "below the minimum level"}
+    check = vetting.checklist(provider)
+    until = provider.get("license_expires_at") if provider["status"] == "approved" else None
+    for item in check["items"]:
+        if not item["required"]:
+            continue
+        if item["status"] in ("verified", "expiring"):
+            valid = (item.get("current") or {}).get("valid_until")
+            if valid and (until is None or valid < until):
+                until = valid
+            for d in item.get("documents") or []:
+                valid = (d.get("current") or {}).get("valid_until")
+                if d["required"] and valid and (until is None or valid < until):
+                    until = valid
+            continue
+        reasons.append({"key": f"vetting:{item['key']}", "fix": "vetting",
+                        "label": f"{item['label']}: {words.get(item['status'], item['status'])}"})
+    for key in profile_gaps(provider):
+        reasons.append({"key": f"profile:{key}", "fix": "profile", "label": f"Profile: {PROFILE_REQUIRED[key]} missing"})
+    if provider.get("user_id"):
+        todo = legal.missing(provider["user_id"], legal.CLIENT_REQUIRED + legal.PROVIDER_REQUIRED)
+    else:
+        todo = list(legal.CLIENT_REQUIRED + legal.PROVIDER_REQUIRED)
+    for key in todo:
+        doc = legal.DOCUMENTS[key]
+        reasons.append({"key": f"agreement:{key}", "fix": "agreement",
+                        "label": f"Accept the current {doc.title} (version {doc.version})"})
+    return {"ready": not reasons, "reasons": reasons, "until": until}
+
+
+def refresh_readiness(provider_id: str) -> dict | None:
+    """Work out readiness again and store it. Returns the readiness, or None for an unknown provider."""
+    provider = get(provider_id)
+    if not provider:
+        return None
+    r = readiness(provider)
+    execute(
+        "update providers set ready_to_work = %s, not_ready_reasons = %s, ready_until = %s, "
+        "readiness_checked_at = now() where id = %s",
+        (r["ready"], Jsonb(r["reasons"]), r["until"], provider_id),
+    )
+    if provider.get("ready_to_work") != r["ready"]:
+        log.info("Provider %s is %s", provider_id, "ready to work" if r["ready"] else "no longer ready to work")
+    return r
+
+
+def refresh_readiness_all(only: list[str] | None = None) -> int:
+    """Every provider (or the listed ones). Used on startup, daily, and when a vetting setting changes."""
+    rows = fetch_all(
+        "select id::text from providers where (%s::uuid[] is null or id = any(%s::uuid[]))", (only, only),
+    )
+    for r in rows:
+        try:
+            refresh_readiness(r["id"])
+        except Exception:  # one bad row never stops the others
+            log.exception("Readiness check failed for provider %s", r["id"])
+    return len(rows)
+
+
+def not_ready_message(provider: dict) -> str:
+    reasons = provider.get("not_ready_reasons") or []
+    return "; ".join(r["label"] for r in reasons[:6]) or "not ready to work"
 
 
 # ---------------------------------------------------------------- public marketplace
@@ -524,7 +666,11 @@ SORTS = {
     "reviews": "p.rating_count desc, p.trust_score desc",
     "newest": "p.approved_at desc nulls last",
 }
-LIVE = f"p.status = 'approved' and (p.license_expires_at is null or p.license_expires_at >= {TODAY})"
+# Listed: approved, listing in date, and ready to work (see readiness above). ready_until makes a document
+# that runs out today count at once, even before the daily run refreshes the flag.
+READY = f"p.ready_to_work and (p.ready_until is null or p.ready_until >= {TODAY})"
+LIVE = (f"p.status = 'approved' and (p.license_expires_at is null or p.license_expires_at >= {TODAY}) "
+        f"and {READY}")
 
 
 def public_list(
@@ -798,9 +944,11 @@ def admin_list(
     *, provider_type: str | None = None, status: str | None = None, q: str | None = None,
     license_status: str | None = None, expiring_days: int | None = None, area: str | None = None,
     id_verified: bool | None = None, accepting_work: bool | None = None, sort: str = "queue",
-    limit: int = 50, offset: int = 0,
+    limit: int = 50, offset: int = 0, ready: bool | None = None,
 ) -> dict:
     where, params = ["true"], {}
+    if ready is not None:
+        where.append(READY if ready else f"not ({READY})")
     if provider_type:
         where.append("p.provider_type = %(t)s")
         params["t"] = provider_type
@@ -869,6 +1017,7 @@ def admin_detail(provider_id: str) -> dict | None:
     provider["agency"] = agency_of(provider_id, include_pending=True)
     provider["renewal"] = {"opens_on": renewal_opens_on(provider), "blocker": renewal_blocker(provider)}
     provider["vetting"] = vetting.checklist(provider, for_staff=True)
+    provider["readiness"] = _readiness_view(provider)
     provider["pending_change"] = pending_change(provider_id)
     # What Fayda returned when this person verified their national ID: the proof of identity
     provider["identity"] = fetch_one(
@@ -908,10 +1057,14 @@ def review_provider(provider_id: str, action: str, *, actor: str, note: str | No
         if blocker:
             raise MarketplaceError(blocker, 409)
     if action == "approve":
-        # Every required document checked and in date before anyone is listed (services/vetting.py)
+        # Every required document checked and in date before anyone is listed (services/vetting.py),
+        # and the profile and agreements complete (the same rules that keep them listed afterwards)
         blocker = vetting.blocker(provider)
         if blocker:
             raise MarketplaceError(blocker, 409)
+        other = [r["label"] for r in readiness(provider)["reasons"] if r["fix"] in ("profile", "agreement")]
+        if other:
+            raise MarketplaceError("Not ready to approve: " + "; ".join(other) + ".", 409)
     if action == "reinstate":
         blocker = vetting.expired_blocker(provider)
         if blocker:
@@ -1199,11 +1352,15 @@ def create_hire(data: dict, *, user_id: str) -> dict:
     provider_id = data.get("provider_id")
     if provider_id:
         provider = fetch_one(
-            f"select {PRIVATE_COLUMNS} from providers p where (p.id::text = %s or p.slug = %s) and {LIVE}",
-            (provider_id, provider_id),
+            f"select {PRIVATE_COLUMNS} from providers p where (p.id::text = %s or p.slug = %s) "
+            f"and p.status = 'approved'", (provider_id, provider_id),
         )
         if not provider:
             raise MarketplaceError("This provider is not available")
+        if not fetch_one(f"select 1 from providers p where p.id = %s and {LIVE}", (provider["id"],)):
+            # Vetting, agreement or profile no longer complete: the client never learns which
+            raise MarketplaceError("This provider can't take new requests right now. Please choose another "
+                                   "verified provider.", 409)
         if not provider["accepting_work"]:
             raise MarketplaceError("This provider isn't taking new work right now", 409)
         if provider["user_id"] == user_id:
@@ -1454,6 +1611,12 @@ def provider_action(engagement_id: str, *, user_id: str, action: str, reason: st
     allowed, new_status, extra = moves[action]
     if eng["status"] not in allowed:
         raise MarketplaceError(f"Can't {action} a job that is {eng['status'].replace('_', ' ')}", 409)
+    if action in ("accept", "start") and not fetch_one(f"select 1 from providers p where p.id = %s and {LIVE}",
+                                                       (me["id"],)):
+        # New work needs every rule to hold (vetting, agreement, profile). Work already started can still be
+        # delivered and paid for, and a request can still be declined, so clients and earnings are not stuck.
+        raise MarketplaceError("You can't take on new work until you are ready to work again: "
+                               f"{not_ready_message(me)}. See your dashboard for what to fix.", 409)
     if action == "accept" and _payments_on() and not price:
         raise MarketplaceError("Set your price when you accept: the client pays it once you deliver")
     if action == "complete":
@@ -1685,10 +1848,12 @@ def admin_update_engagement(
         if not provider_id:
             raise MarketplaceError("Choose a provider")
         provider = fetch_one(
-            f"select p.id::text, p.user_id::text, p.display_name, p.accepting_work from providers p "
-            f"where p.id::text = %s and {LIVE}", (provider_id,))
+            f"select p.id::text, p.user_id::text, p.display_name, p.accepting_work, p.not_ready_reasons, "
+            f"({LIVE}) as live from providers p where p.id::text = %s and p.status = 'approved'", (provider_id,))
         if not provider:
             raise MarketplaceError("Only approved providers with a valid licence can be assigned")
+        if not provider["live"]:
+            raise MarketplaceError(f"{provider['display_name']} can't take work yet: {not_ready_message(provider)}", 409)
         if not provider["accepting_work"]:
             raise MarketplaceError("This provider isn't taking new work right now", 409)
         if provider["id"] == old_provider:
@@ -1834,7 +1999,7 @@ def staff_actions(hire: dict) -> list[str]:
 
 def assign_candidates(engagement_id: str, *, q: str | None = None, area: str | None = None,
                       specialty: str | None = None, limit: int = 20, offset: int = 0) -> dict | None:
-    """Providers staff can assign to an open request: listed (approved, licence in date) and taking work.
+    """Providers staff can assign to an open request: listed (approved, licence in date, ready to work) and taking work.
     Ranked by fit (the requested service, then specialty, then area), then trust score."""
     hire = get_engagement(engagement_id)
     if not hire:

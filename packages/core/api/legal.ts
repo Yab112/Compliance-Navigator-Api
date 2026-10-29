@@ -63,6 +63,8 @@ export const useAcceptLegal = () => {
     const data = await mutateAsync({ url: apiPaths.legal.accept, method: MTD.POST, body: { accept: versions } });
     queryClient.setQueryData(["legal", "status"], data);
     await queryClient.invalidateQueries({ queryKey: ["legal", "consents"] });
+    // Accepting can list a provider again (their dashboard shows why they are hidden)
+    await queryClient.invalidateQueries({ queryKey: ["providers", "me"] });
     return data.payload;
   };
   return { accept, isAccepting: isPending };

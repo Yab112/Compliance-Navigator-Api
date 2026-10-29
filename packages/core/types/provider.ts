@@ -145,6 +145,9 @@ export type ProviderProfileView = PublicProvider & {
 export type Provider = PublicProvider & {
   user_id?: string | null;
   status: ProviderStatus;
+  /** Every rule holds (listing, vetting, agreements, profile); not_ready_reasons says what is missing */
+  ready_to_work?: boolean;
+  not_ready_reasons?: NotReadyReason[];
   national_id?: string | null;
   tin?: string | null;
   trade_license_no?: string | null;
@@ -171,7 +174,9 @@ export type Provider = PublicProvider & {
 
 // ---------------------------------------------------------------- vetting
 
-export type VettingDocKind = "police_clearance" | "education" | "photo" | "trade_licence" | "tin_certificate" | "id_copy";
+export type VettingDocKind =
+  | "police_clearance" | "education" | "photo" | "trade_licence" | "tin_certificate" | "id_copy"
+  | "guarantee_letter" | "guarantor_id" | "guarantor_employment";
 export type EducationLevel = "grade_10" | "grade_12" | "tvet" | "diploma" | "degree";
 export type VettingDocStatus = "pending" | "verified" | "rejected" | "expired" | "superseded";
 /** A requirement's state: verified and expiring both count as done */
@@ -213,9 +218,45 @@ export type VettingReference = {
   created_at: string;
 };
 
+/** The provider's guarantor (ተያዥ). The ID number is never sent back, only its last 4 digits. */
+export type VettingGuarantor = {
+  id: string;
+  provider_id: string;
+  full_name: string;
+  phone: string;
+  relationship: string;
+  sub_city?: string | null;
+  woreda?: string | null;
+  address?: string | null;
+  occupation: string;
+  employer?: string | null;
+  id_last4: string;
+  status: "pending" | "confirmed" | "failed" | "superseded";
+  /** Staff only */
+  checked_by?: string | null;
+  checked_at?: string | null;
+  /** Staff's call note; the provider sees it only when the check failed */
+  note?: string | null;
+  created_at: string;
+  superseded_at?: string | null;
+};
+
+export type GuarantorInput = {
+  full_name: string;
+  phone: string;
+  relationship: string;
+  sub_city: string;
+  woreda?: string;
+  address?: string;
+  occupation: string;
+  employer?: string;
+  id_number: string;
+  consent: boolean;
+};
+
 export type VettingItem = {
   key: string;
-  type: "identity" | "document" | "references" | "telegram";
+  type: "identity" | "document" | "references" | "telegram" | "guarantor";
   kind?: VettingDocKind;
   label: string;
   label_am: string;
@@ -231,9 +272,14 @@ export type VettingItem = {
   min_level?: EducationLevel;
   min_level_label?: string;
   references?: VettingReference[];
+  /** Guarantor item: the current guarantor and their papers (each a document item) */
+  guarantor?: VettingGuarantor | null;
+  documents?: VettingItem[];
   /** Staff only */
   how_to_verify?: string;
   sensitive?: boolean;
+  /** Staff only: replaced guarantors, kept on file */
+  history?: VettingGuarantor[];
 };
 
 export type Vetting = {
@@ -271,8 +317,20 @@ export type ProviderChangeRequest = {
   note?: string | null;
 };
 
+/** One reason a provider is not ready to work. fix says where to go: listing (staff), vetting, profile, agreement. */
+export type NotReadyReason = { key: string; label: string; fix: "listing" | "vetting" | "profile" | "agreement" };
+
+/** Listed and able to take new work only when every rule holds */
+export type ProviderReadiness = {
+  listed: boolean;
+  reasons: NotReadyReason[];
+  checked_at?: string | null;
+  profile_required?: Record<string, string>;
+};
+
 export type MyProvider = Provider & {
   vetting?: Vetting;
+  readiness?: ProviderReadiness;
   pending_change?: ProviderChangeRequest | null;
   /** Refused in the last 30 days, with the reason */
   rejected_change?: ProviderChangeRequest | null;
@@ -298,6 +356,7 @@ export type AdminProvider = Provider & {
   renewal?: { opens_on: string | null; blocker: string | null };
   identity?: FaydaIdentity | null;
   vetting?: Vetting;
+  readiness?: ProviderReadiness;
   pending_change?: ProviderChangeRequest | null;
   open_jobs?: number;
   open_disputes?: number;
@@ -469,6 +528,8 @@ export type AdminProviderRow = Pick<
   has_external_license: boolean;
   open_jobs: number;
   open_disputes: number;
+  ready_to_work: boolean;
+  not_ready_reasons: NotReadyReason[];
 };
 
 /** Whether "Remove sample data" may run here */
