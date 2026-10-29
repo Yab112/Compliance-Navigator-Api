@@ -3,7 +3,6 @@
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useLogin } from "@cn/core/api/auth";
-import { siteUrl } from "@cn/core/config/env";
 import { useRedirectIfSignedIn } from "@cn/core/hooks/use-redirect-if-signed-in";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { safeReturnTo } from "@cn/core/lib/safe-redirect";
@@ -29,13 +28,6 @@ export function AdminLogin() {
       title="Staff sign in"
       am="የሰራተኛ መግቢያ"
       description="For Compliance Navigator staff. Use your usual account; it needs the admin role."
-      footer={
-        <p>
-          <a href={siteUrl("/forgot-password")} className="hover:underline">
-            Forgot password?
-          </a>
-        </p>
-      }
     >
       <form
         className="flex flex-col gap-4"
