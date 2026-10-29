@@ -109,6 +109,15 @@ class SimulatedGateway:
                 "reference": f"SIM-{tx_ref[-8:].upper()}", "method": "test", "fee": None, "raw": {"simulated": True}}
 
 
+def _record(data, reference: str) -> dict:
+    """Chapa returns one record, or (for transfers) a list of them; pick the one for our reference."""
+    if isinstance(data, list):
+        rows = [r for r in data if isinstance(r, dict)]
+        mine = [r for r in rows if reference in (r.get("reference"), r.get("tx_ref"), r.get("ref_id"))]
+        return (mine or rows or [{}])[0]
+    return data if isinstance(data, dict) else {}
+
+
 class ChapaGateway:
     name = "chapa"
 
@@ -156,10 +165,16 @@ class ChapaGateway:
     def verify_transfer(self, reference: str) -> str:
         """paid | failed | approved (still on its way, or Chapa unreachable) | missing (Chapa has no such transfer)."""
         try:
-            data = self._call("GET", f"/transfers/verify/{reference}").get("data") or {}
+            body = self._call("GET", f"/transfers/verify/{reference}")
         except PaymentError as exc:
             return "approved" if exc.uncertain else "missing"
+        data = _record(body.get("data"), reference)
         status = str(data.get("status", "")).lower()
+        if not status and "test mode" in str(body.get("message", "")).lower():
+            # Chapa's test mode accepts transfers but never settles them and returns an empty record, so a
+            # test payout would wait forever. Test keys can't move real money; treat it as delivered.
+            log.info("Chapa test mode transfer %s has no status; recording it as paid", reference)
+            return "paid"
         return "paid" if status == "success" else "failed" if status in ("failed", "cancelled", "reversed") else "approved"
 
     def refund(self, *, tx_ref: str, amount: Decimal, reason: str, reference: str) -> dict:
@@ -176,7 +191,7 @@ class ChapaGateway:
     def verify_refund(self, ref_id: str) -> str:
         """refunded | failed (reversed: the money came back to our Chapa balance) | processing."""
         try:
-            data = self._call("GET", f"/refund/{ref_id}/verify").get("data") or {}
+            data = _record(self._call("GET", f"/refund/{ref_id}/verify").get("data"), ref_id)
         except PaymentError:
             return "processing"
         status = str(data.get("status", "")).lower()
@@ -1086,6 +1101,28 @@ def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str
     else:
         raise PaymentError("Unknown decision")
     return _public_staff_payout(payout_id)
+
+
+def check_processing_payouts(min_age_minutes: int = 5) -> dict:
+    """Ask the gateway about every approved payout that has waited a few minutes, so a transfer that
+    landed (or failed) is recorded without staff pressing "Check with Chapa". Runs every 15 minutes."""
+    rows = fetch_all(
+        "select id::text from payouts where status = 'approved' and decided_at < now() - make_interval(mins => %s) "
+        "order by decided_at limit 100",
+        (min_age_minutes,),
+    )
+    counts = {"checked": 0, "paid": 0, "failed": 0, "errors": 0}
+    for row in rows:
+        try:
+            after = decide_payout(row["id"], decision="refresh", note=None, actor="automatic Chapa check")
+        except Exception:
+            counts["errors"] += 1
+            log.exception("Automatic check of payout %s failed", row["id"])
+            continue
+        counts["checked"] += 1
+        if after and after.get("status") in ("paid", "failed"):
+            counts[after["status"]] += 1
+    return counts
 
 
 def _public_staff_payout(payout_id: str) -> dict:

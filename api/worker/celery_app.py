@@ -32,6 +32,11 @@ celery_app.conf.beat_schedule = {
         "schedule": 60 * 60 * 24,
     },
     # Staff-added sources with a daily or weekly schedule; each one runs only when it is due
+    # Payouts approved and sent to Chapa, until Chapa says they landed or failed
+    "payouts-processing-15min": {
+        "task": "worker.tasks.check_processing_payouts",
+        "schedule": 60 * 15,
+    },
     "custom-sources-hourly": {
         "task": "worker.tasks.run_scheduled_custom_sources",
         "schedule": 60 * 60,

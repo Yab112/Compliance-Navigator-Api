@@ -87,6 +87,9 @@ def _run_stale_check() -> dict:
     stats["org_changes_went_live"] = org_service.promote_due_changes(force=True)
     stats["org_services_due_for_confirmation"] = org_service.count_services_due_for_confirmation()
     stats["custom_sources_refreshed"] = run_due_custom_sources("schedule:daily maintenance")
+    from services import payment_service
+
+    stats.update({f"payouts_{k}": v for k, v in payment_service.check_processing_payouts().items()})
     return stats
 
 

@@ -58,3 +58,13 @@ def run_scheduled_custom_sources(self) -> dict:
 
     initiate_database()
     return data_sources.run_due_custom_sources(f"schedule:celery:{self.request.id}")
+
+
+@celery_app.task(name="worker.tasks.check_processing_payouts", bind=True)
+def check_processing_payouts(self) -> dict:
+    """Record payouts Chapa has finished sending (or failed to send)."""
+    from database.database import initiate_database
+    from services import payment_service
+
+    initiate_database()
+    return payment_service.check_processing_payouts()

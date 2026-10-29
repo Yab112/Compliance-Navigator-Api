@@ -502,3 +502,23 @@ def test_staff_can_recheck_a_pending_payment(client, make_user):
     after = verify()
     assert after["changed"] is True and after["payment"]["status"] == "success"
     assert _earnings(client, agent)["balance"] == 354.0  # 400 - 40 - 6
+
+
+def test_chapa_transfer_verify_reads_list_and_test_mode_answers(monkeypatch):
+    """Chapa answers /transfers/verify with a list; in test mode the record is empty and never settles."""
+    from services import payment_service as ps
+
+    gw = ps.ChapaGateway.__new__(ps.ChapaGateway)
+    answers = {
+        "live-ok": {"message": "Transfer details", "data": [{"reference": "live-ok", "status": "success"}]},
+        "live-wait": {"message": "Transfer details", "data": [{"reference": "live-wait", "status": "pending"}]},
+        "live-bad": {"message": "Transfer details", "data": {"reference": "live-bad", "status": "failed"}},
+        "live-empty": {"message": "Transfer details", "data": [{}]},
+        "test-empty": {"message": "Transfer details (Test Mode)", "data": [{}]},
+    }
+    monkeypatch.setattr(gw, "_call", lambda method, path, *a, **k: answers[path.rsplit("/", 1)[1]], raising=False)
+    assert gw.verify_transfer("live-ok") == "paid"
+    assert gw.verify_transfer("live-wait") == "approved"
+    assert gw.verify_transfer("live-bad") == "failed"
+    assert gw.verify_transfer("live-empty") == "approved"  # live and unknown: keep the money held
+    assert gw.verify_transfer("test-empty") == "paid"
