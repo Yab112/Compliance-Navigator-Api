@@ -12,6 +12,7 @@ import type { Paged } from "../../types/guday";
 import type {
   AdminPayments,
   AdminPayouts,
+  PayoutReview,
   Bank,
   CheckoutStart,
   Earnings,
@@ -244,7 +245,11 @@ export const useAdminPayouts = (status: PayoutStatus, page = 0) =>
     withQuery(apiPaths.admin.marketPayouts, { status, limit: ADMIN_MONEY_PAGE_SIZE, offset: page * ADMIN_MONEY_PAGE_SIZE }),
   );
 
-/** Approve (sends the money), reject (needs a note) or refresh a processing payout. */
+/** Who gets a payout, whether the account is theirs, and which payments fund it. */
+export const useAdminPayoutReview = (id: string, enabled = true) =>
+  useAdminQuery<PayoutReview>(["market", "payout", id], apiPaths.admin.marketPayout(id), { enabled });
+
+/** Approve (sends the money; a blocking check needs a note), reject (needs a note) or refresh a processing payout. */
 export const useDecidePayout = () => {
   const { run, isPending } = useAdminMutation<{ payout: Payout }, PayoutDecision>();
   const decide = (id: string, body: PayoutDecision) => run(apiPaths.admin.marketPayout(id), MTD.POST, body).then((p) => p.payout);

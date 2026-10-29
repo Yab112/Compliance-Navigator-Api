@@ -174,6 +174,44 @@ export type AdminPayouts = {
   total: number;
   totals: AdminPayoutTotals;
   mode: PaymentsMode;
+  /** Chapa test key or simulated: nothing real is collected or sent */
+  test_mode: boolean;
+};
+
+export type PayoutCheck = { level: "block" | "warn" | "info"; code: string; text: string };
+
+/** Everything staff look at before sending a payout. */
+export type PayoutReview = {
+  payout: Payout & { provider_id: string; gateway: string | null };
+  provider: {
+    id: string;
+    slug: string;
+    display_name: string;
+    legal_name: string | null;
+    verified_name: string | null;
+    provider_type: string;
+    status: string;
+    national_id_verified: boolean;
+    id_verification_method: string | null;
+    has_tin: boolean;
+    trade_license_no: string | null;
+    vat_registered: boolean;
+    payout_set_at: string | null;
+    created_at: string;
+  };
+  balances: { balance: number; earned_total: number; in_payout: number; paid_out: number; available: number };
+  earnings: {
+    amount: number;
+    created_at: string;
+    hire_id: string | null;
+    job_title: string | null;
+    tx_ref: string | null;
+    gateway: string | null;
+    client_paid: number | null;
+    client: string | null;
+  }[];
+  history: { paid_count: number; paid_total: number; refused_count: number };
+  checks: PayoutCheck[];
 };
 
 export type PayoutDecision = { decision: "approve" | "reject" | "refresh"; note?: string };

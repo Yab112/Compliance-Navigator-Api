@@ -2,6 +2,7 @@
 
 import json
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -218,6 +219,14 @@ def admin_payments(status: Literal["pending", "success", "failed", "cancelled"] 
 def admin_payouts(status: Literal["requested", "approved", "paid", "rejected", "failed"] | None = "requested",
                   limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0)):
     return _ok(payment_service.admin_payouts(status, limit, offset))
+
+
+@router.get("/admin/marketplace/payouts/{payout_id}", dependencies=[Depends(require_admin)])
+def payout_review(payout_id: UUID):
+    try:
+        return _ok(payment_service.payout_review(str(payout_id)))
+    except PaymentError as exc:
+        _raise(exc)
 
 
 @router.post("/admin/marketplace/payouts/{payout_id}")

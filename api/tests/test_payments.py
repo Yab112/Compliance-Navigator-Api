@@ -181,3 +181,40 @@ def test_webhook_needs_a_valid_signature(client, monkeypatch):
     good = hmac.new(b"whsec-test", body, hashlib.sha256).hexdigest()
     assert client.post(f"{API}/payments/chapa/webhook", content=body,
                        headers={"x-chapa-signature": good}).status_code == 200
+
+
+def test_payout_review_shows_what_it_pays_for_and_blocks_someone_elses_account(client, make_user):
+    admin, agent, customer = make_user("admin"), make_user(), make_user()
+    provider = _approved(client, admin, agent)
+    hire = _hire(client, customer, provider, title="Passport renewal for review")
+    _job(client, agent, hire["id"], "accept", price=1000)
+    _deliver(client, agent, hire["id"])
+    _pay(client, customer, hire["id"])
+    client.put(f"{API}/providers/me/payout", json={"bank_code": "sim-cbe", "account_number": "1000 2345 6789",
+                                                   "account_name": "Someone Else"}, headers=agent["headers"])
+    payout = client.post(f"{API}/providers/me/payouts", json={"amount": 500},
+                         headers=agent["headers"]).json()["payload"]["payout"]
+
+    assert client.get(f"{API}/admin/marketplace/payouts/{payout['id']}", headers=agent["headers"]).status_code == 403
+    review = client.get(f"{API}/admin/marketplace/payouts/{payout['id']}", headers=admin["headers"]).json()["payload"]
+    assert review["earnings"][0]["job_title"] == "Passport renewal for review" and review["earnings"][0]["client_paid"] == 1000
+    codes = {c["code"]: c["level"] for c in review["checks"]}
+    assert codes["name_mismatch"] == "block" and codes["first_payout"] == "info" and codes["new_account"] == "warn"
+    assert review["balances"]["in_payout"] == 500
+
+    decide = lambda body: client.post(f"{API}/admin/marketplace/payouts/{payout['id']}", json=body,  # noqa: E731
+                                      headers=admin["headers"])
+    blocked = decide({"decision": "approve"})
+    assert blocked.status_code == 409 and "Someone Else" in blocked.json()["detail"]
+    assert decide({"decision": "approve", "note": "too short"}).status_code == 409
+    ok = decide({"decision": "approve", "note": "Called the provider; account is her sister's, signed letter on file"})
+    assert ok.status_code == 200 and ok.json()["payload"]["payout"]["status"] == "paid"
+
+
+def test_names_match_allows_middle_names_and_company_accounts():
+    from services.payment_service import names_match
+    assert names_match("Meron Tadesse Alemu", "Meron Tadesse")
+    assert names_match("MERON TADESSE", None, "Meron Tadesse")
+    assert names_match("Abay Clearing and Forwarding PLC", "Abebe Kebede", "Abay Clearing & Forwarding PLC")
+    assert not names_match("Nardos Teshome", "Meron Tadesse")
+    assert not names_match("Meron Bekele", "Meron Tadesse")

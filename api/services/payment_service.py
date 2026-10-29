@@ -609,7 +609,7 @@ def admin_payouts(status: str | None = "requested", limit: int = 25, offset: int
         from payouts
         """
     )
-    return {"items": items, "total": total, "totals": totals, "mode": mode()}
+    return {"items": items, "total": total, "totals": totals, "mode": mode(), "test_mode": _test_money()}
 
 
 def _mark_paid(payout: dict, gateway_reference: str | None) -> None:
@@ -633,8 +633,96 @@ def _tell_provider(payout: dict, title: str, body: str | None = None) -> None:
         notifications.notify([owner["user_id"]], kind="payout", title=title, body=body, link="/me/provider?tab=earnings")
 
 
+def _name_tokens(name: str | None) -> set[str]:
+    return {w for w in re.findall(r"[^\W\d_]+", (name or "").lower()) if len(w) > 1}
+
+
+def names_match(holder: str | None, *candidates: str | None) -> bool:
+    """The bank account holder is the provider: same name, or one name contains the other ("Meron Tadesse Alemu")."""
+    h = _name_tokens(holder)
+    for c in candidates:
+        t = _name_tokens(c)
+        if h and t and (h <= t or t <= h or len(h & t) >= 2):
+            return True
+    return False
+
+
+def _test_money() -> bool:
+    return mode() == "simulated" or (mode() == "chapa" and (settings.chapa_secret_key or "").startswith("CHASECK_TEST"))
+
+
+def payout_review(payout_id: str) -> dict:
+    """What staff check before sending money: who gets it, whether the account is theirs, and what it pays for."""
+    payout = fetch_one(f"select {PAYOUT_COLUMNS} from payouts po where po.id = %s", (payout_id,))
+    if not payout:
+        raise PaymentError("Payout not found", 404)
+    provider = fetch_one(
+        """
+        select id::text, slug, display_name, legal_name, verified_name, provider_type, status, national_id_verified,
+               id_verification_method, coalesce(tin, '') <> '' as has_tin, trade_license_no, vat_registered,
+               payout_set_at, created_at
+        from providers where id = %s
+        """,
+        (payout["provider_id"],),
+    )
+    earnings = fetch_all(
+        """
+        select l.amount::float, l.created_at, e.id::text as hire_id, e.title as job_title,
+               p.tx_ref, p.gateway, p.amount::float as client_paid, coalesce(u.fullname, u.email) as client
+        from provider_ledger l
+        left join engagements e on e.id = l.engagement_id
+        left join payments p on p.id = l.payment_id
+        left join users u on u.id = p.payer_user_id
+        where l.provider_id = %s and l.kind = 'earning'
+        order by l.created_at desc limit 50
+        """,
+        (payout["provider_id"],),
+    )
+    history = fetch_one(
+        """
+        select count(*) filter (where status = 'paid') as paid_count,
+               coalesce(sum(amount) filter (where status = 'paid'), 0)::float as paid_total,
+               count(*) filter (where status in ('rejected', 'failed')) as refused_count
+        from payouts where provider_id = %s and id <> %s
+        """,
+        (payout["provider_id"], payout_id),
+    )
+    return {"payout": payout, "provider": provider, "balances": _balances(payout["provider_id"]),
+            "earnings": earnings, "history": history, "checks": _payout_checks(payout, provider, history)}
+
+
+def _payout_checks(payout: dict, provider: dict, history: dict) -> list[dict]:
+    """block: approving needs a written reason. warn: look before approving. info: worth knowing."""
+    checks = []
+    if not names_match(payout["account_name"], provider["verified_name"], provider["legal_name"], provider["display_name"]):
+        checks.append({"level": "block", "code": "name_mismatch",
+                       "text": f"The bank account is in the name of {payout['account_name']}, not "
+                               f"{provider['verified_name'] or provider['display_name']}. Money should only go to the "
+                               "provider's own account or their company's."})
+    if not provider["national_id_verified"]:
+        checks.append({"level": "block", "code": "id_not_verified", "text": "The provider's national ID is not verified."})
+    if provider["status"] != "approved":
+        checks.append({"level": "block", "code": "not_approved", "text": f"The provider is {provider['status']}, not approved."})
+    if not provider["has_tin"]:
+        checks.append({"level": "warn", "code": "no_tin",
+                       "text": "No TIN on file. Ethiopian income tax rules require 30% withholding on payments to "
+                               "suppliers without a TIN; get it before paying."})
+    if provider["payout_set_at"] and (payout["created_at"] - provider["payout_set_at"]).total_seconds() < 7 * 24 * 3600:
+        checks.append({"level": "warn", "code": "new_account",
+                       "text": "The bank account was added or changed less than 7 days before this request."})
+    if not history["paid_count"]:
+        checks.append({"level": "info", "code": "first_payout", "text": "First payout to this provider."})
+    if _test_money():
+        checks.append({"level": "info", "code": "test_money",
+                       "text": "Payments are in test mode: no real money was collected and none will be sent."})
+    return checks
+
+
 def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str) -> dict:
-    """approve: send the money (simulated: paid at once; Chapa: queued, then refresh). reject: release it."""
+    """
+    approve: send the money (simulated: paid at once; Chapa: queued, then refresh). reject: release it.
+    A payout with a blocking check (name mismatch, unverified ID) is only approved with a written reason.
+    """
     from core.crypto import decrypt
 
     payout = fetch_one(f"select {PAYOUT_COLUMNS}, po.bank_code from payouts po where po.id = %s", (payout_id,))
@@ -651,6 +739,9 @@ def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str
     elif decision == "approve":
         if payout["status"] != "requested":
             raise PaymentError("This payout was already decided", 409)
+        blocks = [c["text"] for c in payout_review(payout_id)["checks"] if c["level"] == "block"]
+        if blocks and len((note or "").strip()) < 10:
+            raise PaymentError("Check before paying: " + " ".join(blocks) + " To approve anyway, write why.", 409)
         provider = fetch_one("select payout_account_enc from providers where id = %s", (payout["provider_id"],))
         account = decrypt(provider and provider["payout_account_enc"])
         if not account:
