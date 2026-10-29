@@ -13,7 +13,6 @@ import { cn } from "@cn/core/lib/utils";
 import { FlagStripe } from "@cn/ui/layout/flag-stripe";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { Logo } from "@cn/ui/layout/logo";
-import { adminUrl } from "@cn/core/config/env";
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -112,11 +111,6 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
       <span className="h-3 w-28 animate-pulse rounded bg-white/20" aria-label="Checking sign-in" />
     ) : user ? (
       <>
-        {user.role === "admin" && (
-          <a href={adminUrl()} className="text-gov-yellow font-semibold hover:underline">
-            Admin dashboard
-          </a>
-        )}
         <NotificationBell />
         <RequestLinks />
         <Link href="/account" className="flex items-center gap-1.5 hover:underline" title="My account">

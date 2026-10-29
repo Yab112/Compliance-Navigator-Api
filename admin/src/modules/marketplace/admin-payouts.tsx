@@ -31,11 +31,12 @@ const MODE_LABEL: Record<PaymentsMode, string> = {
 const CHAPA_TEST = "Chapa test mode: approving goes through Chapa's test system, no real money moves";
 
 const CHECK_STYLE: Record<PayoutCheck["level"], string> = {
+  hard: "border-destructive bg-destructive/10 text-destructive",
   block: "border-destructive/40 bg-destructive/5 text-destructive",
   warn: "border-gov-yellow/60 bg-gov-yellow/10 text-gov-ink",
   info: "border-border bg-muted/40 text-muted-foreground",
 };
-const CHECK_LABEL: Record<PayoutCheck["level"], string> = { block: "Stop", warn: "Check", info: "Note" };
+const CHECK_LABEL: Record<PayoutCheck["level"], string> = { hard: "Can't send", block: "Stop", warn: "Check", info: "Note" };
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -58,18 +59,25 @@ function PayoutReviewPanel({ p, onClose }: { p: AdminPayout; onClose: () => void
   if (isError || !r) return <ErrorState message={error?.message ?? "Could not load this payout"} onRetry={() => refetch()} />;
 
   const blocks = r.checks.filter((c) => c.level === "block");
+  const hard = r.checks.some((c) => c.level === "hard");
+  const d = r.destination;
   const needsReason = blocks.length > 0;
   const send = async (decision: "approve" | "reject") => {
     setFailure(null);
     try {
-      await decide(p.id, note.trim() ? { decision, note: note.trim() } : { decision });
+      const result = await decide(p.id, note.trim() ? { decision, note: note.trim() } : { decision });
+      if (!result) {
+        // At or above the second-approval limit: stored in Access, Approvals instead of paid
+        setFailure("This amount needs a second person: the approval was sent to Approvals. Another staff member must approve it there.");
+        return;
+      }
       onClose();
     } catch (err) {
       setFailure(getErrorMessage(err, "Could not update this payout"));
     }
   };
   const pv = r.provider;
-  const target = bankLine(p.bank_name, p.account_last4);
+  const target = bankLine(d.bank_name, d.account_last4);
 
   return (
     <div className="mt-4 space-y-4 border-t pt-4">
@@ -84,15 +92,22 @@ function PayoutReviewPanel({ p, onClose }: { p: AdminPayout; onClose: () => void
         </ul>
       )}
 
+      <div className="border-border rounded-md border p-3">
+        <h3 className="mb-2 text-sm font-semibold">The money goes to this account, the one the request was made with</h3>
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
+          <Fact label="Account holder (typed by the provider)">
+            <span className={cn("text-base", blocks.some((b) => b.code === "name_mismatch") && "text-destructive font-semibold")}>{d.account_name ?? "-"}</span>
+          </Fact>
+          <Fact label="Name on national ID (Fayda)">
+            <span className="text-base">{d.fayda_name ?? "Not verified"}</span>
+            {d.id_verified && <span className="text-muted-foreground"> · verified{pv.id_verification_method === "fayda_sandbox" ? " (Fayda sandbox)" : ""}</span>}
+            {pv.legal_name && pv.legal_name !== d.fayda_name && <span className="text-muted-foreground block text-xs">Company or legal name: {pv.legal_name}</span>}
+          </Fact>
+          <Fact label="Bank and account">{d.stored ? target : <span className="text-destructive">Not stored with the request</span>}</Fact>
+        </dl>
+      </div>
+
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
-        <Fact label="Name on national ID">
-          {pv.verified_name ?? "Not verified"}
-          {pv.national_id_verified && <span className="text-muted-foreground"> · verified{pv.id_verification_method === "fayda_sandbox" ? " (Fayda sandbox)" : ""}</span>}
-        </Fact>
-        <Fact label="Bank account holder">
-          <span className={cn(blocks.some((b) => b.code === "name_mismatch") && "text-destructive font-semibold")}>{p.account_name ?? "-"}</span>
-          <span className="text-muted-foreground"> · {target}</span>
-        </Fact>
         <Fact label="TIN">{pv.has_tin ? "On file" : <span className="text-destructive">Missing</span>}</Fact>
         <Fact label="Licence">{pv.trade_license_no ?? "-"}</Fact>
         <Fact label="Provider since">{formatDateTime(pv.created_at)}</Fact>
@@ -152,10 +167,12 @@ function PayoutReviewPanel({ p, onClose }: { p: AdminPayout; onClose: () => void
 
       {mode === "idle" && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant={needsReason ? "outline" : "default"} onClick={() => setMode("approve")}>
-            {needsReason ? "Approve anyway" : "Approve"}
-          </Button>
-          <Button size="sm" variant={needsReason ? "default" : "outline"} onClick={() => setMode("reject")}>Reject</Button>
+          {!hard && (
+            <Button size="sm" variant={needsReason ? "outline" : "default"} onClick={() => setMode("approve")}>
+              {needsReason ? "Approve anyway" : "Approve"}
+            </Button>
+          )}
+          <Button size="sm" variant={needsReason || hard ? "default" : "outline"} onClick={() => setMode("reject")}>Reject</Button>
           <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
         </div>
       )}
@@ -168,7 +185,7 @@ function PayoutReviewPanel({ p, onClose }: { p: AdminPayout; onClose: () => void
           }}
         >
           <p>
-            {mode === "approve" ? <>Send <strong>{formatETB(p.amount)}</strong> to {p.account_name} at {target}?</> : "Reject this payout? The money goes back to the provider's available balance."}
+            {mode === "approve" ? <>Send <strong>{formatETB(p.amount)}</strong> to {d.account_name} at {target}?</> : "Reject this payout? The money goes back to the provider's available balance."}
           </p>
           {(mode === "reject" || needsReason) && (
             <>
@@ -202,6 +219,8 @@ function PayoutReviewPanel({ p, onClose }: { p: AdminPayout; onClose: () => void
 function PayoutRow({ p }: { p: AdminPayout }) {
   const { decide, isPending } = useDecidePayout();
   const [reviewing, setReviewing] = useState(false);
+  const [failing, setFailing] = useState(false);
+  const [failNote, setFailNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const target = bankLine(p.bank_name, p.account_last4);
@@ -211,9 +230,20 @@ function PayoutRow({ p }: { p: AdminPayout }) {
     setInfo(null);
     try {
       const result = await decide(p.id, { decision: "refresh" });
-      if (result.status === "approved") setInfo("Still on its way. Check again later.");
+      if (result.status === "approved") setInfo("Still on its way, or Chapa has no answer yet. Check again later.");
     } catch (err) {
       setError(getErrorMessage(err, "Could not update this payout"));
+    }
+  };
+  const markFailed = async () => {
+    setError(null);
+    setInfo(null);
+    try {
+      const result = await decide(p.id, { decision: "mark_failed", note: failNote.trim() });
+      setFailing(false);
+      setInfo(result.status === "failed" ? "Marked failed. The money is back in the provider's balance." : null);
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not mark this payout failed"));
     }
   };
 
@@ -257,10 +287,34 @@ function PayoutRow({ p }: { p: AdminPayout }) {
         </div>
       )}
       {reviewing && <PayoutReviewPanel p={p} onClose={() => setReviewing(false)} />}
-      {p.status === "approved" && (
-        <div className="mt-3">
-          <Button size="sm" variant="outline" loading={isPending} onClick={refresh}>Check status</Button>
+      {p.status === "approved" && p.needs_check && (
+        <p className="border-gov-yellow/60 bg-gov-yellow/10 mt-3 rounded-md border px-3 py-2 text-xs" role="note">
+          <span className="font-semibold">Needs checking: </span>
+          {p.check_note ?? "The transfer got an error. The money stays held until Chapa confirms what happened."}
+        </p>
+      )}
+      {p.status === "approved" && !failing && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" loading={isPending} onClick={refresh}>Check with Chapa</Button>
+          {p.needs_check && <Button size="sm" variant="ghost" onClick={() => setFailing(true)}>Mark failed</Button>}
         </div>
+      )}
+      {failing && (
+        <form
+          className="bg-secondary/50 mt-3 space-y-2 rounded-md p-3 text-sm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void markFailed();
+          }}
+        >
+          <p>Only when Chapa says the transfer failed or never reached it. We ask Chapa again first; if it shows the money went out, this is refused.</p>
+          <label htmlFor={`fail-${p.id}`} className="block text-xs font-medium">What you checked (at least 10 characters)</label>
+          <Input id={`fail-${p.id}`} value={failNote} onChange={(e) => setFailNote(e.target.value)} autoFocus />
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" variant="destructive" loading={isPending} disabled={failNote.trim().length < 10}>Mark failed</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setFailing(false)}>Cancel</Button>
+          </div>
+        </form>
       )}
       {error && <p className="text-destructive mt-2 text-xs" role="alert">{error}</p>}
       {info && <p className="text-muted-foreground mt-2 text-xs" role="status">{info}</p>}
@@ -305,7 +359,13 @@ export function AdminPayouts() {
           href="?status=requested"
           tone={totals?.requested ? "attention" : "default"}
         />
-        <StatTile label="Processing" value={totals ? totals.processing : "…"} hint="Approved, transfer not confirmed" href="?status=approved" />
+        <StatTile
+          label="Processing"
+          value={totals ? totals.processing : "…"}
+          hint={totals?.needs_check ? `${totals.needs_check} need checking with Chapa` : "Approved, transfer not confirmed"}
+          href="?status=approved"
+          tone={totals?.needs_check ? "attention" : "default"}
+        />
         <StatTile label="Paid out in total" value={totals ? formatETB(totals.paid_amount) : "…"} href="?status=paid" />
         <StatTile label="Owed to providers" value={totals ? formatETB(totals.owed_to_providers) : "…"} hint="Earned and not yet paid out" />
       </div>

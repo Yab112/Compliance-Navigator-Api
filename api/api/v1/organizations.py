@@ -5,13 +5,25 @@ under /org/{org_id}, so membership is checked in one place per request.
 """
 
 import json
+from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from fastapi.responses import PlainTextResponse
 from pydantic import ValidationError
 
 from core.deps import get_current_user
+from core.verified import UNVERIFIED_DETAIL, get_verified_user
 from schemas.auth_user import AuthUser
 from schemas.organizations import (
     BranchIn,
@@ -74,7 +86,20 @@ def directory(
 
 @router.get("/organizations/mine")
 def my_organizations(user: AuthUser = Depends(get_current_user)):
-    return _ok({"organizations": org_service.my_orgs(user.id, user.email)})
+    return _ok({"organizations": org_service.my_orgs(user.id, user.email),
+                "invites": org_service.my_invites(user.email)})
+
+
+@router.post("/organizations/invites/{member_id}/{answer}")
+def answer_invite(member_id: UUID, answer: Literal["accept", "decline"], user: AuthUser = Depends(get_current_user)):
+    if answer == "accept" and not user.email_verified:
+        # The invite was sent to this address: joining needs proof the person reads it
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=UNVERIFIED_DETAIL)
+    try:
+        return _ok(org_service.answer_invite(str(member_id), user_id=user.id, email=user.email,
+                                             accept=answer == "accept"))
+    except OrgError as exc:
+        _raise(exc)
 
 
 @router.post("/organizations", status_code=status.HTTP_201_CREATED)
@@ -82,7 +107,7 @@ async def register(
     data: str = Form(..., description="OrgRegistration as JSON"),
     authorization_letter: UploadFile | None = File(None),
     logo: UploadFile | None = File(None),
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(get_verified_user),
 ):
     try:
         body = OrgRegistration(**json.loads(data))
@@ -335,7 +360,7 @@ def reports(org_id: UUID, status_: str | None = Query(None, alias="status", patt
 def respond_report(org_id: UUID, flag_id: UUID, body: ReportResponse, user: AuthUser = Depends(get_current_user)):
     _member(org_id, user)
     try:
-        return _ok({"report": org_service.respond_report(str(org_id), str(flag_id), status=body.status,
+        return _ok({"report": org_service.respond_report(str(org_id), str(flag_id), verdict=body.verdict,
                                                          response=body.response, actor=user.email)})
     except OrgError as exc:
         _raise(exc)

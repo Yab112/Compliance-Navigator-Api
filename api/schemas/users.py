@@ -12,6 +12,9 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=1, max_length=200)
     fullname: str = Field(min_length=2, max_length=120)
     phone: str | None = Field(None, pattern=PHONE_PATTERN)
+    # Document key -> the version the person ticked, e.g. {"terms": "1.0", "privacy": "1.0", ...}.
+    # Optional here so a missing box gets a clear 400 from services.legal instead of a schema error.
+    accept: dict[str, str] | None = Field(None, max_length=10)
 
 
 class LoginBody(BaseModel):
@@ -33,6 +36,10 @@ class PasswordChange(BaseModel):
 
 class ForgotPassword(BaseModel):
     email: EmailStr
+
+
+class EmailVerify(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
 
 
 class PasswordReset(BaseModel):

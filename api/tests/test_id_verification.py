@@ -75,6 +75,9 @@ def test_agent_registration_requires_verification(client, make_user):
     data = {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Abebe Kebede",
             "phone": "0911000000", "service_areas": ["bole"],
             "service_ids": [PASSPORT_RENEWAL], "national_id": "TYPED-123456"}
+    from test_providers import _accept_agreement
+
+    _accept_agreement(client, user)
     blocked = client.post(f"{API}/providers/join", data={"data": json.dumps(data)}, headers=user["headers"])
     assert blocked.status_code == 400
 
@@ -92,7 +95,10 @@ def test_agent_registration_requires_verification(client, make_user):
     assert detail["name_mismatch"] is False
     assert fin not in _all_text(client, user, admin, agent["id"])
 
-    # Approved agents show as ID-verified publicly
+    # Approved agents show as ID-verified publicly (once their vetting documents are checked)
+    from test_providers import _vet
+
+    _vet(agent["id"])
     client.post(f"{API}/admin/marketplace/providers/{agent['id']}/review", json={"action": "approve", "note": "Fayda verified, references checked"}, headers=admin["headers"])
     public = client.get(f"{API}/providers/{agent['slug']}").json()["payload"]["provider"]
     assert public["id_verified"] is True and "national_id" not in public
@@ -103,6 +109,9 @@ def test_name_mismatch_flagged(client, make_user):
     assert sandbox_verify(client, user, name="Sara Tesfaye").status_code == 200
     data = {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Abebe Kebede",
             "phone": "0911000000", "service_areas": ["bole"], "service_ids": [PASSPORT_RENEWAL]}
+    from test_providers import _accept_agreement
+
+    _accept_agreement(client, user)
     agent = client.post(f"{API}/providers/join", data={"data": json.dumps(data)}, headers=user["headers"]).json()["payload"]["provider"]
     detail = client.get(f"{API}/admin/marketplace/providers/{agent['id']}", headers=admin["headers"]).json()["payload"]["provider"]
     assert detail["name_mismatch"] is True

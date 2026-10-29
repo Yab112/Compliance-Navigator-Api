@@ -28,7 +28,7 @@ import { cleanTelegram, TELEGRAM_HINT, TELEGRAM_RE } from "@/lib/telegram";
 import { cn } from "@cn/core/lib/utils";
 import { useMyProvider } from "@cn/core/api/providers";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { adminUrl } from "@cn/core/config/env";
+import { MyAgreements } from "@/modules/legal/components/my-agreements";
 
 const EVENT_LABEL: Record<string, string> = {
   register: "Account created",
@@ -379,11 +379,6 @@ export function AccountPage() {
             <Link href="/me/provider?tab=earnings" className={link}>Earnings</Link>
           </>
         )}
-        {user.role === "admin" && (
-          <a href={adminUrl()} className="border-primary text-primary rounded-md border px-3 py-1.5 font-semibold">
-            Admin dashboard
-          </a>
-        )}
       </nav>
 
       <div role="tablist" aria-label="Account" className="border-border mb-6 flex gap-1 border-b">
@@ -408,9 +403,14 @@ export function AccountPage() {
       </div>
 
       {tab === "profile" ? (
-        <Section title="Profile" am="መገለጫ">
-          <ProfileForm />
-        </Section>
+        <div className="space-y-6">
+          <Section title="Profile" am="መገለጫ">
+            <ProfileForm />
+          </Section>
+          <Section title="Legal" am="ሕጋዊ ስምምነቶች">
+            <MyAgreements />
+          </Section>
+        </div>
       ) : (
         <div className="space-y-6">
           <Section title="Password" am="የይለፍ ቃል">

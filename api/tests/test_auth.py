@@ -3,7 +3,7 @@ import uuid
 from fastapi.testclient import TestClient
 
 from app import app
-from conftest import API
+from conftest import API, LEGAL_ACCEPT
 from services.db import execute
 
 
@@ -25,30 +25,38 @@ def test_unknown_email_gets_same_error(client):
     assert r.json()["detail"] == "Incorrect email or password"
 
 
-def test_register_signs_in_and_enforces_password_rules(client):
+def test_register_then_sign_in_and_password_rules(client):
     email = f"test-{uuid.uuid4().hex[:10]}@example.com"
-    weak = client.post(f"{API}/auth/register", json={"email": email, "password": "short", "fullname": "Weak Pw"})
+    weak = client.post(f"{API}/auth/register", json={"email": email, "password": "short", "fullname": "Weak Pw", "accept": LEGAL_ACCEPT})
     assert weak.status_code == 422
-    letters_only = client.post(f"{API}/auth/register", json={"email": email, "password": "onlyletters", "fullname": "Weak Pw"})
+    letters_only = client.post(f"{API}/auth/register", json={"email": email, "password": "onlyletters", "fullname": "Weak Pw", "accept": LEGAL_ACCEPT})
     assert "number" in letters_only.json()["detail"]
 
     with _fresh_client() as browser:
-        r = browser.post(f"{API}/auth/register", json={"email": email, "password": "good-pass-1", "fullname": "Good Pw"})
+        r = browser.post(f"{API}/auth/register", json={"email": email, "password": "good-pass-1", "fullname": "Good Pw", "accept": LEGAL_ACCEPT})
         assert r.status_code == 201, r.text
+        # Registering never signs in by itself (the answer is the same for a taken email)
+        assert "accessToken" not in r.json()["payload"] and "cn_refresh" not in browser.cookies
+        r = browser.post(f"{API}/auth/login", json={"email": email, "password": "good-pass-1"})
+        assert r.status_code == 200, r.text
         body = r.json()["payload"]
         assert body["accessToken"] and body["user"]["email"] == email
+        assert body["user"]["emailVerified"] is False
         assert "cn_refresh" in browser.cookies
         cookie_header = r.headers["set-cookie"].lower()
         assert "httponly" in cookie_header and "path=/api/v1/auth" in cookie_header
-        dup = browser.post(f"{API}/auth/register", json={"email": email.upper(), "password": "good-pass-1", "fullname": "Dup"})
-        assert dup.status_code == 409
+    execute("delete from user_consents where user_id in (select id from users where email = %s)", (email,))
     execute("delete from users where email = %s", (email,))
 
 
 def test_me_returns_role(client, make_user):
+    # Staff are a separate realm: their token works on /staff/me, never on the public /auth/me
     admin = make_user("admin")
-    r = client.get(f"{API}/auth/me", headers=admin["headers"])
-    assert r.json()["payload"]["user"]["role"] == "admin"
+    assert client.get(f"{API}/auth/me", headers=admin["headers"]).status_code == 401
+    r = client.get(f"{API}/staff/me", headers=admin["headers"])
+    assert r.status_code == 200 and r.json()["payload"]["superAdmin"]
+    user = make_user()
+    assert client.get(f"{API}/auth/me", headers=user["headers"]).json()["payload"]["user"]["role"] == "user"
 
 
 def test_admin_routes_require_admin(client, make_user):
@@ -63,10 +71,10 @@ def test_garbage_token_is_401(client):
     assert r.status_code == 401
 
 
-def test_admin_cannot_demote_self(client, make_user):
-    admin = make_user("admin")
-    r = client.patch(f"{API}/admin/users/{admin['id']}", json={"role": "user"}, headers=admin["headers"])
-    assert r.status_code == 400
+def test_public_users_cannot_be_made_admin(client, make_user):
+    admin, user = make_user("admin"), make_user()
+    r = client.patch(f"{API}/admin/users/{user['id']}", json={"role": "admin"}, headers=admin["headers"])
+    assert r.status_code == 422
 
 
 def test_refresh_rotates_and_detects_reuse(make_user):

@@ -115,6 +115,8 @@ export type PublicProvider = {
   job_success?: number | null;
   closed_jobs?: number;
   id_verified: boolean;
+  /** Verified only on the Fayda sandbox (test) screen: shown as "Test ID only", never as verified */
+  id_test?: boolean;
   registered_business: boolean;
   license_expires_at?: string | null;
   approved_at?: string | null;
@@ -167,7 +169,113 @@ export type Provider = PublicProvider & {
   agency?: AgencyLink | null;
 };
 
+// ---------------------------------------------------------------- vetting
+
+export type VettingDocKind = "police_clearance" | "education" | "photo" | "trade_licence" | "tin_certificate" | "id_copy";
+export type EducationLevel = "grade_10" | "grade_12" | "tvet" | "diploma" | "degree";
+export type VettingDocStatus = "pending" | "verified" | "rejected" | "expired" | "superseded";
+/** A requirement's state: verified and expiring both count as done */
+export type VettingStatus = "missing" | "pending" | "verified" | "expiring" | "rejected" | "expired" | "below_minimum";
+
+export type VettingDocument = {
+  id: string;
+  provider_id: string;
+  kind: VettingDocKind;
+  label: string;
+  level?: EducationLevel | null;
+  level_label?: string;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  /** When it stops counting: the printed date, or for a police clearance its issue date plus the accepted age */
+  valid_until?: string | null;
+  days_left?: number | null;
+  reference_no?: string | null;
+  issuer?: string | null;
+  status: VettingDocStatus;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  uploaded_at: string;
+  consent_at?: string | null;
+};
+
+export type VettingReference = {
+  id: string;
+  name: string;
+  phone: string;
+  relationship: string;
+  status: "pending" | "confirmed" | "failed";
+  checked_by?: string | null;
+  checked_at?: string | null;
+  note?: string | null;
+  created_at: string;
+};
+
+export type VettingItem = {
+  key: string;
+  type: "identity" | "document" | "references" | "telegram";
+  kind?: VettingDocKind;
+  label: string;
+  label_am: string;
+  required: boolean;
+  status: VettingStatus;
+  message?: string | null;
+  help?: string;
+  needs?: { issued_on: boolean; expires_on: boolean; reference_no: boolean; level: boolean; images_only: boolean };
+  reference_label?: string;
+  current?: VettingDocument | null;
+  waiting?: VettingDocument | null;
+  max_age_days?: number;
+  min_level?: EducationLevel;
+  min_level_label?: string;
+  references?: VettingReference[];
+  /** Staff only */
+  how_to_verify?: string;
+  sensitive?: boolean;
+};
+
+export type Vetting = {
+  complete: boolean;
+  /** Why the listing can't be approved or renewed yet */
+  blocker: string | null;
+  items: VettingItem[];
+  max_upload_mb: number;
+  education_levels: { key: EducationLevel; label: string }[];
+};
+
+export type VettingUpload = {
+  kind: VettingDocKind;
+  file: File;
+  issued_on?: string;
+  expires_on?: string;
+  reference_no?: string;
+  issuer?: string;
+  level?: EducationLevel;
+  /** Police clearance only: the provider agrees we keep and check it (required) */
+  consent?: boolean;
+};
+
+/** A name, registration or VAT change from an approved provider, held until staff check it */
+export type ProviderChangeRequest = {
+  id: string;
+  provider_id: string;
+  changes: Record<string, string | boolean | null>;
+  old_values: Record<string, string | boolean | null>;
+  status: "pending" | "approved" | "rejected";
+  requested_by?: string | null;
+  requested_at: string;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  note?: string | null;
+};
+
 export type MyProvider = Provider & {
+  vetting?: Vetting;
+  pending_change?: ProviderChangeRequest | null;
+  /** Refused in the last 30 days, with the reason */
+  rejected_change?: ProviderChangeRequest | null;
   payout?: PayoutAccount;
   tips: string[];
   completeness: { percent: number; items: { key: string; label: string; done: boolean }[] };
@@ -189,6 +297,8 @@ export type AdminProvider = Provider & {
   /** When renewal opens, and why it can't happen now (null when it can) */
   renewal?: { opens_on: string | null; blocker: string | null };
   identity?: FaydaIdentity | null;
+  vetting?: Vetting;
+  pending_change?: ProviderChangeRequest | null;
   open_jobs?: number;
   open_disputes?: number;
   events?: AgentEvent[];
@@ -266,7 +376,103 @@ export type Hire = {
   client_rating_comment?: string | null;
   /** Provider view only: the client's record */
   client_record?: ClientRecord | null;
+  /** Staff only: an upheld complaint on a paid job, waiting for a refund */
+  refund_needed?: boolean;
+  refund_flagged_at?: string | null;
+  refund_flagged_by?: string | null;
+  dispute_resolved_by?: string | null;
+  dispute_resolved_at?: string | null;
 };
+
+/** What staff may do to a hire now (the server refuses anything else) */
+export type HireStaffAction = "assign" | "cancel" | "reopen" | "note";
+
+/** One line of a hire's history */
+export type HireEvent = {
+  id: number | null;
+  action: string;
+  actor_kind: "client" | "provider" | "staff" | "system";
+  actor: string | null;
+  from_status: HireStatus | null;
+  to_status: HireStatus | null;
+  note: string | null;
+  provider_id: string | null;
+  provider_name: string | null;
+  created_at: string;
+};
+
+export type HirePaymentRow = {
+  tx_ref: string;
+  gateway: string;
+  amount: number;
+  status: "pending" | "success" | "failed" | "cancelled";
+  payment_method: string | null;
+  gateway_reference: string | null;
+  commission_amount: number | null;
+  provider_amount: number | null;
+  created_at: string;
+  verified_at: string | null;
+};
+
+export type HireTicketRow = {
+  id: string;
+  ref: string;
+  subject: string;
+  status: string;
+  queue: string;
+  from_side: "client" | "provider";
+  created_at: string;
+  updated_at: string;
+};
+
+/** GET admin/marketplace/engagements/{id}. payments and tickets are null without the permission to see them. */
+export type AdminHireDetail = {
+  hire: Hire;
+  events: HireEvent[];
+  payments: HirePaymentRow[] | null;
+  tickets: HireTicketRow[] | null;
+  actions: HireStaffAction[];
+};
+
+/** A provider staff could assign to an open request */
+export type AssignCandidate = {
+  id: string;
+  display_name: string;
+  registration_no: string | null;
+  provider_type: ProviderType;
+  entity_type: EntityType;
+  sub_city: string | null;
+  service_areas: string[];
+  specialties: string[];
+  trust_score: number;
+  rating_avg: number | null;
+  rating_count: number;
+  completed_count: number;
+  license_expires_at: string | null;
+  offers_service: boolean;
+  same_specialty: boolean;
+  covers_area: boolean;
+  open_jobs: number;
+};
+
+/** A row of the staff providers list: no national ID, TIN, documents or payout details */
+export type AdminProviderRow = Pick<
+  PublicProvider,
+  | "id" | "slug" | "provider_type" | "entity_type" | "registration_no" | "display_name" | "photo_url"
+  | "sub_city" | "service_areas" | "specialties" | "accepting_work" | "id_verified" | "registered_business"
+  | "external_license_status" | "trust_score" | "rating_avg" | "rating_count" | "completed_count"
+  | "license_expires_at" | "approved_at" | "created_at" | "is_sample"
+> & {
+  phone: string | null;
+  status: ProviderStatus;
+  id_verification_method?: "fayda" | "fayda_sandbox" | null;
+  has_external_license: boolean;
+  open_jobs: number;
+  open_disputes: number;
+};
+
+/** Whether "Remove sample data" may run here */
+export type SampleStatus = { providers: number; can_purge: boolean; reason: string | null };
 
 /** A client's record as providers see it (and as the client sees their own). Never public. */
 export type ClientRecord = {
@@ -395,4 +601,5 @@ export type AdminReview = Review & {
   provider_name: string;
   provider_slug: string;
   client_email?: string | null;
+  engagement_id?: string;
 };

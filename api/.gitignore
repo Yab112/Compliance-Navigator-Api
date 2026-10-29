@@ -5,6 +5,7 @@
 
 __pycache__/
 example.log
+logs/
 uploads/
 .cache/
 

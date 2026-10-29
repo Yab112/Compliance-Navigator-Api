@@ -6,6 +6,8 @@ export type User = {
   telegramUsername?: string | null;
   role?: UserRole;
   preferredSubCity?: string | null;
+  /** False until they open the link we emailed after sign-up */
+  emailVerified?: boolean;
 };
 
 export type UserRole = "user" | "agent" | "admin";

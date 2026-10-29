@@ -4,7 +4,11 @@ Weights, chosen so reputation from real hires dominates but a new, fully verifie
 provider still starts above an unverified one:
 
   rating          50  Bayesian average of review ratings (prior 3.5 stars, weight 5)
-  verification    25  Fayda ID 10, phone 3, TIN / trade licence 5, sector licence 7
+  verification    25  Fayda ID 8, phone 2, police clearance 5 (checked by staff, in date),
+                      education 3 (individuals: certificate at the required level, checked by staff),
+                      TIN 3 for individuals or TIN and trade licence 6 for companies, sector licence 4.
+                      Changed when vetting documents were added: clearance and education took points
+                      from the other checks, so the part and the total stay at 25 and 100.
   reliability     15  completed vs declined or abandoned jobs (smoothed)
   experience      10  completed jobs (up to 20) and months on the platform (up to 24)
   penalties      -30  upheld disputes (-10 each), suspensions (-5 each, max -15)
@@ -28,7 +32,7 @@ def bayesian_rating(total_stars: float, count: int) -> float:
 def compute(stats: dict) -> dict:
     """`stats` keys: review_count, review_sum, fayda_verified, has_phone, has_tin,
     has_trade_license, entity_type, external_license_verified, completed, failed,
-    approved_at, upheld_disputes, suspensions."""
+    approved_at, upheld_disputes, suspensions; optional police_clearance_verified, education_verified."""
     parts: list[dict] = []
 
     bayes = bayesian_rating(stats["review_sum"], stats["review_count"])
@@ -43,18 +47,25 @@ def compute(stats: dict) -> dict:
 
     verification = 0
     checks = []
+    company = stats["entity_type"] == "company"
     if stats["fayda_verified"]:
-        verification += 10
+        verification += 8
         checks.append("Fayda ID")
     if stats["has_phone"]:
-        verification += 3
+        verification += 2
         checks.append("phone")
-    registered = stats["has_tin"] and (stats["has_trade_license"] or stats["entity_type"] == "individual")
-    if registered:
+    if stats.get("police_clearance_verified"):
         verification += 5
-        checks.append("TIN and trade licence" if stats["entity_type"] == "company" else "TIN")
+        checks.append("police clearance")
+    if stats.get("education_verified") and not company:
+        verification += 3
+        checks.append("education")
+    registered = stats["has_tin"] and (stats["has_trade_license"] or not company)
+    if registered:
+        verification += 6 if company else 3
+        checks.append("TIN and trade licence" if company else "TIN")
     if stats["external_license_verified"]:
-        verification += 7
+        verification += 4
         checks.append("sector licence")
     parts.append({
         "key": "verification", "label": "Verification", "max": 25, "points": verification,
@@ -104,12 +115,18 @@ def tips(breakdown: dict, provider: dict) -> list[str]:
     out = []
     by_key = {p["key"]: p for p in breakdown["parts"]}
     if by_key["verification"]["points"] < 25:
+        company = provider["entity_type"] == "company"
+        done = (by_key["verification"].get("detail") or "").lower()
         if not (provider.get("national_id_verified") or provider.get("id_verified")):
-            out.append("Verify your identity with Fayda (+10).")
+            out.append("Verify your identity with Fayda (+8).")
+        if "police clearance" not in done:
+            out.append("Upload a police clearance certificate on the Vetting tab (+5).")
+        if not company and "education" not in done:
+            out.append("Upload your education certificate on the Vetting tab (+3).")
         if not provider.get("tin"):
-            out.append("Add your TIN" + (" and trade licence" if provider["entity_type"] == "company" else "") + " (+5).")
+            out.append("Add your TIN" + (" and trade licence" if company else "") + f" (+{6 if company else 3}).")
         if provider.get("external_license_status") != "verified":
-            out.append("Add your sector licence number so staff can verify it (+7).")
+            out.append("Add your sector licence number so staff can verify it (+4).")
     if breakdown["is_new"]:
         out.append("Complete your first jobs and ask clients to leave a review. Ratings are half of the score.")
     if by_key["reliability"]["points"] < 12:

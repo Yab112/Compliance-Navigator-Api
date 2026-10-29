@@ -34,9 +34,10 @@ function initials(name: string): string {
 }
 
 /** Which badge a provider earns: companies with checked TIN and licence, or a Fayda-verified person. */
-export function verifiedLevel(p: Pick<PublicProvider, "entity_type" | "id_verified" | "registered_business">): VerifiedLevel {
+export function verifiedLevel(p: Pick<PublicProvider, "entity_type" | "id_verified" | "registered_business"> & { id_test?: boolean }): VerifiedLevel {
   if (p.entity_type === "company" && p.registered_business) return "company";
-  if (p.id_verified) return "id";
+  // A Fayda sandbox (test) check never earns the seal
+  if (p.id_verified && !p.id_test) return "id";
   return null;
 }
 

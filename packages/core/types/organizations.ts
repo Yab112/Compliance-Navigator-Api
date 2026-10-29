@@ -335,6 +335,10 @@ export type OrgReport = {
   message: string;
   status: "open" | "resolved" | "dismissed";
   org_response?: string | null;
+  org_verdict?: "fixed" | "correct" | null;
+  /** Staff's closing note, once staff resolve or dismiss the report. */
+  resolution_note?: string | null;
+  resolved_at?: string | null;
   org_responded_by?: string | null;
   org_responded_at?: string | null;
   created_at: string;
@@ -427,6 +431,22 @@ export type SubmissionDetail = Submission & {
   change_reason?: string | null;
   live_at?: string | null;
   completeness: Completeness;
+  /** Branch id to name, so snapshots read as names. */
+  branch_names?: Record<string, string>;
+  /** Service id to "name (organization)" for linked services in the snapshots. */
+  service_names?: Record<string, string>;
+};
+
+/** An invitation waiting for the invited person to accept or decline. */
+export type OrgInvite = {
+  id: string;
+  role: "owner" | "editor";
+  created_at: string;
+  org_id: string;
+  org_name: string;
+  org_name_am?: string | null;
+  logo_url?: string | null;
+  org_status?: OrgStatus;
 };
 
 export const ORG_TYPE_LABEL: Record<OrgType, string> = {

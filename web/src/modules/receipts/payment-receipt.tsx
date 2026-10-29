@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { usePaymentReceipt } from "@cn/core/api/payments";
+import { formatDateTime } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
 import { ReceiptBlock, ReceiptFrame, ReceiptRow, money } from "@/modules/receipts/receipt-layout";
 
@@ -69,6 +71,26 @@ export function PaymentReceiptPage({ txRef, asStatement = false }: { txRef: stri
               <ReceiptRow label="Our reference" value={<span className="font-mono text-xs break-all">{txRef}</span>} />
             </dl>
           </ReceiptBlock>
+
+          {r.refunds && r.refunds.length > 0 && (
+            <ReceiptBlock title="Refunds">
+              <dl>
+                {r.refunds.map((f) => (
+                  <ReceiptRow
+                    key={f.id}
+                    label={f.status === "refunded" ? `Refunded ${formatDateTime(f.completed_at)}` : "Refund on its way"}
+                    value={
+                      f.status === "refunded" ? (
+                        <Link href={`/receipts/refund/${f.id}`} className="text-primary underline">-{money(f.amount, cur)}</Link>
+                      ) : (
+                        `-${money(f.amount, cur)}`
+                      )
+                    }
+                  />
+                ))}
+              </dl>
+            </ReceiptBlock>
+          )}
 
           {s && (
             <ReceiptBlock title="Your statement" className="bg-secondary/40 rounded-lg border p-4 print:bg-transparent">

@@ -16,6 +16,7 @@ import type {
   EligibilityResult,
   ImportReport,
   MemberOrganization,
+  OrgInvite,
   OrgReport,
   OrgAnalytics,
   OrgServiceListItem,
@@ -73,7 +74,7 @@ export const useEligibility = (serviceId: string) =>
 // ---------------------------------------------------------------- organization workspace
 
 export const useMyOrganizations = (enabled = true) =>
-  useFetchData<APIResponse<{ organizations: MemberOrganization[] }>>(["orgs", "mine"], p.mine, {
+  useFetchData<APIResponse<{ organizations: MemberOrganization[]; invites: OrgInvite[] }>>(["orgs", "mine"], p.mine, {
     enabled,
     staleTime: 0,
     refetchOnMount: true,
@@ -212,26 +213,39 @@ export type { Branch };
 export const ADMIN_ORGS_PAGE_SIZE = 25;
 
 export const useAdminOrganizations = (status: string, q: string, page = 0) =>
-  useAdminQuery<Paged<AdminOrganization>>(
+  useAdminQuery<Paged<AdminOrganization> & { confirm_every_days: number }>(
     ["organizations", status, q, page],
     withQuery(a.organizations, { status, q, limit: ADMIN_ORGS_PAGE_SIZE, offset: page * ADMIN_ORGS_PAGE_SIZE }),
   );
 
+/** Download the organizations list (same filters) as a CSV file. */
+export const downloadOrganizationsCsv = async (status: string, q: string) => {
+  const res = await api.get(`/${a.organizationsExport}`, { params: { status, q: q || undefined }, responseType: "blob" });
+  const url = URL.createObjectURL(new Blob([res.data as BlobPart], { type: "text/csv" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `organizations-${status}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
 export const useAdminOrganization = (id: string) =>
   useAdminQuery<{ organization: AdminOrganization }>(["organization", id], a.organization(id), { enabled: !!id });
 
+type OrgReviewBody = { action: string; note?: string; catalog_institution_id?: string };
+
 export const useReviewOrganization = () => {
-  const { run, isPending } = useAdminMutation<{ organization: AdminOrganization }, { action: string; note?: string }>();
+  const { run, isPending } = useAdminMutation<{ organization: AdminOrganization }, OrgReviewBody>();
   return {
-    review: (id: string, body: { action: string; note?: string }) => run(a.organizationReview(id), MTD.POST, body),
+    review: (id: string, body: OrgReviewBody) => run(a.organizationReview(id), MTD.POST, body),
     isPending,
   };
 };
 
-export const useSubmissions = (status: string, page = 0) =>
+export const useSubmissions = (status: string, page = 0, q = "") =>
   useAdminQuery<{ submissions: Submission[]; total: number }>(
-    ["submissions", status, page],
-    withQuery(a.submissions, { status, limit: ADMIN_ORGS_PAGE_SIZE, offset: page * ADMIN_ORGS_PAGE_SIZE }),
+    ["submissions", status, q, page],
+    withQuery(a.submissions, { status, q, limit: ADMIN_ORGS_PAGE_SIZE, offset: page * ADMIN_ORGS_PAGE_SIZE }),
   );
 
 export const useSubmission = (id: string) =>

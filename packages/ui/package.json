@@ -14,12 +14,12 @@
     "@cn/core": "workspace:*"
   },
   "peerDependencies": {
-    "next": "16.1.1",
-    "react": "19.2.3"
+    "next": "16.1.7",
+    "react": "19.2.9"
   },
   "devDependencies": {
-    "next": "16.1.1",
-    "react": "19.2.3",
+    "next": "16.1.7",
+    "react": "19.2.9",
     "@types/react": "^19",
     "typescript": "^5"
   },

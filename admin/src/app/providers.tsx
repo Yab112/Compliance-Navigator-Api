@@ -1,5 +1,6 @@
 "use client";
 
+import "@/lib/staff-realm";
 import "@/lib/routes";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@cn/core/providers/auth-provider";

@@ -1,4 +1,6 @@
+import atexit
 import json
+from datetime import date, timedelta
 
 import pytest
 
@@ -10,9 +12,19 @@ PNG = b"\x89PNG\r\n\x1a\nfake"
 PASSPORT_RENEWAL = "mesob-728"
 
 
-def _join(client, user, *, verify=True, files=None, **overrides):
+def _accept_agreement(client, user):
+    from services import legal
+
+    doc = legal.DOCUMENTS["provider_agreement"]
+    r = client.post(f"{API}/legal/accept", json={"accept": {doc.key: doc.version}}, headers=user["headers"])
+    assert r.status_code == 200, r.text
+
+
+def _join(client, user, *, verify=True, agree=True, files=None, **overrides):
     if verify:
         ensure_verified(client, user)
+    if agree:
+        _accept_agreement(client, user)
     data = {
         "provider_type": "guday_geday", "entity_type": "individual",
         "display_name": "Test Agent", "phone": "0911000000",
@@ -23,7 +35,46 @@ def _join(client, user, *, verify=True, files=None, **overrides):
                        headers=user["headers"])
 
 
-def _admin(client, admin, provider_id, action, note=None):
+_VETTING_FILES: list[str] = []
+
+
+@atexit.register
+def _remove_vetting_files():
+    from services.storage_service import delete_vetting_file
+
+    for key in _VETTING_FILES:
+        delete_vetting_file(key)
+
+
+def _vet(provider_id: str) -> None:
+    """Hand in and verify every required vetting document, as a provider and staff would."""
+    from services import provider_service, vetting
+    from services.db import execute, fetch_all
+
+    p = provider_service.get(provider_id)
+    if vetting.checklist(p)["complete"]:
+        return
+    if p["entity_type"] == "individual" and not p.get("telegram_username"):
+        execute("update providers set telegram_username = 'test_agent_tg' where id = %s", (provider_id,))
+    today = date.today()
+    extra = {
+        "police_clearance": {"issued_on": today - timedelta(days=10), "reference_no": "FPC-TEST-1"},
+        "education": {"level": "grade_12"},
+        "trade_licence": {"reference_no": "AA/14/1234", "expires_on": today + timedelta(days=300)},
+        "tin_certificate": {"reference_no": "0012345678"},
+    }
+    for item in vetting.checklist(provider_service.get(provider_id))["items"]:
+        if item["type"] != "document" or not item["required"] or item["status"] in ("verified", "expiring"):
+            continue
+        doc = vetting.upload(p, item["kind"], PNG, actor="test", consent=True, **extra.get(item["kind"], {}))
+        vetting.review_document(provider_id, doc["id"], "verified", actor="test", **extra.get(item["kind"], {}))
+    _VETTING_FILES.extend(r["file_key"] for r in fetch_all(
+        "select file_key from provider_documents where provider_id = %s", (provider_id,)))
+
+
+def _admin(client, admin, provider_id, action, note=None, vet=True):
+    if vet and action == "approve":
+        _vet(provider_id)
     if note is None and action in ("approve", "renew"):
         note = "Checked the national ID and references by phone"
     return client.post(f"{API}/admin/marketplace/providers/{provider_id}/review",
@@ -314,7 +365,8 @@ def test_bayesian_rating_and_new_label():
 def test_verification_bonuses_and_penalties():
     bare = trust_score.compute(BASE)["score"]
     verified = trust_score.compute({**BASE, "fayda_verified": True, "has_phone": True, "has_tin": True,
-                                    "external_license_verified": True})["score"]
+                                    "external_license_verified": True, "police_clearance_verified": True,
+                                    "education_verified": True})["score"]
     assert verified - bare == 25
     # Companies only get the registration points with a trade licence too
     company = trust_score.compute({**BASE, "entity_type": "company", "has_tin": True})

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any
 
@@ -184,17 +185,68 @@ def list_documents() -> list[dict]:
     return out
 
 
-def update_document(doc_id: str, changes: dict, *, mark_verified: bool) -> dict | None:
+def get_document(doc_id: str) -> dict | None:
+    rows = _query_rows("MATCH (d:Document {id: $id}) RETURN properties(d) AS doc", {"id": doc_id})
+    if not rows:
+        return None
+    return {k: _serialize(v) for k, v in dict(rows[0]["doc"]).items()}
+
+
+def page_documents(
+    q: str | None = None, status: str | None = None, limit: int = 20, offset: int = 0
+) -> dict:
+    """One page of Document nodes for the admin table, with search and a verified/stale filter."""
+    search = (
+        "($q = '' OR toLower(d.name) CONTAINS $q OR toLower(d.id) CONTAINS $q"
+        " OR toLower(coalesce(d.issuing_authority, '')) CONTAINS $q)"
+    )
+    where = [search]
+    if status == "stale":
+        where.append("coalesce(d.stale, false) = true")
+    elif status == "verified":
+        where.append("coalesce(d.stale, false) = false")
+    params = {"q": (q or "").strip().lower(), "limit": limit, "offset": offset}
+    cond = " AND ".join(where)
+    total = _query_rows(f"MATCH (d:Document) WHERE {cond} RETURN count(d) AS c", params)
+    rows = _query_rows(
+        f"""
+        MATCH (d:Document) WHERE {cond}
+        WITH d ORDER BY toLower(d.name), d.id SKIP $offset LIMIT $limit
+        OPTIONAL MATCH (pre:Document)-[:REQUIRES]->(d)
+        OPTIONAL MATCH (d)-[:FULFILLED_BY]->(g:GovService)
+        OPTIONAL MATCH (s:Service)-[:TARGETS]->(d)
+        RETURN properties(d) AS doc,
+               collect(DISTINCT {{id: pre.id, name: pre.name}}) AS prerequisites,
+               collect(DISTINCT {{id: g.id, name: g.name}}) AS mesob_services,
+               collect(DISTINCT s.id) AS target_of
+        ORDER BY toLower(doc.name), doc.id
+        """,
+        params,
+    )
+    items = []
+    for r in rows:
+        doc = {k: _serialize(v) for k, v in dict(r["doc"]).items()}
+        pres = [p for p in r["prerequisites"] if p.get("id")]
+        doc["prerequisites"] = [p["id"] for p in pres]
+        doc["prerequisite_names"] = {p["id"]: p.get("name") or p["id"] for p in pres}
+        doc["mesob_services"] = [m for m in r["mesob_services"] if m.get("id")]
+        doc["target_of"] = r["target_of"]
+        items.append(doc)
+    return {"items": items, "total": total[0]["c"] if total else 0}
+
+
+def update_document(doc_id: str, changes: dict, *, mark_verified: bool, actor: str | None = None) -> dict | None:
     props = {k: v for k, v in changes.items() if k in EDITABLE_DOCUMENT_FIELDS}
+    props["updated_by"] = actor
     rows = _query_rows(
         """
         MATCH (d:Document {id: $id})
-        SET d += $props
+        SET d += $props, d.updated_at = datetime()
         FOREACH (_ IN CASE WHEN $verify THEN [1] ELSE [] END |
-          SET d.last_verified = date(), d.stale = false)
-        RETURN d AS doc
+          SET d.last_verified = date(), d.stale = false, d.verified_by = $actor)
+        RETURN properties(d) AS doc
         """,
-        {"id": doc_id, "props": props, "verify": mark_verified},
+        {"id": doc_id, "props": props, "verify": mark_verified, "actor": actor},
     )
     if not rows:
         return None
@@ -202,52 +254,179 @@ def update_document(doc_id: str, changes: dict, *, mark_verified: bool) -> dict 
 
 
 def compliance_graph_view() -> dict:
-    """Services, documents and their edges, small enough to draw in full."""
+    """Every node a roadmap can touch and the links between them, for the admin diagram.
+
+    Nodes carry a `key` ("Label:id") because services, documents and sectors share ids
+    (e.g. "passport"). Edges are normalised so `source` always has to happen before
+    `target`, whatever the direction of the stored relationship:
+      REQUIRES      document -> document that needs it
+      TARGETS       final document -> the goal (service) it completes
+      SECTOR_EXTRA  extra document -> the business sector that needs it
+      ORG_REQUIRES  document -> organization service that asks for it
+      ISSUES        organization service -> document it hands out
+      PREREQUISITE  organization service -> organization service that needs it first
+    """
     nodes = _query_rows(
         """
-        MATCH (n) WHERE n:Service OR n:Document OR n:Sector
-        RETURN n.id AS id, coalesce(n.name, n.label) AS label, labels(n)[0] AS type,
-               n.stale AS stale, n.fee_etb AS fee, n.avg_processing_days AS days
+        MATCH (n) WHERE n:Service OR n:Document OR n:Sector OR n:OrgDocument
+                     OR (n:OrgService AND coalesce(n.published, false))
+        WITH n, labels(n)[0] AS type
+        OPTIONAL MATCH (n)-[:OFFERED_BY]->(o:Organization) WHERE type = 'OrgService'
+        RETURN type + ':' + coalesce(n.id, n.key) AS key, coalesce(n.id, n.key) AS id, type,
+               coalesce(n.name, n.label, n.id, n.key) AS label,
+               n.name_am AS label_am, n.description AS description, n.category AS category,
+               n.stale AS stale, coalesce(n.fee_etb, n.fee_min) AS fee,
+               n.avg_processing_days AS days, n.processing_minutes AS minutes,
+               coalesce(n.issuing_authority, n.regulatory_body) AS office, n.form_code AS form_code,
+               n.last_verified AS last_verified, n.verified_by AS verified_by,
+               n.source_url AS source_url, n.applicable_sectors AS sectors,
+               n.sector_specific AS sector_specific, n.slug AS slug,
+               o.name AS organization, o.id AS organization_id
         """
     )
     edges = _query_rows(
         """
-        MATCH (a)-[r:REQUIRES|TARGETS|SECTOR_EXTRA]->(b)
-        RETURN a.id AS source, b.id AS target, type(r) AS type
+        MATCH (a:Document)-[:REQUIRES]->(b:Document)
+        RETURN 'Document:' + a.id AS source, 'Document:' + b.id AS target, 'REQUIRES' AS type
+        UNION ALL
+        MATCH (s:Service)-[:TARGETS]->(d:Document)
+        RETURN 'Document:' + d.id AS source, 'Service:' + s.id AS target, 'TARGETS' AS type
+        UNION ALL
+        MATCH (sec:Sector)-[:SECTOR_EXTRA]->(d:Document)
+        RETURN 'Document:' + d.id AS source, 'Sector:' + sec.id AS target, 'SECTOR_EXTRA' AS type
+        UNION ALL
+        MATCH (s:OrgService)-[:REQUIRES]->(d) WHERE coalesce(s.published, false) AND (d:Document OR d:OrgDocument)
+        RETURN labels(d)[0] + ':' + coalesce(d.id, d.key) AS source, 'OrgService:' + s.id AS target,
+               'ORG_REQUIRES' AS type
+        UNION ALL
+        MATCH (s:OrgService)-[:ISSUES]->(d) WHERE coalesce(s.published, false) AND (d:Document OR d:OrgDocument)
+        RETURN 'OrgService:' + s.id AS source, labels(d)[0] + ':' + coalesce(d.id, d.key) AS target,
+               'ISSUES' AS type
+        UNION ALL
+        MATCH (s:OrgService)-[:PREREQUISITE]->(p:OrgService)
+        WHERE coalesce(s.published, false) AND coalesce(p.published, false)
+        RETURN 'OrgService:' + p.id AS source, 'OrgService:' + s.id AS target, 'PREREQUISITE' AS type
         """
     )
     mesob = _query_rows(
         """
         MATCH (d:Document)-[:FULFILLED_BY]->(g:GovService)-[:OFFERED_BY]->(i:Institution)
-        RETURN d.id AS document, g.id AS id, g.name AS name, i.short_name AS institution
+        RETURN d.id AS document, g.id AS id, g.name AS name, i.short_name AS institution,
+               g.fee_text AS fee_text, g.processing_time_text AS time_text
         """
     )
-    return {"nodes": nodes, "edges": edges, "mesobLinks": mesob}
+    keys = {n["key"] for n in nodes if n["key"]}
+    out_nodes = []
+    for n in nodes:
+        if not n["key"]:
+            continue
+        out_nodes.append({k: _serialize(v) for k, v in n.items()})
+    # Drop links to anything not drawn (unpublished services, half-synced nodes)
+    out_edges = [e for e in edges if e["source"] in keys and e["target"] in keys and e["source"] != e["target"]]
+    return {"nodes": out_nodes, "edges": out_edges, "mesobLinks": mesob}
 
 
-def institution_breakdown() -> list[dict]:
-    return _query_rows(
-        """
-        MATCH (i:Institution {at_mesob: true})
+def _institution_filter(q: str | None) -> tuple[str, dict]:
+    cond = ("i.at_mesob = true AND ($q = '' OR toLower(coalesce(i.name, '')) CONTAINS $q"
+            " OR toLower(coalesce(i.short_name, '')) CONTAINS $q)")
+    return cond, {"q": (q or "").strip().lower()}
+
+
+_INSTITUTION_ROWS = """
         OPTIONAL MATCH (g:GovService {language: 'en'})-[:OFFERED_BY]->(i)
         RETURN i.id AS id, i.name AS name, i.short_name AS short_name,
                count(g) AS services,
                avg(g.processing_minutes) AS avg_minutes,
                count(CASE WHEN g.online_url IS NOT NULL THEN 1 END) AS online
-        ORDER BY services DESC
-        """
+        ORDER BY services DESC, name
+"""
+
+
+def institution_breakdown() -> list[dict]:
+    cond, params = _institution_filter(None)
+    return _query_rows(f"MATCH (i:Institution) WHERE {cond} {_INSTITUTION_ROWS}", params)
+
+
+def page_institutions(q: str | None = None, limit: int = 20, offset: int = 0) -> dict:
+    """One page of MESOB institutions with their service counts, busiest first."""
+    cond, params = _institution_filter(q)
+    rows = _query_rows(
+        f"MATCH (i:Institution) WHERE {cond} {_INSTITUTION_ROWS} SKIP $offset LIMIT $limit",
+        {**params, "limit": limit, "offset": offset},
     )
+    total = _query_rows(f"MATCH (i:Institution) WHERE {cond} RETURN count(i) AS c", params)
+    return {"items": rows, "total": total[0]["c"] if total else 0}
 
 
-def run_cypher_readonly(query: str, params: dict | None = None, limit: int = 200) -> list[dict]:
-    """Read-only Cypher console for admins. Writes are rejected by the driver."""
+# ---------------------------------------------------------------- read-only Cypher console
+
+CYPHER_TIMEOUT_SECONDS = 10
+CYPHER_MAX_ROWS = 200
+
+
+class CypherRejected(ValueError):
+    """The console query does something other than read the graph."""
+
+
+# Clauses that change data or schema, read files or URLs, or run admin commands. Neo4j also
+# refuses writes because the session is READ-only; this list is the first line of defence and
+# covers reads we do not want either (LOAD CSV can fetch URLs, dbms.* and SHOW leak config).
+_FORBIDDEN = [
+    (r"\b(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|FOREACH|ALTER|RENAME|GRANT|DENY|REVOKE)\b",
+     "writes are not allowed"),
+    (r"\bLOAD\s+CSV\b", "LOAD CSV is not allowed"),
+    (r"\bUSING\s+PERIODIC\s+COMMIT\b|\bIN\s+(CONCURRENT\s+)?TRANSACTIONS\b", "batched transactions are not allowed"),
+    (r"\b(SHOW|START|STOP|TERMINATE|ENABLE|USE)\b", "admin commands are not allowed"),
+    (r"\b(apoc|dbms|gds)\s*\.", "APOC, GDS and dbms functions are not allowed"),
+]
+# CALL is limited to these read-only listings
+_ALLOWED_CALLS = {"db.labels", "db.relationshiptypes", "db.propertykeys", "db.schema.visualization",
+                  "db.schema.nodetypeproperties", "db.schema.reltypeproperties"}
+
+
+def _strip_literals(query: str) -> str:
+    """Blank out comments and string literals so 'Set' inside a name is not a keyword."""
+    out = re.sub(r"//[^\n]*|/\*.*?\*/", " ", query, flags=re.DOTALL)
+    out = re.sub(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|`[^`]*`", "''", out)
+    return out
+
+
+def check_readonly_cypher(query: str) -> None:
+    code = _strip_literals(query)
+    for pattern, reason in _FORBIDDEN:
+        if re.search(pattern, code, flags=re.IGNORECASE):
+            raise CypherRejected(f"Rejected: {reason}. This console only reads the graph.")
+    for call in re.finditer(r"\bCALL\b\s*([\w.]*)", code, flags=re.IGNORECASE):
+        name = call.group(1).lower()
+        if name not in _ALLOWED_CALLS:
+            what = f"the procedure {name}" if name else "a CALL { ... } subquery"
+            allowed = ", ".join(sorted(_ALLOWED_CALLS))
+            raise CypherRejected(f"Rejected: {what} is not allowed here. Allowed procedures: {allowed}.")
+
+
+def run_cypher_readonly(query: str, params: dict | None = None, limit: int = CYPHER_MAX_ROWS) -> dict:
+    """Read-only Cypher console for admins.
+
+    Three guards: the keyword check above, a READ session (Neo4j refuses any write), and a
+    server-side transaction timeout. At most `limit` rows are fetched; `truncated` says if more existed.
+    """
+    import neo4j
     from neontology import GraphConnection
 
-    gc = GraphConnection()
-    driver = gc.engine.driver
-    with driver.session(default_access_mode="READ") as session:
-        result = session.execute_read(lambda tx: list(tx.run(query, params or {}))[:limit])
-    return [{k: _jsonable(v) for k, v in rec.items()} for rec in result]
+    check_readonly_cypher(query)
+    driver = GraphConnection().engine.driver
+
+    @neo4j.unit_of_work(timeout=CYPHER_TIMEOUT_SECONDS)
+    def work(tx):
+        result = tx.run(query, params or {})
+        rows = result.fetch(limit + 1)
+        result.consume()
+        return rows
+
+    with driver.session(default_access_mode=neo4j.READ_ACCESS) as session:
+        records = session.execute_read(work)
+    rows = [{k: _jsonable(v) for k, v in rec.items()} for rec in records[:limit]]
+    return {"rows": rows, "truncated": len(records) > limit, "limit": limit}
 
 
 def _jsonable(value: Any) -> Any:

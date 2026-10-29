@@ -10,8 +10,10 @@ import type {
   AuthSummary,
   CustomDataSource,
   CustomDataSourceInput,
+  CypherResult,
   DataSource,
   DataSourceRun,
+  FeedbackFilters,
   FeedbackFlag,
   GraphCounts,
   GraphDocument,
@@ -103,14 +105,37 @@ export const useDeleteCustomDataSource = () => {
 
 export const useGraphStats = () => useAdminQuery<GraphCounts>(["graph-stats"], p.graphStats);
 export const useGraphView = () => useAdminQuery<GraphView>(["graph-view"], p.graphView);
-export const useGraphDocuments = () =>
-  useAdminQuery<{ documents: GraphDocument[] }>(["graph-documents"], p.graphDocuments);
-export const useGraphInstitutions = () =>
-  useAdminQuery<{ institutions: InstitutionBreakdown[] }>(["graph-institutions"], p.graphInstitutions);
+export const GRAPH_DOCUMENTS_PAGE_SIZE = 20;
+
+export const useGraphDocuments = (filters: { q?: string; status?: string; page?: number }) => {
+  const { q = "", status = "", page = 0 } = filters;
+  const params = new URLSearchParams({
+    limit: String(GRAPH_DOCUMENTS_PAGE_SIZE),
+    offset: String(page * GRAPH_DOCUMENTS_PAGE_SIZE),
+  });
+  if (q) params.set("q", q);
+  if (status) params.set("status", status);
+  return useAdminQuery<Paged<GraphDocument>>(["graph-documents", q, status, page], `${p.graphDocuments}?${params}`);
+};
+
+export const GRAPH_INSTITUTIONS_PAGE_SIZE = 15;
+
+export const useGraphInstitutions = (filters: { q?: string; page?: number }) => {
+  const { q = "", page = 0 } = filters;
+  const params = new URLSearchParams({
+    limit: String(GRAPH_INSTITUTIONS_PAGE_SIZE),
+    offset: String(page * GRAPH_INSTITUTIONS_PAGE_SIZE),
+  });
+  if (q) params.set("q", q);
+  return useAdminQuery<Paged<InstitutionBreakdown>>(["graph-institutions", q, page], `${p.graphInstitutions}?${params}`);
+};
 
 export type DocumentPatch = Partial<
   Pick<
     GraphDocument,
+    | "name"
+    | "name_am"
+    | "form_code"
     | "fee_etb"
     | "avg_processing_days"
     | "legal_basis"
@@ -127,7 +152,7 @@ export const useUpdateDocument = () => {
 };
 
 export const useCypherQuery = () => {
-  const { run, isPending } = useAdminMutation<{ rows: Record<string, unknown>[]; count: number }, { query: string }>();
+  const { run, isPending } = useAdminMutation<CypherResult, { query: string }>();
   return { runQuery: (query: string) => run(p.graphQuery, MTD.POST, { query }), isPending };
 };
 
@@ -153,11 +178,13 @@ export const useKnowledgeSearch = () => {
 
 export const FEEDBACK_PAGE_SIZE = 25;
 
-export const useFeedbackFlags = (status: string, page = 0) =>
-  useAdminQuery<{ flags: FeedbackFlag[]; total: number }>(
-    ["feedback", status, page],
-    `${p.feedback}?status=${encodeURIComponent(status)}&limit=${FEEDBACK_PAGE_SIZE}&offset=${page * FEEDBACK_PAGE_SIZE}`,
-  );
+export const useFeedbackFlags = (filters: FeedbackFilters, page = 0) => {
+  const params = new URLSearchParams({ status: filters.status, limit: String(FEEDBACK_PAGE_SIZE), offset: String(page * FEEDBACK_PAGE_SIZE) });
+  if (filters.target_type) params.set("target_type", filters.target_type);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.org_id) params.set("org_id", filters.org_id);
+  return useAdminQuery<{ flags: FeedbackFlag[]; total: number }>(["feedback", filters, page], `${p.feedback}?${params}`);
+};
 
 export const useResolveFlag = () => {
   const { run, isPending } = useAdminMutation<{ flag: FeedbackFlag }, { status: string; note?: string }>();

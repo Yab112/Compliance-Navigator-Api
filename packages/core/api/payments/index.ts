@@ -1,8 +1,10 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { useAdminMutation, useAdminQuery } from "../admin/use-admin-query";
 import { withQuery } from "../catalog/with-query";
+import useAxiosAuth from "../../hooks/use-axios-auth";
 import useMutationFunc from "../../hooks/use-mutation";
 import { useFetchData } from "../../hooks/use-query";
 import { apiPaths } from "../../lib/constants/api-paths";
@@ -10,6 +12,7 @@ import { MTD } from "../../lib/constants/methods";
 import type { APIResponse } from "../../types/global";
 import type { Paged } from "../../types/guday";
 import type {
+  AdminPaymentFilters,
   AdminPayments,
   AdminPayouts,
   PayoutReview,
@@ -27,6 +30,12 @@ import type {
   PayoutReceipt,
   PayoutInput,
   PayoutStatus,
+  ApprovalRequestSummary,
+  Refund,
+  RefundActionInput,
+  RefundInput,
+  RefundReceipt,
+  RefundStatus,
   TestCheckout,
 } from "../../types/payments";
 
@@ -161,6 +170,13 @@ export const usePaymentReceipt = (txRef: string, enabled = true) =>
     retry: false,
   });
 
+/** Receipt for money given back to a client; the client, the provider (with `statement`) or staff. */
+export const useRefundReceipt = (id: string, enabled = true) =>
+  useFetchData<APIResponse<{ receipt: RefundReceipt }>>(["refunds", "receipt", id], pay.refundReceipt(id), {
+    enabled: enabled && !!id,
+    retry: false,
+  });
+
 /** Receipt for a paid withdrawal; owner or staff. */
 export const usePayoutReceipt = (id: string, enabled = true) =>
   useFetchData<APIResponse<{ receipt: PayoutReceipt }>>(["payouts", "receipt", id], pay.payoutReceipt(id), {
@@ -232,11 +248,64 @@ export const useSimulatePayment = () => {
 
 export const ADMIN_MONEY_PAGE_SIZE = 25;
 
-export const useAdminPayments = (status?: PaymentStatus, page = 0) =>
-  useAdminQuery<AdminPayments>(
-    ["market", "payments", status ?? "all", page],
-    withQuery(apiPaths.admin.marketPayments, { status, limit: ADMIN_MONEY_PAGE_SIZE, offset: page * ADMIN_MONEY_PAGE_SIZE }),
+/** Client payments with every amount; filter by status, search (reference, job, client, provider), dates or hire. */
+export const useAdminPayments = (filters: PaymentStatus | AdminPaymentFilters = {}, page = 0) => {
+  const f: AdminPaymentFilters = typeof filters === "string" ? { status: filters } : filters;
+  return useAdminQuery<AdminPayments>(
+    ["market", "payments", f, page],
+    withQuery(apiPaths.admin.marketPayments, { ...f, limit: ADMIN_MONEY_PAGE_SIZE, offset: page * ADMIN_MONEY_PAGE_SIZE }),
   );
+};
+
+/** Downloads the filtered payments as CSV (needs the Export payments permission; every export is logged). */
+export const usePaymentsExport = () => {
+  const axiosAuth = useAxiosAuth();
+  return useCallback(
+    async (filters: Omit<AdminPaymentFilters, "engagement_id">) => {
+      const res = await axiosAuth.get<Blob>(`/${withQuery(apiPaths.admin.marketPaymentsCsv, filters)}`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `payments-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    [axiosAuth],
+  );
+};
+
+/** Ask the gateway again about a payment (one still pending because the client never came back). */
+export const useVerifyPayment = () => {
+  const { run, isPending } = useAdminMutation<{ payment: Payment; changed: boolean }, undefined>();
+  const verify = (txRef: string) => run(apiPaths.admin.marketPaymentVerify(txRef), MTD.POST);
+  return { verify, isPending };
+};
+
+/**
+ * Ask for a refund. It always waits for a second staff member: the answer is `{approval}` (sent to
+ * Approvals), or `{refund}` when nobody else could approve and it ran at once (recorded in the audit log).
+ */
+export const useRequestRefund = () => {
+  const { run, isPending } = useAdminMutation<{ approval?: ApprovalRequestSummary; refund?: { refund_id: string; status: RefundStatus } }, RefundInput>();
+  const requestRefund = (txRef: string, body: RefundInput) => run(apiPaths.admin.marketPaymentRefund(txRef), MTD.POST, body);
+  return { requestRefund, isPending };
+};
+
+export const useAdminRefunds = (params: { tx_ref?: string; status?: RefundStatus } = {}, page = 0, enabled = true) =>
+  useAdminQuery<Paged<Refund>>(
+    ["market", "refunds", params, page],
+    withQuery(apiPaths.admin.marketRefunds, { ...params, limit: ADMIN_MONEY_PAGE_SIZE, offset: page * ADMIN_MONEY_PAGE_SIZE }),
+    { enabled },
+  );
+
+/** refresh (ask Chapa), confirm (money sent / seen in Chapa) or mark_failed (restores the provider's share). */
+export const useRefundAction = () => {
+  const { run, isPending } = useAdminMutation<{ refund: Refund }, RefundActionInput>();
+  const act = (id: string, body: RefundActionInput) => run(apiPaths.admin.marketRefund(id), MTD.POST, body).then((p) => p.refund);
+  return { act, isPending };
+};
 
 /** Provider withdrawal requests, filtered by status (the API defaults to "requested"). */
 export const useAdminPayouts = (status: PayoutStatus, page = 0) =>
@@ -249,7 +318,10 @@ export const useAdminPayouts = (status: PayoutStatus, page = 0) =>
 export const useAdminPayoutReview = (id: string, enabled = true) =>
   useAdminQuery<PayoutReview>(["market", "payout", id], apiPaths.admin.marketPayout(id), { enabled });
 
-/** Approve (sends the money; a blocking check needs a note), reject (needs a note) or refresh a processing payout. */
+/**
+ * Approve (sends the money; a blocking check needs a note), reject (only while waiting; needs a note),
+ * refresh a processing payout, or mark_failed (only once Chapa says it failed or never got it; needs a note).
+ */
 export const useDecidePayout = () => {
   const { run, isPending } = useAdminMutation<{ payout: Payout }, PayoutDecision>();
   const decide = (id: string, body: PayoutDecision) => run(apiPaths.admin.marketPayout(id), MTD.POST, body).then((p) => p.payout);

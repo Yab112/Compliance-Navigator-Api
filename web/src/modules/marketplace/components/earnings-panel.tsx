@@ -39,9 +39,23 @@ function Summary({ e }: { e: Earnings }) {
         <p className="text-muted-foreground text-xs">Available to withdraw · ለማውጣት ዝግጁ</p>
         <p className="text-gov-ink mt-1 text-3xl font-bold tabular-nums">{formatETB(e.available)}</p>
         <p className="text-muted-foreground mt-1 text-xs">
-          What clients paid you, after the {e.commission_percent}% platform commission and the VAT on it, minus what you already withdrew or asked for.
+          What clients paid you, after the {e.commission_percent}% platform commission and the VAT on it, minus what you already withdrew or asked for
+          {e.refunded ? ", and minus refunds to clients" : ""}.
         </p>
+        {e.available < 0 && (
+          <p className="mt-1 text-xs text-amber-800" role="note">
+            A refund to a client took back more than you had. This is taken from your next earnings before you can withdraw again.
+          </p>
+        )}
       </div>
+      {!!e.test_balance && (
+        <div className="border-gov-yellow/60 bg-gov-yellow/10 rounded-xl border p-4 sm:col-span-2 lg:col-span-4" role="note">
+          <p className="text-xs font-medium">Test earnings: {formatETB(e.test_balance)}</p>
+          <p className="text-muted-foreground mt-0.5 text-[11px]">
+            From test payments made before real payments started. No real money was collected, so they can&apos;t be withdrawn.
+          </p>
+        </div>
+      )}
       <Tile label="Waiting for payout" value={e.in_payout} hint={e.in_payout ? "Held until the payout is paid or rejected" : undefined} />
       <Tile label="Earned this month" value={e.earned_this_month} />
       <Tile label="Earned in total" value={e.earned_total} />
@@ -221,6 +235,9 @@ function describe(entry: LedgerEntry, payouts: Payout[]): string {
     const payout = payoutFor(entry, payouts);
     return payout ? `Payout to ${bankLine(payout.bank_name, payout.account_last4)}` : (entry.note ?? "Payout");
   }
+  if (entry.kind === "refund") {
+    return `Refund to the client · ${entry.job_title ?? "a job"}`;
+  }
   return entry.note ?? "Adjustment";
 }
 
@@ -233,6 +250,13 @@ function LedgerLink({ entry, payouts }: { entry: LedgerEntry; payouts: Payout[] 
         aria-label={`Statement for ${entry.job_title ?? "this job"}`}
       >
         Statement
+      </Link>
+    );
+  }
+  if (entry.kind === "refund" && entry.refund_id) {
+    return (
+      <Link href={`/receipts/refund/${encodeURIComponent(entry.refund_id)}`} className={linkClass} aria-label="Refund receipt">
+        Refund
       </Link>
     );
   }
@@ -275,6 +299,7 @@ function Ledger({ entries, payouts, pager }: { entries: LedgerEntry[]; payouts: 
                   <td className="py-2 pr-3 whitespace-nowrap">{formatDate(l.created_at)}</td>
                   <td className="py-2 pr-3">
                     {describe(l, payouts)}
+                    {l.is_test && <span className="bg-muted ml-1 rounded px-1 text-[10px]">Test</span>}
                     {l.kind === "earning" && !!l.provider_vat && (
                       <span className="text-muted-foreground block text-[11px]">incl. VAT you collected {formatETB(l.provider_vat)}</span>
                     )}

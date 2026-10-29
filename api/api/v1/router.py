@@ -1,7 +1,10 @@
 from fastapi import APIRouter
 
 from api.v1 import assistant, auth, catalog, organizations, chat, feedback, guday, notifications, offices, payments, processes, providers, reputation, roadmaps, support
-from api.v1.admin import assistant as admin_assistant, dashboard, organizations as admin_organizations, jobs, marketplace as admin_marketplace, rag, references, settings as admin_settings, tasks
+from api.v1 import legal
+from api.v1 import staff
+from api.v1.admin import access as admin_access
+from api.v1.admin import assistant as admin_assistant, dashboard, graph as admin_graph, organizations as admin_organizations, jobs, marketplace as admin_marketplace, rag, references, settings as admin_settings, tasks
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -19,6 +22,7 @@ api_router.include_router(notifications.router)
 api_router.include_router(organizations.router)
 api_router.include_router(admin_organizations.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(admin_graph.router)
 api_router.include_router(jobs.router)
 api_router.include_router(tasks.router)
 api_router.include_router(references.router)
@@ -30,3 +34,6 @@ api_router.include_router(payments.router)
 api_router.include_router(reputation.router)
 api_router.include_router(support.admin_router)
 api_router.include_router(admin_settings.router)
+api_router.include_router(legal.router)
+api_router.include_router(staff.router)
+api_router.include_router(admin_access.router)

@@ -7,19 +7,30 @@ in memory by the web app.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 
 from auth import service
 from auth.service import AuthError, ClientInfo, SessionTokens
 from config.config import settings
+from core import ratelimit
 from core.deps import client_info, get_current_user
 from schemas.auth_user import AuthUser
-from schemas.users import ForgotPassword, LoginBody, PasswordChange, PasswordReset, ProfileUpdate, UserCreate
-from services import user_store
+from schemas.users import (
+    EmailVerify,
+    ForgotPassword,
+    LoginBody,
+    PasswordChange,
+    PasswordReset,
+    ProfileUpdate,
+    UserCreate,
+)
+from services import legal, user_store
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 REFRESH_COOKIE = "cn_refresh"
+# The same answer whether or not the address already has an account
+REGISTER_MESSAGE = "Check your email to continue."
 COOKIE_PATH = "/api/v1/auth"
 
 
@@ -65,12 +76,44 @@ def _session_response(response: Response, tokens: SessionTokens) -> dict:
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register(body: UserCreate, response: Response, client: ClientInfo = Depends(client_info)):
+def register(body: UserCreate, background: BackgroundTasks, client: ClientInfo = Depends(client_info)):
+    """Creates an unverified account and emails a confirmation link. The answer is the same when the
+    email already has an account (its owner gets a note instead), so it never reveals who is registered.
+    The web app then signs in with the same password; a new account works before it is confirmed."""
+    # No account without agreeing to the current Terms, Privacy Policy and Marketplace Rules
+    accepted = legal.validate_acceptance(body.accept, legal.CLIENT_REQUIRED)
     try:
-        tokens = service.register(body.email, body.password, body.fullname, body.phone, client)
+        email = service.register(
+            body.email, body.password, body.fullname, body.phone, client,
+            # Saved in the same transaction as the account: both exist or neither does
+            on_created=lambda conn, user: legal.record_consents(conn, user["id"], accepted, client.ip, client.user_agent),
+        )
     except AuthError as exc:
         _raise(exc)
-    return _session_response(response, tokens)
+    if email:
+        # Sent after the response so the time taken doesn't hint at which email went out
+        background.add_task(service.send_email, email)
+    return _ok({"message": REGISTER_MESSAGE})
+
+
+@router.post("/verify-email")
+def verify_email(body: EmailVerify, client: ClientInfo = Depends(client_info)):
+    """Opens the single-use link from the confirmation email. No sign-in needed."""
+    try:
+        user = service.verify_email(body.token, client)
+    except AuthError as exc:
+        _raise(exc)
+    return _ok({"user": user})
+
+
+@router.post("/verify-email/resend", status_code=status.HTTP_202_ACCEPTED,
+             dependencies=[Depends(ratelimit.limit("verify_resend"))])
+def resend_verification(background: BackgroundTasks, user: AuthUser = Depends(get_current_user),
+                        client: ClientInfo = Depends(client_info)):
+    email = service.resend_verification(user.id, client)
+    if email:
+        background.add_task(service.send_email, email)
+    return _ok({"sent": email is not None, "alreadyVerified": email is None})
 
 
 @router.post("/login")
@@ -139,9 +182,13 @@ def change_password(body: PasswordChange, user: AuthUser = Depends(get_current_u
     return _ok({"otherSessionsSignedOut": signed_out})
 
 
-@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
-def forgot_password(body: ForgotPassword, client: ClientInfo = Depends(client_info)):
-    service.request_password_reset(body.email, client)
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED,
+             dependencies=[Depends(ratelimit.limit("forgot_password"))])
+def forgot_password(body: ForgotPassword, background: BackgroundTasks, client: ClientInfo = Depends(client_info)):
+    email = service.request_password_reset(body.email, client)
+    if email:
+        # In the background: sending only for real accounts would otherwise make those answers slower
+        background.add_task(service.send_email, email)
     return _ok({"message": "If an account exists for that email, a reset link has been sent."})
 
 

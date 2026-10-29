@@ -28,6 +28,12 @@ export type PayoutAccount = {
   set_at: string | null;
   commission_percent: number;
   mode: PaymentsMode;
+  /** The name on the provider's verified ID (Fayda), which the holder name should match */
+  verified_name?: string | null;
+  /** Whether the holder name matches the verified ID or company name; null when no account yet */
+  name_matches?: boolean | null;
+  /** A payout is on its way to this account, so it can't be changed now */
+  locked?: boolean;
 };
 
 export type PayoutInput = {
@@ -64,13 +70,29 @@ export type TestCheckout = {
   provider_name: string;
 };
 
+/** Why money was received but not credited: the job was already paid, or it was cancelled */
+export type UnappliedReason = "duplicate" | "job_closed";
+
 export type AdminPayment = {
   tx_ref: string;
   gateway: string;
   amount: number;
   currency: string;
+  price: number | null;
+  provider_vat: number;
   commission_amount: number;
+  commission_vat: number;
   provider_amount: number;
+  gateway_fee: number | null;
+  is_test: boolean;
+  unapplied_reason: UnappliedReason | null;
+  refunded_amount: number;
+  /** Still refundable: amount minus what was already refunded */
+  refundable: number;
+  refund_needed: boolean;
+  hire_payment_status: HirePaymentStatus;
+  /** Refunds not finished yet (processing, waiting to be sent, or needing a check) */
+  refunds_open: number;
   status: PaymentStatus;
   payment_method: string | null;
   gateway_reference: string | null;
@@ -83,13 +105,26 @@ export type AdminPayment = {
   provider_slug: string;
 };
 
+/** gross = price + provider_vat = commission + commission_vat + to_providers (credited payments only). */
 export type AdminPaymentTotals = {
   paid_count: number;
   gross: number;
+  price: number;
+  provider_vat: number;
   commission: number;
+  commission_vat: number;
   to_providers: number;
+  gateway_fees: number;
+  refunded: number;
+  commission_refunded: number;
+  provider_refunded: number;
+  /** Commission plus its VAT, minus what refunds took back */
+  net_commission: number;
+  /** Extra payments not credited to anyone, waiting for a refund */
+  unapplied: number;
   pending: number;
   failed: number;
+  needs_refund: number;
 };
 
 export type AdminPayments = {
@@ -97,7 +132,78 @@ export type AdminPayments = {
   total: number;
   totals: AdminPaymentTotals;
   mode: PaymentsMode;
+  test_mode: boolean;
+  /** Live mode: test payments left out of the tiles */
+  test_payments: number;
   commission_percent: number;
+};
+
+export type AdminPaymentFilters = {
+  status?: PaymentStatus;
+  q?: string;
+  from?: string;
+  to?: string;
+  needs_refund?: boolean;
+  engagement_id?: string;
+};
+
+// ---------------------------------------------------------------- refunds
+
+export type RefundStatus = "sending" | "processing" | "refunded" | "manual_pending" | "needs_check" | "failed";
+
+export type Refund = {
+  id: string;
+  payment_id: string;
+  engagement_id: string | null;
+  reference: string;
+  amount: number;
+  price_part: number;
+  provider_vat: number;
+  commission: number;
+  commission_vat: number;
+  /** Taken back from the provider's earnings */
+  provider_amount: number;
+  reason: string;
+  method: "gateway" | "manual";
+  status: RefundStatus;
+  gateway: string | null;
+  gateway_ref: string | null;
+  is_test: boolean;
+  client_bank_name: string | null;
+  client_account_name: string | null;
+  client_account_last4: string | null;
+  /** Only for staff who can refund, only while a manual refund waits to be sent */
+  client_account_number?: string | null;
+  transfer_reference: string | null;
+  requested_by: string | null;
+  approved_by: string | null;
+  confirmed_by: string | null;
+  error: string | null;
+  note: string | null;
+  created_at: string;
+  completed_at: string | null;
+  tx_ref: string;
+  payment_amount?: number;
+  title?: string | null;
+  client_name?: string | null;
+  provider_name?: string | null;
+};
+
+export type RefundInput = {
+  /** Leave out to refund everything not refunded yet */
+  amount?: number;
+  reason: string;
+  method: "gateway" | "manual";
+  client_bank?: { bank_name: string; account_name: string; account_number: string } | null;
+};
+
+/** What a 202 answer carries when an action waits for a second staff member. */
+export type ApprovalRequestSummary = { id: string; action: string; summary: string; status: string; title?: string };
+
+export type RefundActionInput = {
+  action: "refresh" | "confirm" | "mark_failed";
+  note?: string;
+  transfer_reference?: string;
 };
 
 
@@ -105,7 +211,7 @@ export type AdminPayments = {
 
 export type PayoutStatus = "requested" | "approved" | "paid" | "rejected" | "failed";
 
-export type LedgerKind = "earning" | "payout" | "adjustment";
+export type LedgerKind = "earning" | "payout" | "adjustment" | "refund";
 
 export type LedgerEntry = {
   id: string;
@@ -127,6 +233,11 @@ export type LedgerEntry = {
   commission_vat?: number | null;
   /** VAT the provider charged the client (VAT-registered providers only) */
   provider_vat?: number | null;
+  /** From a test checkout: never withdrawable once payments are live */
+  is_test?: boolean;
+  /** Refunds: the refund, for the receipt link */
+  refund_id?: string | null;
+  refund_reference?: string | null;
 };
 
 export type Payout = {
@@ -143,6 +254,7 @@ export type Payout = {
   decided_at: string | null;
   paid_at: string | null;
   created_at: string;
+  is_test?: boolean;
 };
 
 export type Earnings = {
@@ -152,6 +264,11 @@ export type Earnings = {
   earned_total: number;
   earned_this_month: number;
   paid_out: number;
+  /** Taken back from earnings by client refunds */
+  refunded?: number;
+  /** Payments are live: test earnings are not counted, they are shown here instead */
+  test_balance?: number;
+  live?: boolean;
   min_payout: number;
   commission_percent: number;
   payout_account: PayoutAccount;
@@ -159,12 +276,14 @@ export type Earnings = {
   payouts: Payout[];
 };
 
-export type AdminPayout = Payout & { provider_name: string; provider_slug: string | null };
+export type AdminPayout = StaffPayout & { provider_name: string; provider_slug: string | null };
 
 export type AdminPayoutTotals = {
   requested: number;
   requested_amount: number;
   processing: number;
+  /** Approved payouts whose transfer got an error: check with Chapa */
+  needs_check?: number;
   paid_amount: number;
   owed_to_providers: number;
 };
@@ -178,11 +297,24 @@ export type AdminPayouts = {
   test_mode: boolean;
 };
 
-export type PayoutCheck = { level: "block" | "warn" | "info"; code: string; text: string };
+/** hard: can't be approved at all. block: approving needs a written reason. */
+export type PayoutCheck = { level: "hard" | "block" | "warn" | "info"; code: string; text: string };
+
+export type StaffPayout = Payout & { bank_code?: string | null; needs_check?: boolean; check_note?: string | null };
 
 /** Everything staff look at before sending a payout. */
 export type PayoutReview = {
-  payout: Payout & { provider_id: string; gateway: string | null };
+  payout: StaffPayout & { provider_id: string; gateway: string | null };
+  /** Exactly the account the money goes to: the one stored with the request */
+  destination: {
+    bank_name: string | null;
+    account_name: string | null;
+    account_last4: string | null;
+    stored: boolean;
+    /** The name on the provider's verified national ID */
+    fayda_name: string | null;
+    id_verified: boolean;
+  };
   provider: {
     id: string;
     slug: string;
@@ -199,7 +331,7 @@ export type PayoutReview = {
     payout_set_at: string | null;
     created_at: string;
   };
-  balances: { balance: number; earned_total: number; in_payout: number; paid_out: number; available: number };
+  balances: { balance: number; earned_total: number; in_payout: number; paid_out: number; available: number; refunded?: number };
   earnings: {
     amount: number;
     created_at: string;
@@ -214,7 +346,7 @@ export type PayoutReview = {
   checks: PayoutCheck[];
 };
 
-export type PayoutDecision = { decision: "approve" | "reject" | "refresh"; note?: string };
+export type PayoutDecision = { decision: "approve" | "reject" | "refresh" | "mark_failed"; note?: string };
 
 // ---------------------------------------------------------------- receipts
 
@@ -253,6 +385,31 @@ export type PaymentReceipt = {
   total: number;
   payment: { method: string | null; gateway: string | null; reference: string | null };
   statement?: ReceiptStatement | null;
+  is_test?: boolean;
+  /** Money given back later; each has its own receipt */
+  refunds?: { id: string; reference: string; amount: number; status: RefundStatus; completed_at: string | null }[];
+  refunded_amount?: number;
+};
+
+export type RefundReceipt = {
+  receipt_no: string;
+  kind: "refund";
+  refunded_at: string | null;
+  currency: string;
+  notice: string | null;
+  issued_by: ReceiptIssuer;
+  original: { receipt_no: string; amount: number; paid_at: string | null };
+  client: { name: string | null; email: string | null };
+  provider: { name: string | null; registration_no: string | null; vat_number: string | null };
+  job: { title: string | null; service: string | null };
+  reason: string;
+  lines: ReceiptLine[];
+  total: number;
+  method: "gateway" | "manual";
+  to: { bank: string | null; account_name: string | null; account_last4: string | null; transfer_reference: string | null } | null;
+  reference: string | null;
+  /** Provider (and staff) only: what was taken back from each side */
+  statement?: { commission: number; commission_vat: number; provider_amount: number; provider_vat: number } | null;
 };
 
 export type PayoutReceipt = {

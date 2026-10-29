@@ -3,13 +3,13 @@
 import { siteUrl } from "@cn/core/config/env";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ADMIN_MARKET_PAGE_SIZE,
   useAdminHires,
-  useAdminProviders,
   useAdminReviewChanges,
   useAdminReviews,
+  useHiresExport,
   useMarketAction,
   type ReviewChangeStatus,
 } from "@cn/core/api/providers";
@@ -21,104 +21,116 @@ import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
-import { EmptyState, ErrorState, LoadingState, NativeSelect, formatDate, formatDateTime } from "@cn/ui/guday/shared";
+import { useCan } from "@/modules/access/api";
+import { EmptyState, ErrorState, LoadingState, NativeSelect, formatDate, formatDateTime, useDebounced } from "@cn/ui/guday/shared";
 import { PriceLine } from "@cn/ui/marketplace/payment-badge";
 import { HireStatusBadge, Stars } from "@cn/ui/marketplace/trust";
 import { HIRE_STATUS } from "@cn/ui/marketplace/constants";
 import type { AdminReview, Hire, HireStatus, ReviewChange } from "@cn/core/types/provider";
+import { DisputeDecision } from "./admin-hire-actions";
 
-function AssignProvider({ hire }: { hire: Hire }) {
-  const { data } = useAdminProviders({ status: "approved", limit: 200 });
-  const { run, isPending } = useMarketAction<{ provider_id: string }>();
-  const [pick, setPick] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      <NativeSelect aria-label="Assign provider" className="w-64" value={pick} onChange={(e) => setPick(e.target.value)}>
-        <option value="">Choose an approved provider</option>
-        {(data?.payload.items ?? []).map((p) => (
-          <option key={p.id} value={p.id}>{p.display_name} · score {p.trust_score}</option>
-        ))}
-      </NativeSelect>
-      <Button size="sm" disabled={!pick} loading={isPending}
-        onClick={async () => {
-          setError(null);
-          try {
-            await run(apiPaths.admin.marketHire(hire.id), MTD.PATCH, { provider_id: pick });
-          } catch (err) {
-            setError(getErrorMessage(err));
-          }
-        }}>
-        Assign
-      </Button>
-      {error && <span className="text-destructive text-xs">{error}</span>}
-    </div>
-  );
-}
-
-function DisputeDecision({ hire }: { hire: Hire }) {
-  const { run, isPending } = useMarketAction<{ decision: string; note?: string }>();
-  const [note, setNote] = useState("");
-  return (
-    <div className="mt-2 space-y-2 border border-amber-300 bg-amber-50 p-3 text-xs">
-      <p><strong>Complaint:</strong> {hire.dispute_reason}</p>
-      <Input placeholder="Finding (shown to the client)" value={note} onChange={(e) => setNote(e.target.value)} />
-      <div className="flex gap-2">
-        <Button size="sm" variant="destructive" loading={isPending}
-          onClick={() => run(apiPaths.admin.marketDispute(hire.id), MTD.POST, { decision: "upheld", note: note.trim() || undefined })}>
-          Uphold (minus 10 trust points)
-        </Button>
-        <Button size="sm" variant="outline" loading={isPending}
-          onClick={() => run(apiPaths.admin.marketDispute(hire.id), MTD.POST, { decision: "dismissed", note: note.trim() || undefined })}>
-          Dismiss
-        </Button>
-      </div>
-    </div>
-  );
-}
+const PAYMENT_LABELS: Record<NonNullable<Hire["payment_status"]>, string> = {
+  unpaid: "Not paid",
+  pending: "Paying now",
+  paid: "Paid",
+  failed: "Payment failed",
+  refunded: "Refunded",
+};
 
 export function AdminHires() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const { can } = useCan();
   const status = (params.get("status") ?? "") as HireStatus | "";
+  const payment = (params.get("payment") ?? "") as NonNullable<Hire["payment_status"]> | "";
   const disputed = params.get("disputed") === "1";
   const followUp = params.get("follow_up") === "1";
+  const refund = params.get("refund") === "1";
   const [page, setPage] = useUrlPage();
+  const [query, setQuery] = useState(params.get("q") ?? "");
+  const q = useDebounced(query.trim(), 300);
   // A filter change starts again at page 1
-  const set = (k: string, v: string | null) => {
-    const next = new URLSearchParams(params.toString());
+  const set = useCallback((k: string, v: string | null) => {
+    const next = new URLSearchParams(window.location.search);
     if (v) next.set(k, v);
     else next.delete(k);
     next.delete("page");
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-  };
-  const { data, isLoading, isError, error, refetch } = useAdminHires({
+  }, [router, pathname]);
+  useEffect(() => {
+    if ((params.get("q") ?? "") !== q) set("q", q || null);
+  }, [q, params, set]);
+  const filters = {
     status: status || undefined,
+    payment_status: payment || undefined,
     disputed: disputed || undefined,
     follow_up: followUp || undefined,
+    refund_needed: refund || undefined,
+    q: q || undefined,
+  };
+  const { data, isLoading, isError, error, refetch } = useAdminHires({
+    ...filters,
     limit: ADMIN_MARKET_PAGE_SIZE,
     offset: page * ADMIN_MARKET_PAGE_SIZE,
   });
+  const exportCsv = useHiresExport();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const items = data?.payload.items ?? [];
   const total = data?.payload.total ?? 0;
+  const hours = data?.payload.follow_up_hours;
 
   return (
-    <AdminPage title="Hires and complaints · ቅጥሮች" description="Every request a client sent to a provider. Assign open requests and decide complaints.">
-      <div className="mb-4 flex flex-wrap gap-2 text-xs">
-        <NativeSelect aria-label="Status" className="w-56" value={status} onChange={(e) => set("status", e.target.value || null)}>
+    <AdminPage
+      title="Hires and complaints · ቅጥሮች"
+      description="Every request a client sent to a provider. Open a hire to assign a provider, see its history or decide a complaint."
+      actions={can("hires.export") ? (
+        <Button size="sm" variant="outline" loading={exporting}
+          onClick={async () => {
+            setExportError(null);
+            setExporting(true);
+            try {
+              await exportCsv(filters);
+            } catch (err) {
+              setExportError(getErrorMessage(err, "Could not export"));
+            } finally {
+              setExporting(false);
+            }
+          }}>
+          Export CSV
+        </Button>
+      ) : undefined}
+    >
+      {exportError && <p role="alert" className="text-destructive mb-2 text-xs">{exportError}</p>}
+      <div className="mb-3 grid gap-2 text-xs sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <Input aria-label="Search hires" placeholder="Title, client name or phone, provider, hire id or payment reference"
+          value={query} onChange={(e) => setQuery(e.target.value)} />
+        <NativeSelect aria-label="Status" value={status} onChange={(e) => set("status", e.target.value || null)}>
           <option value="">All statuses</option>
           {(Object.keys(HIRE_STATUS) as HireStatus[]).map((s) => (
             <option key={s} value={s}>{HIRE_STATUS[s].label}</option>
           ))}
         </NativeSelect>
+        <NativeSelect aria-label="Payment" value={payment} onChange={(e) => set("payment", e.target.value || null)}>
+          <option value="">Any payment</option>
+          {(Object.keys(PAYMENT_LABELS) as (keyof typeof PAYMENT_LABELS)[]).map((s) => (
+            <option key={s} value={s}>{PAYMENT_LABELS[s]}</option>
+          ))}
+        </NativeSelect>
+      </div>
+      <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-xs">
         <label className="flex items-center gap-2">
           <input type="checkbox" className="accent-primary" checked={disputed} onChange={(e) => set("disputed", e.target.checked ? "1" : null)} />
           With complaints only
         </label>
-        <label className="flex items-center gap-2" title="Accepted more than 48 hours ago and still not paid">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" className="accent-primary" checked={refund} onChange={(e) => set("refund", e.target.checked ? "1" : null)} />
+          Refund needed
+        </label>
+        <label className="flex items-center gap-2">
           <input type="checkbox" className="accent-primary" checked={followUp} onChange={(e) => set("follow_up", e.target.checked ? "1" : null)} />
-          Deals to follow up (unpaid after 2 days)
+          Deals to follow up (delivered, unpaid after {hours ?? "…"} hours)
         </label>
       </div>
       {isLoading ? (
@@ -132,31 +144,36 @@ export function AdminHires() {
           <p className="text-muted-foreground mb-2 text-xs">{total} hire{total === 1 ? "" : "s"}</p>
           <ul className="space-y-2">
             {items.map((h) => (
-              <li key={h.id} className={cn("border-border bg-card border p-3 text-xs", h.disputed && h.dispute_status === "open" && "border-amber-400")}>
+              <li key={h.id} className={cn("border-border bg-card border p-3 text-xs", h.disputed && h.dispute_status === "open" && "border-amber-400", h.refund_needed && "border-destructive/50")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-medium">{h.title}</span>
-                  <HireStatusBadge status={h.status} />
+                  <Link href={`/marketplace/hires/${h.id}`} className="min-w-0 text-sm font-medium break-words hover:underline">{h.title}</Link>
+                  <span className="flex flex-wrap items-center gap-1">
+                    {h.refund_needed && <span className="bg-destructive/10 text-destructive rounded px-1.5 text-[10px] font-medium">Refund needed</span>}
+                    <HireStatusBadge status={h.status} />
+                  </span>
                 </div>
-                <p className="text-muted-foreground mt-1">
+                <p className="text-muted-foreground mt-1 break-words">
                   Client {h.client_name} ({h.client_phone}{h.client_telegram ? `, Telegram @${h.client_telegram}` : ""}) ·{" "}
                   {h.provider_name ? <Link href={`/marketplace/${h.provider_id}`} className="text-primary underline">{h.provider_name}</Link> : "no provider yet"} ·{" "}
                   {formatDateTime(h.created_at)}
                   {h.review_rating ? <> · reviewed <Stars value={h.review_rating} /></> : null}
                 </p>
-                {h.details && <p className="mt-1">{h.details}</p>}
+                {h.details && <p className="mt-1 line-clamp-2">{h.details}</p>}
                 {h.agreed_price != null && <div className="mt-1"><PriceLine price={h.agreed_price} note={h.price_note} status={h.payment_status} /></div>}
                 {h.admin_note && <p className="text-muted-foreground mt-1">Staff note: {h.admin_note}</p>}
-                {h.status === "open" && <AssignProvider hire={h} />}
-                {h.disputed && h.dispute_status === "open" && <DisputeDecision hire={h} />}
+                {h.status === "open" && (
+                  <Link href={`/marketplace/hires/${h.id}`} className="text-primary mt-1 inline-block underline">Assign a provider</Link>
+                )}
+                {h.disputed && h.dispute_status === "open" && can("hires.manage") && <DisputeDecision hire={h} />}
                 {h.disputed && h.dispute_status !== "open" && (
                   <p className="mt-1">Complaint {h.dispute_status}{h.dispute_note ? `: ${h.dispute_note}` : ""}</p>
                 )}
               </li>
             ))}
           </ul>
-          <Pager page={page} pageSize={ADMIN_MARKET_PAGE_SIZE} total={total} onPage={setPage} />
         </>
       )}
+      <Pager page={page} pageSize={ADMIN_MARKET_PAGE_SIZE} total={total} onPage={setPage} />
     </AdminPage>
   );
 }
@@ -277,6 +294,61 @@ const REVIEW_TABS: { key: ReviewTab; label: string }[] = [
   { key: "changes", label: "Change requests" },
 ];
 
+const HIDE_REASON_MIN = 5;
+
+/** One review with its own pending state and error, so acting on one row never spins the others. */
+function ReviewRow({ review: r }: { review: AdminReview }) {
+  const { run, isPending } = useMarketAction<{ hidden: boolean; reason?: string }>();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const reasonId = `hide-reason-${r.id}`;
+  const act = async (body: { hidden: boolean; reason?: string }) => {
+    setError(null);
+    try {
+      await run(apiPaths.admin.marketModerate(r.id), MTD.POST, body);
+      setReason("");
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not save"));
+    }
+  };
+  return (
+    <li className={cn("border-border bg-card border p-3 text-xs", r.hidden && "opacity-70")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <Stars value={r.rating} />
+          <a href={siteUrl(`/providers/${r.provider_slug}`)} target="_blank" rel="noreferrer" className="font-medium hover:underline">{r.provider_name}</a>
+          {r.engagement_id ? (
+            <Link href={`/marketplace/hires/${r.engagement_id}`} className="text-muted-foreground break-words hover:underline">· {r.job_title}</Link>
+          ) : (
+            <span className="text-muted-foreground">· {r.job_title}</span>
+          )}
+        </span>
+        <span className="text-muted-foreground break-all">{r.client_email} · {formatDate(r.created_at)}</span>
+      </div>
+      {r.comment && <p className="mt-1 text-sm break-words">{r.comment}</p>}
+      {r.hidden ? (
+        <p className="mt-2 text-amber-800 dark:text-amber-300">
+          Hidden by {r.hidden_by}: {r.hidden_reason}{" "}
+          <button type="button" className="text-primary underline disabled:opacity-50" disabled={isPending} onClick={() => act({ hidden: false })}>
+            {isPending ? "Restoring…" : "Restore"}
+          </button>
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <label htmlFor={reasonId} className="sr-only">Reason to hide</label>
+          <Input id={reasonId} className="min-w-0 flex-1" placeholder={`Reason to hide (at least ${HIDE_REASON_MIN} characters)`} value={reason}
+            onChange={(e) => setReason(e.target.value)} aria-invalid={!!error} aria-describedby={error ? `${reasonId}-error` : undefined} />
+          <Button size="sm" variant="outline" disabled={reason.trim().length < HIDE_REASON_MIN} loading={isPending}
+            onClick={() => act({ hidden: true, reason: reason.trim() })}>
+            Hide
+          </Button>
+        </div>
+      )}
+      {error && <p id={`${reasonId}-error`} role="alert" className="text-destructive mt-1">{error}</p>}
+    </li>
+  );
+}
+
 export function AdminReviews() {
   const router = useRouter();
   const pathname = usePathname();
@@ -298,14 +370,19 @@ export function AdminReviews() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
   const setFilter = (f: ReviewTab) => setParams({ tab: f === "all" ? null : f, status: null });
+  const [query, setQuery] = useState(params.get("q") ?? "");
+  const q = useDebounced(query.trim(), 300);
+  useEffect(() => {
+    if ((params.get("q") ?? "") !== q) setParams({ q: q || null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
   const { data, isLoading, isError, error, refetch } = useAdminReviews({
     hidden: filter === "hidden" ? true : undefined,
     max_rating: filter === "low" ? 2 : undefined,
+    q: q || undefined,
     offset: page * ADMIN_MARKET_PAGE_SIZE,
   }, filter !== "changes");
   const pendingChanges = useAdminReviewChanges("pending").data?.payload.pending ?? 0;
-  const { run, isPending } = useMarketAction<{ hidden: boolean; reason?: string }>();
-  const [reasons, setReasons] = useState<Record<string, string>>({});
   const items: AdminReview[] = data?.payload.items ?? [];
 
   return (
@@ -323,6 +400,10 @@ export function AdminReviews() {
           </button>
         ))}
       </div>
+      {filter !== "changes" && (
+        <Input aria-label="Search reviews" className="mb-4 max-w-md" placeholder="Provider, client email or name, or words in the review"
+          value={query} onChange={(e) => setQuery(e.target.value)} />
+      )}
       {filter === "changes" ? (
         <ReviewChanges
           status={changeStatus}
@@ -339,32 +420,7 @@ export function AdminReviews() {
       ) : (
         <ul className="space-y-2">
           {items.map((r) => (
-            <li key={r.id} className={cn("border-border bg-card border p-3 text-xs", r.hidden && "opacity-70")}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="flex items-center gap-2">
-                  <Stars value={r.rating} />
-                  <a href={siteUrl(`/providers/${r.provider_slug}`)} target="_blank" rel="noreferrer" className="font-medium hover:underline">{r.provider_name}</a>
-                  <span className="text-muted-foreground">· {r.job_title}</span>
-                </span>
-                <span className="text-muted-foreground">{r.client_email} · {formatDate(r.created_at)}</span>
-              </div>
-              {r.comment && <p className="mt-1 text-sm">{r.comment}</p>}
-              {r.hidden ? (
-                <p className="mt-2 text-amber-800">
-                  Hidden by {r.hidden_by}: {r.hidden_reason}{" "}
-                  <button type="button" className="text-primary underline" disabled={isPending}
-                    onClick={() => run(apiPaths.admin.marketModerate(r.id), MTD.POST, { hidden: false })}>Restore</button>
-                </p>
-              ) : (
-                <div className="mt-2 flex gap-2">
-                  <Input placeholder="Reason to hide" value={reasons[r.id] ?? ""} onChange={(e) => setReasons((x) => ({ ...x, [r.id]: e.target.value }))} />
-                  <Button size="sm" variant="outline" disabled={(reasons[r.id] ?? "").trim().length < 3} loading={isPending}
-                    onClick={() => run(apiPaths.admin.marketModerate(r.id), MTD.POST, { hidden: true, reason: reasons[r.id].trim() })}>
-                    Hide
-                  </Button>
-                </div>
-              )}
-            </li>
+            <ReviewRow key={r.id} review={r} />
           ))}
         </ul>
       )}

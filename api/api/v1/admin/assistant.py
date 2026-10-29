@@ -1,6 +1,8 @@
 """Admin: assistant model metrics, low-confidence messages to label, and gated retraining."""
 
 import json
+import logging
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,10 +14,13 @@ from assistant import nlu, store
 from assistant.training_data import INTENTS
 from core.deps import require_admin
 from schemas.auth_user import AuthUser
+from services.db import fetch_all, fetch_one
 
 router = APIRouter(prefix="/admin/assistant", tags=["Admin Assistant"], dependencies=[Depends(require_admin)])
 
 API_ROOT = Path(__file__).resolve().parents[3]
+VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}$")
+log = logging.getLogger(__name__)
 
 
 def _ok(payload):
@@ -44,14 +49,26 @@ def model_info():
 
 
 @router.get("/turns")
-def review_turns(max_confidence: float = Query(0.6, ge=0, le=1), limit: int = Query(50, ge=1, le=200),
-                 include_labelled: bool = False):
-    rows = store.turns_to_review(max_confidence, limit, include_labelled)
+def review_turns(max_confidence: float = Query(0.6, ge=0, le=1), limit: int = Query(20, ge=1, le=200),
+                 offset: int = Query(0, ge=0), include_labelled: bool = False):
+    """Messages the model was unsure about, newest first, one page at a time."""
+    labelled = "" if include_labelled else "and labelled_intent is null"
+    where = f"where (confidence is null or confidence < %s) {labelled}"
+    rows = fetch_all(
+        f"""
+        select id, message_redacted, language, intent, confidence, resolved_service, model_version,
+               labelled_intent, labelled_service, labelled_by, labelled_at, created_at
+        from assistant_turns {where}
+        order by created_at desc, id desc limit %s offset %s
+        """,
+        (max_confidence, limit, offset),
+    )
+    total = fetch_one(f"select count(*) as c from assistant_turns {where}", (max_confidence,))["c"]
     for r in rows:
         r["created_at"] = r["created_at"].isoformat()
         if r.get("labelled_at"):
             r["labelled_at"] = r["labelled_at"].isoformat()
-    return _ok({"turns": rows})
+    return _ok({"items": rows, "total": total})
 
 
 class Label(BaseModel):
@@ -70,7 +87,8 @@ def label_turn(turn_id: int, body: Label, admin: AuthUser = Depends(require_admi
 
 
 @router.post("/retrain", status_code=202)
-def retrain(candidates: str = Query("tfidf,e5,labse", pattern=r"^[a-z0-9,]+$")):
+def retrain(candidates: str = Query("tfidf,e5,labse", pattern=r"^[a-z0-9,]+$"),
+            admin: AuthUser = Depends(require_admin)):
     """Runs scripts/train_assistant.py in the background. The new version only becomes active
     if its test macro-F1 is not lower than the current one."""
     run = _last_run()
@@ -83,13 +101,16 @@ def retrain(candidates: str = Query("tfidf,e5,labse", pattern=r"^[a-z0-9,]+$")):
         cwd=API_ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
     )
     (nlu.STORE / ".last_run.json").write_text(json.dumps({"state": "running"}))
+    log.info("assistant retrain started by %s (candidates=%s)", admin.email, candidates)
     return _ok({"started": True})
 
 
 @router.post("/activate/{version}")
-def activate(version: str):
+def activate(version: str, admin: AuthUser = Depends(require_admin)):
     """Roll back or forward to any trained version."""
-    if not (nlu.STORE / version / "model.joblib").exists():
+    # Version folders are plain names; never let a path like "../x" pick a file outside the store
+    if not VERSION_RE.match(version) or not (nlu.STORE / version / "model.joblib").exists():
         raise HTTPException(status_code=404, detail="Version not found")
     (nlu.STORE / "ACTIVE").write_text(version)
+    log.info("assistant model %s activated by %s", version, admin.email)
     return _ok({"active": version})

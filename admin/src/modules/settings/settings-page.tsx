@@ -99,6 +99,11 @@ function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: N
     onNotice(null);
     try {
       const res = await save(Object.fromEntries(changed.map((f) => [f.key, toValue(f, draft[f.key])])));
+      // Money and tax changes wait for a second staff member (Access, Approvals)
+      if ("approval" in res) {
+        onNotice({ ok: true, text: "Money and tax changes need a second person: sent to Approvals. Nothing changes until someone else approves it." });
+        return;
+      }
       const names = group.fields.filter((f) => res.changed?.includes(f.key)).map((f) => f.label);
       onNotice({ ok: true, text: names.length ? `Saved: ${names.join(", ")}.` : "Nothing changed." });
     } catch (err) {
@@ -143,8 +148,13 @@ function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: N
                         onClick={async () => {
                           onNotice(null);
                           try {
-                            await reset(f.key);
-                            onNotice({ ok: true, text: `${f.label} is back to its default.` });
+                            const res = await reset(f.key);
+                            onNotice({
+                              ok: true,
+                              text: "approval" in res
+                                ? `Resetting ${f.label} needs a second person: sent to Approvals.`
+                                : `${f.label} is back to its default.`,
+                            });
                           } catch (err) {
                             onNotice({ ok: false, text: getErrorMessage(err, "Could not reset") });
                           }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import useAxiosAuth from "../../hooks/use-axios-auth";
 import useMutationFunc from "../../hooks/use-mutation";
 import { useFetchData } from "../../hooks/use-query";
@@ -10,9 +11,13 @@ import { MTD } from "../../lib/constants/methods";
 import type { APIResponse } from "../../types/global";
 import type { Paged } from "../../types/guday";
 import type {
+  AdminHireDetail,
   AdminProvider,
+  AdminProviderRow,
   AdminReview,
+  AssignCandidate,
   ClientRecord,
+  EntityType,
   Hire,
   HireInput,
   HireStatus,
@@ -27,6 +32,10 @@ import type {
   PublicProvider,
   Review,
   ReviewChange,
+  SampleStatus,
+  Vetting,
+  VettingDocument,
+  VettingUpload,
 } from "../../types/provider";
 
 const p = apiPaths.providers;
@@ -97,9 +106,12 @@ export const useJoinMarketplace = () => {
   return async (
     input: ProviderJoinInput,
     files: { photo?: File | null; licenseDocument?: File | null; idDocument?: File | null },
+    /** What is printed on the trade licence (companies) */
+    license?: { issued_on?: string; expires_on?: string; reference_no?: string },
   ) => {
     const form = new FormData();
     form.append("data", JSON.stringify(input));
+    for (const [k, v] of Object.entries(license ?? {})) if (v) form.append(`license_${k}`, v);
     if (files.photo) form.append("photo", files.photo);
     if (files.licenseDocument) form.append("license_document", files.licenseDocument);
     if (files.idDocument) form.append("id_document", files.idDocument);
@@ -119,6 +131,38 @@ export const useUploadProviderFile = () => {
     await queryClient.invalidateQueries({ queryKey: ["providers"] });
   };
 };
+
+/** The documents the join form asks for, by entity type */
+export const useVettingRequirements = (entity: EntityType | null) =>
+  useFetchData<APIResponse<{ vetting: Vetting & { references_required?: boolean } }>>(
+    ["providers", "vetting-requirements", entity],
+    withQuery(p.vettingRequirements, { entity: entity ?? "individual" }),
+    { enabled: !!entity, staleTime: 5 * 60 * 1000 },
+  );
+
+/** Upload or replace one vetting document (multipart). Throws with the server's reason when refused. */
+export const useUploadVettingDocument = () => {
+  const axiosAuth = useAxiosAuth();
+  const queryClient = useQueryClient();
+  return async ({ file, ...fields }: VettingUpload) => {
+    const form = new FormData();
+    form.append("file", file);
+    for (const [k, v] of Object.entries(fields)) if (v) form.append(k, String(v));
+    const res = await axiosAuth.post<APIResponse<{ document: VettingDocument; vetting: Vetting }>>(`/${p.myDocuments}`, form);
+    await queryClient.invalidateQueries({ queryKey: ["providers"] });
+    return res.data.payload;
+  };
+};
+
+export const VETTING_HISTORY_PAGE_SIZE = 10;
+
+/** Everything the provider uploaded, including replaced copies */
+export const useMyVettingDocuments = (page = 0, enabled = true) =>
+  useFetchData<APIResponse<Paged<VettingDocument>>>(
+    ["providers", "me", "documents", page],
+    withQuery(p.myDocuments, { limit: VETTING_HISTORY_PAGE_SIZE, offset: page * VETTING_HISTORY_PAGE_SIZE }),
+    { enabled, staleTime: 0 },
+  );
 
 export const useRemoveProviderPhoto = () => {
   const axiosAuth = useAxiosAuth();
@@ -182,17 +226,25 @@ export const useCreateHire = () => {
 
 // ---------------------------------------------------------------- admin
 
+export type AdminProviderSort = "queue" | "newest" | "score" | "complaints" | "expiry";
+
 export type AdminProviderParams = {
   type?: ProviderType;
   status?: ProviderStatus;
   license_status?: LicenseStatus;
   q?: string;
+  /** Approved, licence ends within this many days */
+  expiring?: number;
+  area?: string;
+  id_verified?: boolean;
+  accepting_work?: boolean;
+  sort?: AdminProviderSort;
   limit?: number;
   offset?: number;
 };
 
 export const useAdminProviders = (params: AdminProviderParams) =>
-  useFetchData<APIResponse<Paged<AdminProvider>>>(
+  useFetchData<APIResponse<Paged<AdminProviderRow>>>(
     ["admin", "market", "providers", params],
     withQuery(apiPaths.admin.marketProviders, params),
     { staleTime: 0 },
@@ -204,28 +256,88 @@ export const useAdminProvider = (id: string) =>
     staleTime: 0,
   });
 
+export const useAdminProviderDocuments = (id: string, page = 0, enabled = true) =>
+  useFetchData<APIResponse<Paged<VettingDocument>>>(
+    ["admin", "market", "provider", id, "documents", page],
+    withQuery(apiPaths.admin.marketProviderDocuments(id), { limit: VETTING_HISTORY_PAGE_SIZE, offset: page * VETTING_HISTORY_PAGE_SIZE }),
+    { enabled: enabled && !!id, staleTime: 0 },
+  );
+
 export const useMarketStats = () =>
   useFetchData<APIResponse<MarketplaceStats>>(["admin", "market", "stats"], apiPaths.admin.marketStats, { staleTime: 0 });
 
 export type AdminHireParams = {
   status?: HireStatus;
   disputed?: boolean;
-  /** Accepted but not paid for 48 hours: staff call both sides */
+  /** Delivered but not paid after the follow_up_hours setting: staff call both sides */
   follow_up?: boolean;
   provider_id?: string;
+  payment_status?: NonNullable<Hire["payment_status"]>;
+  refund_needed?: boolean;
+  /** Title, client name or phone, provider, hire id or payment reference */
   q?: string;
   limit?: number;
   offset?: number;
 };
 
 export const useAdminHires = (params: AdminHireParams) =>
-  useFetchData<APIResponse<Paged<Hire>>>(["admin", "market", "hires", params], withQuery(apiPaths.admin.marketHires, params), {
+  useFetchData<APIResponse<Paged<Hire> & { follow_up_hours: number }>>(
+    ["admin", "market", "hires", params],
+    withQuery(apiPaths.admin.marketHires, params),
+    { staleTime: 0 },
+  );
+
+export const useAdminHire = (id: string) =>
+  useFetchData<APIResponse<AdminHireDetail>>(["admin", "market", "hire", id], apiPaths.admin.marketHire(id), {
+    enabled: !!id,
     staleTime: 0,
+    retry: false,
   });
+
+export const CANDIDATES_PAGE_SIZE = 10;
+
+export const useAssignCandidates = (
+  id: string,
+  params: { q?: string; area?: string; specialty?: string; page?: number },
+  enabled = true,
+) =>
+  useFetchData<APIResponse<Paged<AssignCandidate>>>(
+    ["admin", "market", "hire", id, "candidates", params],
+    withQuery(apiPaths.admin.marketHireCandidates(id), {
+      q: params.q || undefined,
+      area: params.area || undefined,
+      specialty: params.specialty || undefined,
+      limit: CANDIDATES_PAGE_SIZE,
+      offset: (params.page ?? 0) * CANDIDATES_PAGE_SIZE,
+    }),
+    { enabled: enabled && !!id, staleTime: 0 },
+  );
+
+/** Downloads the filtered hires as CSV (built on the server; every export is logged). */
+export const useHiresExport = () => {
+  const axiosAuth = useAxiosAuth();
+  return useCallback(
+    async (params: Omit<AdminHireParams, "limit" | "offset">) => {
+      const res = await axiosAuth.get<Blob>(`/${withQuery(apiPaths.admin.marketHiresCsv, params)}`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `hires-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    [axiosAuth],
+  );
+};
+
+export const useSampleStatus = () =>
+  useFetchData<APIResponse<SampleStatus>>(["admin", "market", "samples"], apiPaths.admin.marketSamples, { staleTime: 0 });
 
 export const ADMIN_MARKET_PAGE_SIZE = 25;
 
-export const useAdminReviews = (params: { hidden?: boolean; max_rating?: number; offset?: number }, enabled = true) =>
+export const useAdminReviews = (params: { hidden?: boolean; max_rating?: number; q?: string; offset?: number }, enabled = true) =>
   useFetchData<APIResponse<Paged<AdminReview>>>(
     ["admin", "market", "reviews", params],
     withQuery(apiPaths.admin.marketReviews, { ...params, limit: ADMIN_MARKET_PAGE_SIZE }),

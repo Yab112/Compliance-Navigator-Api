@@ -218,18 +218,40 @@ def submit_registration(org_id: str, *, submit_services: bool, actor: str) -> di
     return {"organization": member_org(org_id), "services_submitted": submitted, "services_skipped": skipped}
 
 
-def _claim_invites(user_id: str, email: str) -> None:
-    execute(
+def my_invites(email: str) -> list[dict]:
+    """Invitations waiting for this person to accept or decline. Nobody joins an organization without saying yes."""
+    return _plain(fetch_all(
         """
-        update organization_members set user_id = %s, accepted = true
-        where lower(invited_email) = lower(%s) and user_id is null
+        select m.id::text, m.role, m.created_at, o.id::text as org_id, o.name as org_name, o.name_am as org_name_am,
+               o.logo_url, o.status as org_status
+        from organization_members m join organizations o on o.id = m.org_id
+        where lower(m.invited_email) = lower(%s) and not m.accepted
+        order by m.created_at desc
         """,
-        (user_id, email),
-    )
+        (email,),
+    ))
+
+
+def answer_invite(member_id: str, *, user_id: str, email: str, accept: bool) -> dict:
+    with connection() as conn, conn.transaction():
+        invite = conn.execute(
+            "select org_id::text, role from organization_members where id = %s and lower(invited_email) = lower(%s) "
+            "and not accepted for update",
+            (member_id, email),
+        ).fetchone()
+        if not invite:
+            raise OrgError("Invitation not found", 404)
+        if accept:
+            conn.execute("update organization_members set user_id = %s, accepted = true where id = %s",
+                         (user_id, member_id))
+        else:
+            conn.execute("delete from organization_members where id = %s", (member_id,))
+        _log(conn, "member_joined" if accept else "invite_declined", org_id=invite["org_id"], actor=email,
+             note=invite["role"])
+    return {"org_id": invite["org_id"], "accepted": accept}
 
 
 def my_orgs(user_id: str, email: str) -> list[dict]:
-    _claim_invites(user_id, email)
     return fetch_all(
         f"""
         select {MEMBER_ORG_COLUMNS}, m.role,
@@ -268,7 +290,8 @@ def member_org(org_id: str) -> dict | None:
     org["branches"] = list_branches(org_id)
     org["members"] = fetch_all(
         """
-        select m.id::text, m.invited_email as email, m.role, m.accepted, u.fullname
+        select m.id::text, m.invited_email as email, m.role, m.accepted,
+               case when m.accepted then u.fullname end as fullname
         from organization_members m left join users u on u.id = m.user_id
         where m.org_id = %s order by m.created_at
         """,
@@ -321,15 +344,26 @@ def invite_member(org_id: str, email: str, role: str, actor: str) -> dict:
             (org_id, email),
         ).fetchone():
             raise OrgError("This person is already a member or invited", 409)
-        user = conn.execute("select id from users where lower(email) = lower(%s)", (email,)).fetchone()
+        # Always a pending invitation, whether or not the email has an account: the answer must not reveal it
         conn.execute(
             """
             insert into organization_members (org_id, user_id, invited_email, role, accepted)
-            values (%s, %s, lower(%s), %s, %s)
+            values (%s, null, lower(%s), %s, false)
             """,
-            (org_id, user["id"] if user else None, email, role, bool(user)),
+            (org_id, email, role),
         )
         _log(conn, "member_invited", org_id=org_id, actor=actor, note=f"{email} as {role}")
+        org = conn.execute("select name from organizations where id = %s", (org_id,)).fetchone()
+        user = conn.execute("select id::text from users where lower(email) = lower(%s)", (email,)).fetchone()
+    if user:
+        try:
+            from services import notifications
+
+            notifications.notify([user["id"]], kind="org_invite", title=f"Invitation to join {org['name']}",
+                                 body=f"{actor} invited you as {role}. Accept or decline it on your organization page.",
+                                 link="/org")
+        except Exception:
+            log.exception("Could not notify an invited member of %s", org_id)
     return member_org(org_id)
 
 
@@ -470,10 +504,10 @@ def list_org_services(org_id: str) -> list[dict]:
             (org_id,),
         )
     }
+    scores = _completeness_by_service([org_id])
     for r in rows:
         r.update(_confirmation(r["last_confirmed_at"], r["is_live"]))
-        work = working_copy(r["id"], org_id)
-        r["completeness"] = completeness(work) if work else None
+        r["completeness"] = scores[r["id"]]["completeness"] if r["id"] in scores else None
         sch = scheduled.get(r["id"])
         r["scheduled_change"] = {"effective_at": sch["effective_at"], "summary": sch["change_summary"]} if sch else None
     return _plain(rows)
@@ -558,6 +592,30 @@ COMPLETENESS_CHECKS: list[tuple[str, str, bool, Any]] = [
     ("rejections", "Why applications get sent back", False, lambda s: bool(s.get("common_rejection_reasons"))),
     ("languages", "Languages served", False, lambda s: bool(s.get("languages"))),
 ]
+
+
+def _completeness_by_service(org_ids: list[str]) -> dict[str, dict]:
+    """Completeness of every service of these organizations in one query (no per-service loading).
+    Maps service id to {org_id, archived, completeness}."""
+    if not org_ids:
+        return {}
+    rows = fetch_all(
+        f"""
+        select s.id::text, s.org_id::text, (s.status = 'archived') as archived,
+          {', '.join('s.' + f for f in SERVICE_FIELDS)},
+          coalesce((select json_agg(json_build_object('original_or_copy', r.original_or_copy))
+                    from org_service_requirements r where r.service_id = s.id), '[]'::json) as requirements,
+          exists (select 1 from org_service_steps st where st.service_id = s.id) as has_steps
+        from org_services s where s.org_id = any(%s::uuid[])
+        """,
+        (org_ids,),
+    )
+    out = {}
+    for r in rows:
+        r["branch_ids"] = [str(b) for b in r["branch_ids"] or []]
+        r["steps"] = [{}] if r.pop("has_steps") else []
+        out[r["id"]] = {"org_id": r["org_id"], "archived": r["archived"], "completeness": completeness(_plain(r))}
+    return out
 
 
 def completeness(service: dict) -> dict:
@@ -831,11 +889,15 @@ def review_org(org_id: str, action: str, *, actor: str, note: str | None,
     if action in NOTE_REQUIRED and not (note or "").strip():
         raise OrgError("Add a note explaining the decision")
     with connection() as conn, conn.transaction():
-        org = conn.execute("select status from organizations where id = %s for update", (org_id,)).fetchone()
+        org = conn.execute("select status, authorization_letter_key from organizations where id = %s for update",
+                           (org_id,)).fetchone()
         if not org:
             raise OrgError("Organization not found", 404)
         if org["status"] not in allowed_from:
             raise OrgError(f"Can't {action} an organization that is {org['status']}", 409)
+        # The letter is the proof that the representative may speak for the organization
+        if new_status == "verified" and not org["authorization_letter_key"]:
+            raise OrgError("This organization has not uploaded an authorization letter. Ask for one before verifying.", 409)
         conn.execute(
             """
             update organizations set status = %s, verification_note = %s, reviewed_by = %s, reviewed_at = now(),
@@ -845,11 +907,40 @@ def review_org(org_id: str, action: str, *, actor: str, note: str | None,
             (new_status, note, actor, catalog_institution_id, org_id),
         )
         _log(conn, action, org_id=org_id, actor=actor, note=note)
-    if new_status == "verified":
-        for s in fetch_all("select id::text from org_services where org_id = %s and published_snapshot is not null "
-                           "and status <> 'archived'", (org_id,)):
+    live = fetch_all("select id::text from org_services where org_id = %s and published_snapshot is not null "
+                     "and status <> 'archived'", (org_id,))
+    for s in live:
+        if new_status == "verified":
             sync_service_to_graph(s["id"])
+        elif new_status == "suspended":
+            remove_service_from_graph(s["id"])
+    title, body = ORG_DECISION_MESSAGES[action]
+    _notify_members(org_id, kind=f"org_{action}", title=title, body=(f"{body} Note from our team: {note}" if note else body))
     return admin_org(org_id)
+
+
+ORG_DECISION_MESSAGES = {
+    "verify": ("Your organization is verified",
+               "Staff checked your authorization letter. Services you send for review can now be published."),
+    "reject": ("Your organization registration was not accepted",
+               "Read the note, fix what it asks for and contact us if you have questions."),
+    "suspend": ("Your organization is suspended",
+                "Your services are hidden from the public until staff reinstate the organization."),
+    "reinstate": ("Your organization is active again", "Your published services are visible to the public again."),
+}
+
+
+def _notify_members(org_id: str, *, kind: str, title: str, body: str, link: str | None = None) -> None:
+    """Tell every member of the organization about a staff decision. Never blocks the decision."""
+    try:
+        from services import notifications
+
+        members = fetch_all("select user_id::text from organization_members where org_id = %s and accepted "
+                            "and user_id is not null", (org_id,))
+        notifications.notify([m["user_id"] for m in members], kind=kind, title=title, body=body,
+                             link=link or f"/org/{org_id}")
+    except Exception:
+        log.exception("Could not notify members of organization %s", org_id)
 
 
 def admin_org(org_id: str) -> dict | None:
@@ -876,35 +967,93 @@ def list_orgs_admin(status: str | None, q: str | None, limit: int, offset: int) 
         where.append("(o.name ilike %s or o.name_am ilike %s or o.official_email ilike %s)")
         params += [f"%{q}%"] * 3
     clause = " and ".join(where)
-    total = fetch_one(f"select count(*) as c from organizations o where {clause}", params)["c"]
+    days = platform_settings.get_int("org_confirm_every_days")
     items = fetch_all(
         f"""
-        select {MEMBER_ORG_COLUMNS},
+        select {MEMBER_ORG_COLUMNS}, count(*) over () as total_count,
           (select count(*) from org_services s where s.org_id = o.id and s.published_snapshot is not null
              and s.status <> 'archived') as live_services,
           (select count(*) from org_services s where s.org_id = o.id and s.published_snapshot is not null
              and s.status <> 'archived' and (s.last_confirmed_at is null
-             or s.last_confirmed_at < now() - interval '90 days')) as services_due,
+             or s.last_confirmed_at < now() - make_interval(days => %s))) as services_due,
           (select count(*) from feedback_flags f where f.org_id = o.id and f.status = 'open') as open_reports
         from organizations o where {clause} order by o.created_at desc limit %s offset %s
         """,
-        [*params, limit, offset],
+        [days, *params, limit, offset],
     )
+    if items:
+        total = items[0]["total_count"]
+    else:  # past the last page, so the window count is missing
+        total = fetch_one(f"select count(*) as c from organizations o where {clause}", params)["c"]
+    by_org: dict[str, list[int]] = {}
+    for c in _completeness_by_service([o["id"] for o in items]).values():
+        if not c["archived"]:  # archived services don't count towards "data filled"
+            by_org.setdefault(c["org_id"], []).append(c["completeness"]["score"])
     for org in items:
-        scores = [completeness(working_copy(s["id"]))["score"] for s in
-                  fetch_all("select id::text from org_services where org_id = %s and status <> 'archived'", (org["id"],))]
-        org["completeness"] = round(sum(scores) / len(scores)) if scores else None
-    return {"total": total, "items": items}
+        org.pop("total_count", None)
+        mine = by_org.get(org["id"])
+        org["completeness"] = round(sum(mine) / len(mine)) if mine else None
+    return {"total": total, "items": items, "confirm_every_days": days}
 
 
-def count_submissions(status: str = "pending") -> int:
-    return fetch_one("select count(*) as c from org_service_revisions r where (%s = 'all' or r.status = %s)",
-                     (status, status))["c"]
+SUBMISSION_FILTER = """
+  (%(status)s = 'all' or r.status = %(status)s)
+  and (%(org_id)s::uuid is null or s.org_id = %(org_id)s::uuid)
+  and (%(q)s::text is null or s.name ilike %(q)s or o.name ilike %(q)s or r.change_summary ilike %(q)s)
+"""
 
 
-def list_submissions(status: str = "pending", limit: int = 50, offset: int = 0) -> list[dict]:
+def _submission_params(status: str, org_id: str | None, q: str | None) -> dict:
+    return {"status": status, "org_id": org_id, "q": f"%{q.strip()}%" if q and q.strip() else None}
+
+
+EXPORT_LIMIT = 5000
+EXPORT_COLUMNS = (
+    ("name", "Name"), ("name_am", "Name (Amharic)"), ("org_type", "Type"), ("status", "Status"),
+    ("representative_name", "Representative"), ("representative_title", "Representative title"),
+    ("official_email", "Official email"), ("phone", "Public phone"), ("email", "Public email"),
+    ("website", "Website"), ("region", "Region"), ("sub_city", "Sub-city"),
+    ("has_authorization_letter", "Authorization letter"), ("live_services", "Live services"),
+    ("completeness", "Data filled (%)"), ("services_due", "Services not confirmed"),
+    ("open_reports", "Open reports"), ("created_at", "Registered"), ("reviewed_at", "Last decision"),
+)
+
+
+def _csv_cell(value: Any) -> str:
+    """Spreadsheet-safe text: a cell starting with = + - @ (or a tab or return) is a formula to Excel."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    text = value.isoformat() if isinstance(value, (datetime, date)) else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+def orgs_admin_csv(status: str | None, q: str | None) -> str:
+    import csv
+    import io
+
+    rows = list_orgs_admin(status, q, EXPORT_LIMIT, 0)["items"]
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([label for _, label in EXPORT_COLUMNS])
+    for r in rows:
+        writer.writerow([_csv_cell(r.get(key)) for key, _ in EXPORT_COLUMNS])
+    return out.getvalue()
+
+
+def count_submissions(status: str = "pending", org_id: str | None = None, q: str | None = None) -> int:
+    return fetch_one(
+        "select count(*) as c from org_service_revisions r join org_services s on s.id = r.service_id "
+        f"join organizations o on o.id = s.org_id where {SUBMISSION_FILTER}",
+        _submission_params(status, org_id, q),
+    )["c"]
+
+
+def list_submissions(status: str = "pending", limit: int = 50, offset: int = 0, org_id: str | None = None,
+                     q: str | None = None) -> list[dict]:
     return fetch_all(
-        """
+        f"""
         select r.id::text, r.status, r.submitted_by, r.created_at, r.reviewed_at, r.admin_note,
                r.change_summary, r.effective_at,
                s.id::text as service_id, s.name as service_name, (s.published_snapshot is not null) as is_update,
@@ -912,10 +1061,10 @@ def list_submissions(status: str = "pending", limit: int = 50, offset: int = 0) 
         from org_service_revisions r
         join org_services s on s.id = r.service_id
         join organizations o on o.id = s.org_id
-        where (%s = 'all' or r.status = %s)
-        order by r.created_at desc limit %s offset %s
+        where {SUBMISSION_FILTER}
+        order by r.created_at desc limit %(limit)s offset %(offset)s
         """,
-        (status, status, limit, offset),
+        {**_submission_params(status, org_id, q), "limit": limit, "offset": offset},
     )
 
 
@@ -936,6 +1085,17 @@ def submission_detail(revision_id: str) -> dict | None:
     if not row:
         return None
     row["completeness"] = completeness(row["snapshot"])
+    # Names for the ids inside the snapshots, so staff read "Bole branch" instead of a uuid
+    row["branch_names"] = {b["id"]: b["name"] for b in fetch_all(
+        "select id::text, name from organization_branches where org_id = %s", (row["org_id"],))}
+    service_ids = set()
+    for snap in (row["snapshot"], row["published_snapshot"] or {}):
+        service_ids.update(r.get("issuing_service_id") for r in snap.get("requirements") or [])
+        service_ids.add(snap.get("renewal_service_id"))
+    service_ids = [i for i in service_ids if i]
+    row["service_names"] = {s["id"]: f"{s['name']} ({s['org_name']})" for s in fetch_all(
+        "select s.id::text, s.name, o.name as org_name from org_services s join organizations o on o.id = s.org_id "
+        "where s.id::text = any(%s)", (service_ids,))} if service_ids else {}
     return _plain(row)
 
 
@@ -995,6 +1155,15 @@ def review_submission(revision_id: str, action: str, *, actor: str, note: str | 
         _notify_change(rev, upcoming=False)
     if scheduled:
         _notify_change(rev, upcoming=True)
+    name = rev["snapshot"].get("name") or "Your service"
+    if action == "publish":
+        title = (f"Approved: {name} goes live on {rev['effective_at'].isoformat()}" if scheduled
+                 else f"Published: {name} is now live")
+        body = "Staff approved your submission." + (f" Note from our team: {note}" if note else "")
+    else:
+        title, body = f"Changes requested: {name}", f"Staff asked for changes before publishing: {note}"
+    _notify_members(rev["org_id"], kind="service_published" if action == "publish" else "service_changes_requested",
+                    title=title, body=body, link=f"/org/{rev['org_id']}/services/{rev['service_id']}")
     return submission_detail(revision_id)
 
 
@@ -1088,9 +1257,10 @@ def admin_counts() -> dict:
           (select count(*) from org_services where published_snapshot is not null and status <> 'archived') as live_services,
           (select count(*) from org_service_revisions where status = 'scheduled') as scheduled_changes,
           (select count(*) from org_services where published_snapshot is not null and status <> 'archived'
-             and (last_confirmed_at is null or last_confirmed_at < now() - interval '90 days')) as services_due,
+             and (last_confirmed_at is null or last_confirmed_at < now() - make_interval(days => %s))) as services_due,
           (select count(*) from feedback_flags where org_id is not null and status = 'open') as open_reports
-        """
+        """,
+        (platform_settings.get_int("org_confirm_every_days"),),
     )
 
 
@@ -1565,7 +1735,8 @@ def org_reports(org_id: str, status: str | None = None) -> list[dict]:
     return _plain(fetch_all(
         """
         select f.id::text, f.target_id as service_id, s.name as service_name, f.message, f.status,
-               f.org_response, f.org_responded_by, f.org_responded_at, f.created_at
+               f.org_response, f.org_verdict, f.org_responded_by, f.org_responded_at, f.created_at,
+               f.resolution_note, f.resolved_at
         from feedback_flags f left join org_services s on s.id::text = f.target_id
         where f.org_id = %s and (%s::text is null or f.status = %s)
         order by (f.status = 'open') desc, f.created_at desc limit 200
@@ -1574,22 +1745,16 @@ def org_reports(org_id: str, status: str | None = None) -> list[dict]:
     ))
 
 
-def respond_report(org_id: str, flag_id: str, *, status: str, response: str, actor: str) -> dict:
-    row = fetch_one(
-        """
-        update feedback_flags set status = %s, org_response = %s, org_responded_by = %s, org_responded_at = now(),
-          resolution_note = case when %s <> 'open' then %s else resolution_note end,
-          resolved_by = case when %s <> 'open' then %s else resolved_by end,
-          resolved_at = case when %s <> 'open' then now() else resolved_at end
-        where id::text = %s and org_id = %s
-        returning id::text
-        """,
-        (status, response, actor, status, response, status, actor, status, flag_id, org_id),
-    )
-    if not row:
-        raise OrgError("Report not found", 404)
+def respond_report(org_id: str, flag_id: str, *, verdict: str, response: str, actor: str) -> dict:
+    """The organization answers a report about its service. It stays open until staff check the answer."""
+    from services import feedback_service
+
+    try:
+        feedback_service.org_respond(org_id, flag_id, verdict=verdict, response=response, actor=actor)
+    except feedback_service.FeedbackError as exc:
+        raise OrgError(str(exc), exc.status_code) from exc
     with connection() as conn:
-        _log(conn, f"report_{status}", org_id=org_id, actor=actor, note=response[:200])
+        _log(conn, "report_answered", org_id=org_id, actor=actor, note=response[:200])
     return next(r for r in org_reports(org_id) if r["id"] == flag_id)
 
 

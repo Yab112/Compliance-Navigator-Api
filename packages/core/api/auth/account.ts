@@ -38,3 +38,7 @@ export const useChangePassword = () =>
   useMutationFunc<APIResponse<{ otherSessionsSignedOut: number }>, { current_password: string; new_password: string }>();
 
 export const useRevokeSession = () => useMutationFunc<APIResponse<null>, undefined>();
+
+/** Ask for a new confirmation link (signed in). Limited to a few an hour. */
+export const useResendVerification = () =>
+  useMutationFunc<APIResponse<{ sent: boolean; alreadyVerified: boolean }>, undefined>();

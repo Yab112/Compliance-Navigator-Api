@@ -61,21 +61,27 @@ def run_migrations() -> list[str]:
     applied: list[str] = []
     try:
         with connection() as conn:
-            conn.execute(
-                "create table if not exists schema_migrations ("
-                " name text primary key, applied_at timestamptz not null default now())"
-            )
-            done = {r["name"] for r in conn.execute("select name from schema_migrations")}
-            for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-                if path.name in done:
-                    continue
-                with conn.transaction():
-                    conn.execute(path.read_text(encoding="utf-8"))
-                    conn.execute(
-                        "insert into schema_migrations (name) values (%s)", (path.name,)
-                    )
-                applied.append(path.name)
-                logger.info("Applied migration %s", path.name)
+            # Several API workers start at once; one applies migrations, the rest wait, then see them done
+            conn.execute("select pg_advisory_lock(hashtext('cn_schema_migrations'))")
+            try:
+                conn.execute(
+                    "create table if not exists schema_migrations ("
+                    " name text primary key, applied_at timestamptz not null default now())"
+                )
+                done = {r["name"] for r in conn.execute("select name from schema_migrations")}
+                for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+                    if path.name in done:
+                        continue
+                    with conn.transaction():
+                        conn.execute(path.read_text(encoding="utf-8"))
+                        conn.execute(
+                            "insert into schema_migrations (name) values (%s)", (path.name,)
+                        )
+                    applied.append(path.name)
+                    logger.info("Applied migration %s", path.name)
+            finally:
+                # Pooled connections outlive this call, so the session lock must be released by hand
+                conn.execute("select pg_advisory_unlock(hashtext('cn_schema_migrations'))")
     except Exception:
         logger.exception("Database migrations failed, is Postgres running?")
         raise

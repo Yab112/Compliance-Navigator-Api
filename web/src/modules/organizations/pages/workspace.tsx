@@ -21,7 +21,7 @@ import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { EmptyState, ErrorState, Field, LoadingState, NativeSelect, formatDate } from "@cn/ui/guday/shared";
-import type { MemberOrganization, OrgReport, OrgServiceListItem } from "@cn/core/types/organizations";
+import type { MemberOrganization, OrgInvite, OrgReport, OrgServiceListItem } from "@cn/core/types/organizations";
 import { BranchesManager } from "@/modules/organizations/components/branch-editor";
 import { CompletenessMeter, ORG_TYPE_OPTIONS, OrgLogo, OrgStatusChip, Panel, ServiceStatusChip } from "@cn/ui/organizations/shared";
 
@@ -31,12 +31,13 @@ export function WorkspaceIndex() {
   const router = useRouter();
   const mine = useMyOrganizations(gate === "ready");
   const orgs = mine.data?.payload.organizations;
+  const invites = mine.data?.payload.invites ?? [];
 
   useEffect(() => {
-    if (orgs?.length === 1) router.replace(`/org/${orgs[0].id}`);
-  }, [orgs, router]);
+    if (orgs?.length === 1 && !invites.length) router.replace(`/org/${orgs[0].id}`);
+  }, [orgs, invites.length, router]);
 
-  if (gate === "loading" || mine.isLoading || orgs?.length === 1) {
+  if (gate === "loading" || mine.isLoading || (orgs?.length === 1 && !invites.length)) {
     return (
       <PageShell title="My organization · የእኔ ተቋም" maxWidth="lg">
         <LoadingState />
@@ -45,6 +46,7 @@ export function WorkspaceIndex() {
   }
   return (
     <PageShell title="My organization · የእኔ ተቋም" maxWidth="lg">
+      {invites.length > 0 && <Invites invites={invites} />}
       {!orgs?.length ? (
         <EmptyState title="You don't manage an organization yet">
           <p className="mb-4">Register your organization to publish its services, or ask its owner to invite your email.</p>
@@ -68,6 +70,52 @@ export function WorkspaceIndex() {
         </ul>
       )}
     </PageShell>
+  );
+}
+
+/** Invitations wait for the person's answer: nobody is added to an organization without agreeing. */
+function Invites({ invites }: { invites: OrgInvite[] }) {
+  const action = useOrgAction();
+  const [err, setErr] = useState<string | null>(null);
+  const answer = async (id: string, reply: "accept" | "decline") => {
+    setErr(null);
+    try {
+      await action.mutateAsync({ url: apiPaths.organizations.invite(id, reply), method: MTD.POST });
+    } catch (e) {
+      setErr(getErrorMessage(e));
+    }
+  };
+  return (
+    <Panel title="Invitations" am="ግብዣዎች">
+      <ul className="divide-border divide-y">
+        {invites.map((i) => (
+          <li key={i.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <OrgLogo name={i.org_name} url={i.logo_url} />
+              <div className="min-w-0">
+                <p className="font-semibold break-words">{i.org_name}</p>
+                <p className="text-muted-foreground text-xs">
+                  Invited as {i.role === "owner" ? "an owner" : "an editor"} · {formatDate(i.created_at)}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" loading={action.isPending} onClick={() => void answer(i.id, "accept")}>
+                Join
+              </Button>
+              <Button size="sm" variant="outline" disabled={action.isPending} onClick={() => void answer(i.id, "decline")}>
+                Decline
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {err && (
+        <p role="alert" className="text-destructive mt-2 text-sm">
+          {err}
+        </p>
+      )}
+    </Panel>
   );
 }
 
@@ -259,8 +307,8 @@ function ReportsTab({ orgId }: { orgId: string }) {
   return (
     <Panel title="Reports from the public" am="ከሕዝብ የመጡ ሪፖርቶች">
       <p className="text-muted-foreground mb-4 text-sm">
-        People who found something wrong on your service pages. Fix the service if needed, then reply: the reply is shown to the
-        platform team.
+        People who found something wrong on your service pages. Fix the service if needed, then reply. Your reply goes to the platform
+        team, who check it and close the report.
       </p>
       {reports.length === 0 ? (
         <p className="text-muted-foreground text-sm">No reports right now.</p>
@@ -279,10 +327,10 @@ function ReportItem({ orgId, report }: { orgId: string; report: OrgReport }) {
   const action = useOrgAction();
   const [reply, setReply] = useState(report.org_response ?? "");
   const [err, setErr] = useState<string | null>(null);
-  const respond = async (status: "resolved" | "dismissed" | "open") => {
+  const respond = async (verdict: "fixed" | "correct") => {
     setErr(null);
     try {
-      await action.mutateAsync({ url: apiPaths.org.report(orgId, report.id), method: MTD.POST, body: { status, response: reply.trim() } });
+      await action.mutateAsync({ url: apiPaths.org.report(orgId, report.id), method: MTD.POST, body: { verdict, response: reply.trim() } });
     } catch (e) {
       setErr(getErrorMessage(e));
     }
@@ -290,25 +338,36 @@ function ReportItem({ orgId, report }: { orgId: string; report: OrgReport }) {
   return (
     <li className="space-y-2 py-4">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className={cn("rounded px-2 py-0.5 font-medium", report.status === "open" ? "bg-amber-100 text-amber-900" : "bg-muted")}>{report.status}</span>
+        <span className={cn("rounded px-2 py-0.5 font-medium", report.status === "open" ? "bg-amber-100 text-amber-900" : "bg-muted")}>
+          {report.status === "open" ? (report.org_response ? "answered, waiting for staff" : "open") : report.status === "resolved" ? "closed, fixed" : "closed"}
+        </span>
         <span className="font-medium">{report.service_name ?? "Service"}</span>
         <span className="text-muted-foreground">{formatDate(report.created_at)}</span>
       </div>
       <p className="text-sm">“{report.message}”</p>
       {report.status === "open" ? (
         <div className="space-y-2">
+          {report.org_response && (
+            <p className="text-muted-foreground text-sm">
+              You said {report.org_verdict === "fixed" ? "it is fixed" : "the information is correct"}: {report.org_response}. You can change your reply
+              until staff close the report.
+            </p>
+          )}
           <Textarea rows={2} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="What you checked or changed" aria-label="Reply" />
-          <div className="flex gap-2">
-            <Button size="sm" disabled={reply.trim().length < 2} loading={action.isPending} onClick={() => void respond("resolved")}>
-              Mark fixed
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={reply.trim().length < 2} loading={action.isPending} onClick={() => void respond("fixed")}>
+              We fixed it
             </Button>
-            <Button size="sm" variant="outline" disabled={reply.trim().length < 2} onClick={() => void respond("dismissed")}>
+            <Button size="sm" variant="outline" disabled={reply.trim().length < 2 || action.isPending} onClick={() => void respond("correct")}>
               Information is correct
             </Button>
           </div>
         </div>
       ) : (
-        report.org_response && <p className="text-muted-foreground text-sm">Your reply: {report.org_response}</p>
+        <>
+          {report.org_response && <p className="text-muted-foreground text-sm">Your reply: {report.org_response}</p>}
+          {report.resolution_note && <p className="text-muted-foreground text-sm">Platform team: {report.resolution_note}</p>}
+        </>
       )}
       {err && <p className="text-destructive text-xs">{err}</p>}
     </li>
@@ -454,10 +513,10 @@ function MembersTab({ org }: { org: MemberOrganization }) {
         {(org.members ?? []).map((m) => (
           <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
             <div>
-              <p className="font-medium">{m.fullname || m.email}</p>
+              <p className="font-medium break-words">{m.fullname || m.email}</p>
               <p className="text-muted-foreground text-xs">
                 {m.email} · {m.role}
-                {!m.accepted && " · invited, joins when they sign up"}
+                {!m.accepted && " · invited, joins once they accept"}
               </p>
             </div>
             {isOwner && (

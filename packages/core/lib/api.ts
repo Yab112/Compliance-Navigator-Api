@@ -25,7 +25,7 @@ api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const config = error.config as RetriableConfig | undefined;
-    const isAuthCall = /^\/?auth\/(refresh|login|register|logout)/.test(config?.url ?? "");
+    const isAuthCall = /^\/?(staff\/)?auth\/(refresh|login|register|logout)/.test(config?.url ?? "");
     if (error.response?.status !== 401 || !config || config._retried || isAuthCall) {
       return Promise.reject(error);
     }

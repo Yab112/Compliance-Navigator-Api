@@ -23,7 +23,7 @@ from services import (
     user_store,
 )
 from services.db import fetch_all, fetch_one
-from services.storage_service import private_file_path
+from services.storage_service import SAFE_MEDIA_TYPES, private_file_path, safe_file_headers
 
 router = APIRouter(prefix="/admin", tags=["Admin Dashboard"], dependencies=[Depends(require_admin)])
 
@@ -53,7 +53,7 @@ def overview():
         """
         select count(*) as total,
                count(*) filter (where created_at > now() - interval '30 days') as new_30d,
-               count(*) filter (where role = 'admin') as admins,
+               (select count(*) from staff_users where status = 'active') as admins,
                count(*) filter (where role = 'agent') as agents
         from users
         """
@@ -216,63 +216,7 @@ def delete_custom_source(source_id: UUID):
     return _ok({"deleted": deleted})
 
 
-# ---------------------------------------------------------------- knowledge graph
-
-
-@router.get("/graph/stats")
-def graph_stats():
-    return _ok(graph_admin.graph_counts())
-
-
-@router.get("/graph/view")
-def graph_view():
-    return _ok(graph_admin.compliance_graph_view())
-
-
-@router.get("/graph/documents")
-def graph_documents():
-    return _ok({"documents": graph_admin.list_documents()})
-
-
-class DocumentPatch(BaseModel):
-    name: str | None = None
-    name_am: str | None = None
-    issuing_authority: str | None = None
-    form_code: str | None = None
-    fee_etb: int | None = Field(None, ge=0)
-    avg_processing_days: int | None = Field(None, ge=0)
-    legal_basis: str | None = None
-    source_url: str | None = None
-    required_input_labels: list[str] | None = None
-    rejection_reasons: list[str] | None = None
-    mark_verified: bool = False
-
-
-@router.patch("/graph/documents/{doc_id}")
-def patch_document(doc_id: str, body: DocumentPatch):
-    changes = body.model_dump(exclude_unset=True, exclude={"mark_verified"})
-    doc = graph_admin.update_document(doc_id, changes, mark_verified=body.mark_verified)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return _ok({"document": doc})
-
-
-@router.get("/graph/institutions")
-def graph_institutions():
-    return _ok({"institutions": graph_admin.institution_breakdown()})
-
-
-class CypherQuery(BaseModel):
-    query: str = Field(..., min_length=6, max_length=4000)
-
-
-@router.post("/graph/query")
-def graph_query(body: CypherQuery):
-    try:
-        rows = graph_admin.run_cypher_readonly(body.query)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Query failed (read-only console): {exc}") from exc
-    return _ok({"rows": rows, "count": len(rows)})
+# Knowledge graph routes live in api/v1/admin/graph.py
 
 
 @router.get("/files")
@@ -281,7 +225,9 @@ def admin_private_file(key: str):
     path = private_file_path(key)
     if not path:
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path)
+    # The type comes from an allowlist, never from whatever extension was stored; anything else downloads
+    media_type = SAFE_MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
+    return FileResponse(path, media_type=media_type, headers=safe_file_headers(media_type, filename=path.name))
 
 
 # ---------------------------------------------------------------- users
@@ -302,14 +248,13 @@ def admin_list_users(
 
 
 class UserPatch(BaseModel):
-    role: str | None = Field(None, pattern="^(user|agent|admin)$")
+    # Staff access is managed separately (Access pages); public accounts are customers or providers
+    role: str | None = Field(None, pattern="^(user|agent)$")
     is_active: bool | None = None
 
 
 @router.patch("/users/{user_id}")
 def admin_patch_user(user_id: str, body: UserPatch, admin: AuthUser = Depends(require_admin)):
-    if user_id == admin.id and (body.role not in (None, "admin") or body.is_active is False):
-        raise HTTPException(status_code=400, detail="You can't remove your own admin access")
     user = user_store.update_user(user_id, role=body.role, is_active=body.is_active)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -410,10 +355,14 @@ def ai_knowledge_search(body: KnowledgeSearch):
 
 
 @router.get("/feedback")
-def admin_list_feedback(status_: str | None = Query(None, alias="status"),
+def admin_list_feedback(status_: str | None = Query(None, alias="status",
+                                                    pattern="^(open|org_responded|resolved|dismissed|all)$"),
+                        target_type: str | None = Query(None, pattern="^(document|gov_service|office|agent|roadmap_step|org_service|other)$"),
+                        org_id: UUID | None = None, q: str | None = Query(None, max_length=200),
                         limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
-    return _ok({"flags": feedback_service.list_flags(status_, limit, offset),
-                "total": feedback_service.count_flags(status_)})
+    filters = {"target_type": target_type, "org_id": str(org_id) if org_id else None, "q": q}
+    return _ok({"flags": feedback_service.list_flags(status_, limit, offset, **filters),
+                "total": feedback_service.count_flags(status_, **filters)})
 
 
 class FlagResolve(BaseModel):
@@ -422,8 +371,11 @@ class FlagResolve(BaseModel):
 
 
 @router.patch("/feedback/{flag_id}")
-def admin_resolve_feedback(flag_id: str, body: FlagResolve, admin: AuthUser = Depends(require_admin)):
-    flag = feedback_service.resolve_flag(flag_id, body.status, body.note, admin.email)
+def admin_resolve_feedback(flag_id: UUID, body: FlagResolve, admin: AuthUser = Depends(require_admin)):
+    try:
+        flag = feedback_service.resolve_flag(str(flag_id), body.status, body.note, admin.email)
+    except feedback_service.FeedbackError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     if not flag:
         raise HTTPException(status_code=404, detail="Flag not found")
     return _ok({"flag": flag})

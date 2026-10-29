@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from assistant import dialogue, rephrase, store
+from core import ratelimit
 from core.deps import client_info, get_optional_user
 from schemas.auth_user import AuthUser
 from services import support_service
@@ -52,7 +53,7 @@ def _handover(conversation: dict, state: dict, message: str, user: AuthUser | No
                 "subCity": state.get("sub_city"), "held": state.get("held") or []})
 
 
-@router.post("/turn")
+@router.post("/turn", dependencies=[Depends(ratelimit.limit("assistant"))])
 def turn(body: TurnBody, request: Request, user: AuthUser | None = Depends(get_optional_user)):
     if not body.message and not body.action:
         raise HTTPException(status_code=422, detail="Send a message or an action")

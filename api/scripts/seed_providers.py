@@ -190,6 +190,6 @@ def p_months(key: str) -> float:
 if __name__ == "__main__":
     if "--purge" in sys.argv:
         initiate_database()
-        print(svc.purge_samples())
+        print(svc.purge_samples(actor="scripts/seed_providers.py"))
     else:
         seed()

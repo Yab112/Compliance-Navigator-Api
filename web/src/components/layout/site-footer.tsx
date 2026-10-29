@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FlagStripe } from "@cn/ui/layout/flag-stripe";
 import { Logo } from "@cn/ui/layout/logo";
 import { siteIdentity } from "@cn/core/content/site";
+import { LEGAL_DOCS, legalHref } from "@/content/legal";
 
 const columns = [
   {
@@ -66,7 +67,24 @@ export function SiteFooter() {
           {siteIdentity.disclaimer}
         </p>
 
-        <div className="mt-8 flex flex-col gap-2 border-t border-white/15 pt-6 text-xs text-white/60 sm:flex-row sm:items-center sm:justify-between">
+        <nav aria-label="Legal" className="mt-8 border-t border-white/15 pt-6">
+          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
+            <li>
+              <Link href="/legal" className="text-gov-yellow font-semibold hover:underline">
+                Legal · ሕጋዊ
+              </Link>
+            </li>
+            {LEGAL_DOCS.map((doc) => (
+              <li key={doc.key}>
+                <Link href={legalHref(doc.key)} className="text-white/75 hover:text-white hover:underline">
+                  {doc.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="mt-6 flex flex-col gap-2 text-xs text-white/60 sm:flex-row sm:items-center sm:justify-between">
           <p>
             © {year} {siteIdentity.name}. Addis Ababa, Ethiopia.
           </p>

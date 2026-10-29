@@ -79,6 +79,9 @@ def _run_stale_check() -> dict:
     cutoff = date.today() - timedelta(days=STALE_AFTER_DAYS)
     stats = graph_admin.flag_stale_documents(cutoff)
     stats["agent_licenses_expired"] = expire_licenses()
+    from services import vetting
+
+    stats.update({f"vetting_{k}": v for k, v in vetting.run_daily().items()})
     from services import org_service
 
     stats["org_changes_went_live"] = org_service.promote_due_changes(force=True)

@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 
+
+from core import ratelimit
 
 from core.deps import get_current_user
 
@@ -18,11 +20,14 @@ from services.stt_service import transcribe_audio
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
+# A few minutes of speech is well under this; bigger uploads are refused before reaching Whisper
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
 
 
 
-@router.post("", response_model=None)
+
+@router.post("", response_model=None, dependencies=[Depends(ratelimit.limit("chat"))])
 
 def chat(
 
@@ -76,7 +81,7 @@ def chat(
 
 
 
-@router.post("/transcribe", response_model=None)
+@router.post("/transcribe", response_model=None, dependencies=[Depends(ratelimit.limit("transcribe"))])
 
 def transcribe(
 
@@ -86,7 +91,11 @@ def transcribe(
 
 ):
 
-    content = file.file.read()
+    content = file.file.read(MAX_AUDIO_BYTES + 1)
+
+    if len(content) > MAX_AUDIO_BYTES:
+
+        raise HTTPException(status_code=413, detail="That recording is too long. Keep it under 10 MB.")
 
     result = transcribe_audio(content, filename=file.filename or "audio.webm")
 

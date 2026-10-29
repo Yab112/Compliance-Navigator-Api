@@ -1,11 +1,24 @@
 """Provider marketplace: public profiles, joining as a provider, hires and reviews."""
 
 import json
+from datetime import date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
+from fastapi.responses import Response
 from pydantic import ValidationError
 
+from core import ratelimit
 from core.deps import get_current_user
+from core.verified import get_verified_user
 from schemas.auth_user import AuthUser
 from schemas.providers import (
     ClientAction,
@@ -19,9 +32,20 @@ from schemas.providers import (
     ReviewReply,
     TeamInvite,
 )
-from services import id_verification, provider_service as svc
+from schemas.vetting import ReferencesIn
+from services import id_verification, vetting
+from services import provider_service as svc
 from services.provider_service import MarketplaceError
-from services.storage_service import IMAGE_TYPES, delete_public_file, save_agent_file
+from services.storage_service import (
+    ALLOWED_UPLOAD_TYPES,
+    IMAGE_TYPES,
+    VETTING_MAX_BYTES,
+    delete_public_file,
+    safe_file_headers,
+    save_agent_file,
+    sniff_type,
+)
+from services.vetting import VettingError
 
 router = APIRouter(tags=["Marketplace"])
 
@@ -30,8 +54,42 @@ def _ok(payload):
     return {"message": "success", "payload": payload}
 
 
-def _raise(exc: MarketplaceError):
+def _raise(exc: MarketplaceError | VettingError):
     raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+async def _read_limited(file: UploadFile) -> bytes:
+    """Read at most the size limit (plus one byte to notice a bigger file) so a huge upload can't fill memory."""
+    content = await file.read(VETTING_MAX_BYTES + 1)
+    if len(content) > VETTING_MAX_BYTES:
+        raise HTTPException(status_code=400, detail=f"Files must be {VETTING_MAX_BYTES // (1024 * 1024)} MB or smaller")
+    return content
+
+
+async def _join_document(file: UploadFile | None) -> bytes | None:
+    """ID and licence copies sent with the join form: checked now, stored as vetting documents after joining."""
+    if not file or not file.filename:
+        return None
+    content = await _read_limited(file)
+    if sniff_type(content) not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP or PDF files are accepted")
+    return content
+
+
+def _date(value: str | None, label: str) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"{label} must be a date (YYYY-MM-DD)") from exc
+
+
+def _me(user: AuthUser) -> dict:
+    me = svc.get_for_user(user.id)
+    if not me:
+        raise HTTPException(status_code=404, detail="You don't have a provider profile yet")
+    return me
 
 
 async def _store(file: UploadFile | None, *, public: bool) -> str | None:
@@ -79,6 +137,12 @@ def provider_options():
     })
 
 
+@router.get("/providers/vetting-requirements")
+def vetting_requirements(entity: str = Query("individual", pattern="^(individual|company)$")):
+    """What the join form asks for: the documents, the oldest police clearance accepted, the lowest education."""
+    return _ok({"vetting": vetting.template(entity)})
+
+
 # ---------------------------------------------------------------- my provider profile
 
 
@@ -88,7 +152,11 @@ async def join(
     photo: UploadFile | None = File(None),
     license_document: UploadFile | None = File(None),
     id_document: UploadFile | None = File(None),
-    user: AuthUser = Depends(get_current_user),
+    # What is printed on the trade licence, so staff don't have to type it in
+    license_issued_on: str | None = Form(None),
+    license_expires_on: str | None = Form(None),
+    license_reference_no: str | None = Form(None, max_length=60),
+    user: AuthUser = Depends(get_verified_user),
 ):
     try:
         body = ProviderJoin(**json.loads(data))
@@ -96,6 +164,11 @@ async def join(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     fields = body.model_dump()
+    from services import legal
+
+    # The Provider Agreement (identity and police checks, commission, paying only through us) comes first;
+    # LegalError is a 400 HTTPException
+    legal.require_accepted(user.id, ["provider_agreement"])
     # Individuals and a company's representative both prove who they are with Fayda
     if id_verification.is_required():
         identity = id_verification.current(user.id)
@@ -113,12 +186,20 @@ async def join(
     if body.entity_type == "company" and not (license_document and license_document.filename):
         raise HTTPException(status_code=400, detail="Upload a copy of the company's trade licence")
 
+    licence_copy = await _join_document(license_document)
+    id_copy = await _join_document(id_document) if not id_verification.is_required() else None
     fields["photo_url"] = await _store(photo, public=True)
-    fields["license_document_url"] = await _store(license_document, public=False)
-    fields["id_document_url"] = await _store(id_document, public=False)
     try:
         provider = svc.join(fields, user_id=user.id, actor=user.email)
-    except MarketplaceError as exc:
+        # Without dates yet: the provider adds them on the Vetting tab, or staff fill them in when they check
+        if licence_copy:
+            vetting.upload(provider, "trade_licence", licence_copy, actor=user.email, strict=False,
+                           issued_on=_date(license_issued_on, "Licence issue date"),
+                           expires_on=_date(license_expires_on, "Licence valid-until date"),
+                           reference_no=license_reference_no or fields.get("trade_license_no"))
+        if id_copy:
+            vetting.upload(provider, "id_copy", id_copy, actor=user.email, strict=False)
+    except (MarketplaceError, VettingError) as exc:
         _raise(exc)
     provider.pop("national_id", None)
     return _ok({"provider": provider})
@@ -168,12 +249,74 @@ def remove_photo(user: AuthUser = Depends(get_current_user)):
 
 @router.post("/providers/me/license-document")
 async def upload_license(document: UploadFile = File(...), user: AuthUser = Depends(get_current_user)):
-    url = await _store(document, public=False)
+    """Older route: the copy becomes a trade licence document waiting for staff (dates added when checked)."""
+    me = _me(user)
     try:
-        svc.update_me(user.id, {"license_document_url": url}, user.email)
-    except MarketplaceError as exc:
+        vetting.upload(me, "trade_licence", await _read_limited(document), actor=user.email, strict=False)
+    except VettingError as exc:
         _raise(exc)
     return _ok({"uploaded": True})
+
+
+# ---------------------------------------------------------------- my vetting documents
+
+
+@router.get("/providers/me/vetting")
+def my_vetting(user: AuthUser = Depends(get_current_user)):
+    return _ok({"vetting": vetting.checklist(_me(user))})
+
+
+@router.post("/providers/me/documents", status_code=status.HTTP_201_CREATED)
+async def upload_document(
+    kind: str = Form(..., pattern="^(police_clearance|education|photo|trade_licence|tin_certificate|id_copy)$"),
+    file: UploadFile = File(...),
+    issued_on: str | None = Form(None),
+    expires_on: str | None = Form(None),
+    reference_no: str | None = Form(None, max_length=60),
+    issuer: str | None = Form(None, max_length=120),
+    level: str | None = Form(None, pattern="^(grade_10|grade_12|tvet|diploma|degree)$"),
+    # Required for a police clearance: the provider agrees we keep and check it
+    consent: bool = Form(False),
+    user: AuthUser = Depends(get_current_user),
+):
+    """Upload or replace one vetting document. The file type is read from its bytes, not its name."""
+    me = _me(user)
+    content = await _read_limited(file)
+    try:
+        doc = vetting.upload(me, kind, content, actor=user.email, issued_on=_date(issued_on, "Issue date"),
+                             expires_on=_date(expires_on, "Valid-until date"), reference_no=reference_no,
+                             issuer=issuer, level=level, consent=consent)
+    except VettingError as exc:
+        _raise(exc)
+    return _ok({"document": doc, "vetting": vetting.checklist(svc.get(me["id"]))})
+
+
+@router.get("/providers/me/documents")
+def my_documents(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0),
+                 user: AuthUser = Depends(get_current_user)):
+    """Everything uploaded, including replaced copies."""
+    return _ok(vetting.history(_me(user)["id"], limit=limit, offset=offset))
+
+
+@router.get("/providers/me/documents/{document_id}/file")
+def my_document_file(document_id: str, user: AuthUser = Depends(get_current_user)):
+    """The provider's own copy. Another provider's document id is simply not found."""
+    me = _me(user)
+    try:
+        content, content_type, _ = vetting.read_file(me["id"], document_id, actor=user.email, by_staff=False)
+    except VettingError as exc:
+        _raise(exc)
+    return Response(content, media_type=content_type, headers=safe_file_headers(content_type))
+
+
+@router.put("/providers/me/references")
+def set_my_references(body: ReferencesIn, user: AuthUser = Depends(get_current_user)):
+    me = _me(user)
+    try:
+        vetting.set_references(me, [r.model_dump() for r in body.references], actor=user.email)
+    except VettingError as exc:
+        _raise(exc)
+    return _ok({"vetting": vetting.checklist(me)})
 
 
 @router.get("/providers/me/jobs")
@@ -276,7 +419,7 @@ def provider_reviews(
 # ---------------------------------------------------------------- hires (client side)
 
 
-@router.post("/hires", status_code=status.HTTP_201_CREATED)
+@router.post("/hires", status_code=status.HTTP_201_CREATED, dependencies=[Depends(ratelimit.limit("hire_create"))])
 def create_hire(body: HireCreate, user: AuthUser = Depends(get_current_user)):
     try:
         hire = svc.create_hire(body.model_dump(), user_id=user.id)
@@ -318,7 +461,8 @@ def dispute_hire(engagement_id: str, body: ClientAction, user: AuthUser = Depend
     return _client(engagement_id, "dispute", user, body.reason)
 
 
-@router.post("/hires/{engagement_id}/review", status_code=status.HTTP_201_CREATED)
+@router.post("/hires/{engagement_id}/review", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(ratelimit.limit("review_create"))])
 def review_hire(engagement_id: str, body: ReviewCreate, user: AuthUser = Depends(get_current_user)):
     try:
         hire = svc.leave_review(engagement_id, user_id=user.id, data=body.model_dump())

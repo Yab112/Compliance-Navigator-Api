@@ -105,19 +105,49 @@ export type GraphCounts = {
   staleDocuments: number;
 };
 
+/** Node kinds drawn in the admin dependency diagram. */
+export type GraphNodeType = "Service" | "Document" | "Sector" | "OrgService" | "OrgDocument";
+
 export type GraphNode = {
+  /** "Type:id", unique across types (a service and a document can share an id) */
+  key: string;
   id: string;
+  type: GraphNodeType;
   label: string;
-  type: "Service" | "Document" | "Sector";
+  label_am?: string | null;
+  description?: string | null;
+  category?: string | null;
   stale?: boolean | null;
   fee?: number | null;
   days?: number | null;
+  minutes?: number | null;
+  /** Issuing office for documents, regulator for sectors */
+  office?: string | null;
+  form_code?: string | null;
+  last_verified?: string | null;
+  verified_by?: string | null;
+  source_url?: string | null;
+  sectors?: string[] | null;
+  sector_specific?: boolean | null;
+  slug?: string | null;
+  organization?: string | null;
+  organization_id?: string | null;
 };
+
+/** Edges always point from what must happen first (`source`) to what depends on it (`target`). */
+export type GraphEdgeType = "REQUIRES" | "TARGETS" | "SECTOR_EXTRA" | "ORG_REQUIRES" | "ISSUES" | "PREREQUISITE";
 
 export type GraphView = {
   nodes: GraphNode[];
-  edges: { source: string; target: string; type: "REQUIRES" | "TARGETS" | "SECTOR_EXTRA" }[];
-  mesobLinks: { document: string; id: string; name: string; institution?: string | null }[];
+  edges: { source: string; target: string; type: GraphEdgeType }[];
+  mesobLinks: {
+    document: string;
+    id: string;
+    name: string;
+    institution?: string | null;
+    fee_text?: string | null;
+    time_text?: string | null;
+  }[];
 };
 
 export type GraphDocument = {
@@ -133,11 +163,17 @@ export type GraphDocument = {
   required_input_labels?: string[];
   rejection_reasons?: string[];
   last_verified?: string | null;
+  verified_by?: string | null;
+  updated_by?: string | null;
+  updated_at?: string | null;
   stale?: boolean;
   prerequisites: string[];
+  prerequisite_names?: Record<string, string>;
   mesob_services: { id: string; name: string }[];
   target_of: string[];
 };
+
+export type CypherResult = { rows: Record<string, unknown>[]; count: number; truncated: boolean; limit: number };
 
 export type InstitutionBreakdown = {
   id: string;
@@ -210,6 +246,13 @@ export type AuthSummary = {
   registrations_7d: number;
 };
 
+export type FeedbackFlagEvent = {
+  action: "created" | "org_responded" | "resolved" | "dismissed" | "reopened";
+  actor?: string | null;
+  note?: string | null;
+  created_at: string;
+};
+
 export type FeedbackFlag = {
   id: string;
   user_email?: string | null;
@@ -221,7 +264,18 @@ export type FeedbackFlag = {
   resolved_by?: string | null;
   created_at: string;
   resolved_at?: string | null;
+  /** Set when the report is about an organization's service. */
+  org_id?: string | null;
+  org_name?: string | null;
+  org_response?: string | null;
+  org_verdict?: "fixed" | "correct" | null;
+  org_responded_by?: string | null;
+  org_responded_at?: string | null;
+  /** Every step, oldest first. Reopening adds a line; nothing is overwritten. */
+  events: FeedbackFlagEvent[];
 };
+
+export type FeedbackFilters = { status: string; target_type?: string; q?: string; org_id?: string };
 
 export type DayCount = { day: string; count: number };
 

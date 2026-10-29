@@ -82,6 +82,10 @@ class DocumentNode(BaseNode):
     last_verified: Optional[date] = None
     source_url: Optional[str] = None
     stale: bool = False
+    # Set from the admin knowledge graph page: who last checked the facts, and who last edited them
+    verified_by: Optional[str] = None
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
 
 
 class OfficeNode(BaseNode):

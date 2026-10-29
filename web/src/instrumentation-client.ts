@@ -3,16 +3,17 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { beforeBreadcrumb, beforeSend, beforeSendTransaction, tracesSampleRate } from "@/lib/sentry-scrub";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-
-  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
-
-  // Enable sending user PII (Personally Identifiable Information)
-  // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
-  sendDefaultPii: true,
+  // Share of page loads traced (NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE, 0 to 1, default 0.1); errors are always sent
+  tracesSampleRate: tracesSampleRate(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE),
+  // No IP addresses or cookies; beforeSend also removes emails, phones and tokens (reset links carry one)
+  sendDefaultPii: false,
+  beforeSend,
+  beforeSendTransaction,
+  beforeBreadcrumb,
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

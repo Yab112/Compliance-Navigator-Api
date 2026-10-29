@@ -2,9 +2,10 @@ import json
 import uuid
 
 import pytest
-
 from conftest import API
+
 from services import org_service
+from services.db import execute
 from services.graph_service import _query_rows
 
 
@@ -31,6 +32,9 @@ def _register(client, user, name=None, org_type="sub_city_office"):
 
 
 def _verify(client, admin, org_id):
+    # Staff can't verify without an authorization letter; tests skip the upload and point at a placeholder key
+    execute("update organizations set authorization_letter_key = coalesce(authorization_letter_key, 'private/test-letter.pdf') "
+            "where id = %s", (org_id,))
     r = client.post(f"{API}/admin/organizations/{org_id}/review", json={"action": "verify"}, headers=admin["headers"])
     assert r.status_code == 200, r.text
 
@@ -81,7 +85,10 @@ def test_non_member_cannot_edit(client, make_user):
     assert client.post(f"{API}/org/{org['id']}/services", json=_service("Hijack"), headers=stranger["headers"]).status_code == 403
     # Invited editors can edit but not manage members
     client.post(f"{API}/org/{org['id']}/members", json={"email": stranger["email"]}, headers=owner["headers"])
-    client.get(f"{API}/organizations/mine", headers=stranger["headers"])
+    invite = client.get(f"{API}/organizations/mine", headers=stranger["headers"]).json()["payload"]["invites"][0]
+    # Invited is not a member yet: nobody joins without saying yes
+    assert client.patch(f"{API}/org/{org['id']}", json={"description": "x"}, headers=stranger["headers"]).status_code == 403
+    assert client.post(f"{API}/organizations/invites/{invite['id']}/accept", headers=stranger["headers"]).status_code == 200
     assert client.patch(f"{API}/org/{org['id']}", json={"description": "Updated"}, headers=stranger["headers"]).status_code == 200
     assert client.post(f"{API}/org/{org['id']}/members", json={"email": "x@example.com"},
                        headers=stranger["headers"]).status_code == 403
@@ -225,9 +232,7 @@ def test_public_never_shows_drafts_or_notes(client, make_user, graph_cleanup):
 
 # ---------------------------------------------------------------- depth, drafts and freshness (migration 009)
 
-from datetime import date, timedelta  # noqa: E402
-
-from services.db import execute, fetch_one  # noqa: E402
+from datetime import date, timedelta
 
 
 def _full_org(client, user, admin, *, sub_city="bole"):
@@ -392,10 +397,20 @@ def test_wrong_info_report_reaches_the_organization(client, make_user, graph_cle
     assert reports[0]["service_name"] == "Electricity connection" and reports[0]["status"] == "open"
     assert client.get(f"{API}/org/{org['id']}/reports", headers=stranger["headers"]).status_code == 403
     done = client.post(f"{API}/org/{org['id']}/reports/{reports[0]['id']}",
-                       json={"status": "resolved", "response": "Fee schedule corrected"}, headers=user["headers"])
-    assert done.json()["payload"]["report"]["status"] == "resolved"
-    flags = client.get(f"{API}/admin/feedback", headers=admin["headers"]).json()["payload"]["flags"]
-    assert next(f for f in flags if f["id"] == reports[0]["id"])["status"] == "resolved"
+                       json={"verdict": "fixed", "response": "Fee schedule corrected"}, headers=user["headers"])
+    assert done.status_code == 200, done.text
+    # The organization answers, but only staff close the report
+    assert done.json()["payload"]["report"]["status"] == "open"
+    assert done.json()["payload"]["report"]["org_verdict"] == "fixed"
+    old_style = client.post(f"{API}/org/{org['id']}/reports/{reports[0]['id']}",
+                            json={"status": "dismissed", "response": "Closing it"}, headers=user["headers"])
+    assert old_style.status_code == 422
+    flags = client.get(f"{API}/admin/feedback", params={"status": "org_responded", "org_id": org["id"]},
+                       headers=admin["headers"]).json()["payload"]["flags"]
+    flag = next(f for f in flags if f["id"] == reports[0]["id"])
+    assert flag["status"] == "open" and flag["org_response"] == "Fee schedule corrected"
+    assert flag["org_name"] == org["name"] and [e["action"] for e in flag["events"]] == ["created", "org_responded"]
+    execute("delete from feedback_flags where id = %s", (flag["id"],))
 
 
 def test_change_notifies_path_owners_and_path_uses_org_data(client, make_user, graph_cleanup):

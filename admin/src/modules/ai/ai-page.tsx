@@ -104,7 +104,7 @@ function TestAssistant() {
     <Card>
       <CardHeader>
         <CardTitle>Test the assistant</CardTitle>
-        <CardDescription>Sends a message through the live chat pipeline (no history is saved).</CardDescription>
+        <CardDescription>Sends a message through the same steps as real chat, with the provider in use now. Nothing is saved.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} aria-label="Test message" />
@@ -165,7 +165,7 @@ function KnowledgeSearch() {
     <Card>
       <CardHeader>
         <CardTitle>Search the knowledge base</CardTitle>
-        <CardDescription>See exactly which passages the assistant can ground its answers in.</CardDescription>
+        <CardDescription>See which passages the assistant would quote to back up an answer. Add sources under Data sources.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <form
@@ -214,7 +214,7 @@ export function AIPage() {
   return (
     <AdminPage
       title="AI assistant"
-      description="The bilingual (English / Amharic) assistant behind chat: which model answers, what it knows, and a sandbox to try it."
+      description="The bilingual (English and Amharic) assistant behind chat: which AI provider writes the replies, what it knows, how well it understands questions, and a safe place to try it."
     >
       {isLoading ? (
         <LoadingState />
@@ -231,13 +231,18 @@ export function AIPage() {
               tone={s.provider === "ollama" && !s.ollama.reachable ? "attention" : "default"}
             />
             <StatTile label="Anthropic" value={s.anthropic.configured ? "Configured" : "No API key"} />
-            <StatTile label="Knowledge chunks" value={s.knowledgeBase.total ?? "-"} hint={`${(s.knowledgeBase.mesob ?? 0).toLocaleString("en")} from MESOB`} />
-            <StatTile label="Last ingest" value={s.knowledgeBase.last_ingested_at ? formatDateTime(s.knowledgeBase.last_ingested_at) : "-"} />
+            <StatTile label="Knowledge passages" value={s.knowledgeBase.total ?? "-"} hint={`${(s.knowledgeBase.mesob ?? 0).toLocaleString("en")} from the MESOB catalog`} />
+            <StatTile label="Last added" value={s.knowledgeBase.last_ingested_at ? formatDateTime(s.knowledgeBase.last_ingested_at) : "-"} />
             <StatTile label="Speech to text" value={s.speechToText.model} hint={s.speechToText.engine} />
           </div>
           <p className="text-muted-foreground mt-2 text-[11px]">
-            Embeddings: {s.embeddings.model} ({s.embeddings.dimension}-dim){" "}
-            {s.knowledgeBase.error && <StatusBadge status="failed" className="ml-1" />}
+            Passages are found by meaning, not exact words, using the {s.embeddings.model} model ({s.embeddings.dimension}{" "}
+            dimensions).{" "}
+            {s.knowledgeBase.error && (
+              <>
+                <StatusBadge status="failed" className="ml-1" /> The knowledge base could not be read: {s.knowledgeBase.error}
+              </>
+            )}
           </p>
           <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,22rem)_1fr]">
             <ProviderSettings key={`${s.provider}:${s.ollama.model}`} status={s} />

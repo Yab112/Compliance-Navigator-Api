@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { type TicketFilters, useSupportSummary, useSupportTickets } from "@cn/core/api/support";
+import { type TicketFilters, useSupportExport, useSupportSummary, useSupportTickets } from "@cn/core/api/support";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
+import { Pager, useUrlPage } from "@cn/ui/pager";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
@@ -15,13 +16,45 @@ import { StatTile } from "@/modules/shared/stat-tile";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
 import { useDebounced } from "@cn/ui/guday/shared";
 import { PriorityBadge, SlaBadge, TicketStatusBadge } from "@cn/ui/support/ticket-badges";
-import { PRIORITY_LABELS, QUEUE_LABELS, STATUS_LABELS, type SupportQueue, type TicketPriority, type TicketStatus } from "@cn/core/types/support";
+import {
+  PRIORITY_LABELS,
+  QUEUE_LABELS,
+  STATUS_LABELS,
+  type SupportQueue,
+  type SupportTicket,
+  type TicketPriority,
+  type TicketSort,
+  type TicketStatus,
+} from "@cn/core/types/support";
 
 const PAGE_SIZE = 25;
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "active", label: "Active (new, open, waiting)" },
+  { value: "overdue", label: "Overdue (we owe a reply)" },
   ...(Object.keys(STATUS_LABELS) as TicketStatus[]).map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+  { value: "all", label: "All, including ended" },
 ];
+const SORT_OPTIONS: { value: TicketSort; label: string }[] = [
+  { value: "triage", label: "Most urgent first" },
+  { value: "updated", label: "Latest activity" },
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+];
+const SOURCE_OPTIONS = [
+  { value: "assistant", label: "From the assistant" },
+  { value: "contact_form", label: "Contact form" },
+  { value: "report", label: "Report" },
+];
+
+/** Who has to act next, and for how long they have been waiting. */
+function WaitingOn({ ticket }: { ticket: SupportTicket }) {
+  if (!ticket.waiting_on) return <span className="text-muted-foreground">Ended</span>;
+  return ticket.waiting_on === "us" ? (
+    <span className="font-medium">Us, {timeAgo(ticket.waiting_since)}</span>
+  ) : (
+    <span className="text-muted-foreground">Customer, {timeAgo(ticket.waiting_since)}</span>
+  );
+}
 
 export function formatMinutes(minutes: number | null | undefined): string {
   if (minutes == null) return "-";
@@ -40,7 +73,15 @@ export function SupportDesk() {
   const assigned = (params.get("assigned") ?? "") as "" | "me" | "none";
   const status = params.get("status") ?? "active";
   const priority = params.get("priority") ?? "";
-  const page = Math.max(0, Number(params.get("page") ?? 0) || 0);
+  const source = params.get("source") ?? "";
+  const waiting = (params.get("waiting") ?? "") as "" | "us" | "customer";
+  const sort = (params.get("sort") ?? "triage") as TicketSort;
+  const since = params.get("since") ?? "";
+  const until = params.get("until") ?? "";
+  const [page, setPage] = useUrlPage();
+  const exportCsv = useSupportExport();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const q = useDebounced(query.trim(), 300);
 
@@ -64,6 +105,11 @@ export function SupportDesk() {
     status,
     assigned: assigned || undefined,
     priority: priority || undefined,
+    source: source || undefined,
+    waiting: waiting || undefined,
+    since: since || undefined,
+    until: until || undefined,
+    sort: sort === "triage" ? undefined : sort,
     q: q || undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
@@ -71,7 +117,19 @@ export function SupportDesk() {
   const tickets = useSupportTickets(filters);
   const s = summary.payload;
   const t = s?.totals;
-  const pages = Math.ceil((tickets.payload?.total ?? 0) / PAGE_SIZE);
+  const filtered = !!(priority || source || waiting || since || until || q || sort !== "triage");
+
+  const download = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await exportCsv(filters);
+    } catch (err) {
+      setExportError(getErrorMessage(err, "The export failed. Please try again."));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const views: View[] = [
     { key: "all", label: "All queues", count: t ? t.new + t.open + t.waiting_customer : undefined, overdue: t?.overdue, params: { queue: null, assigned: null } },
@@ -98,9 +156,15 @@ export function SupportDesk() {
             <StatTile label="New" value={t.new} hint="Not opened yet" tone={t.new ? "attention" : "default"} href="/support?status=new" />
             <StatTile label="Open" value={t.open} hint="Being worked on" href="/support?status=open" />
             <StatTile label="Waiting on customer" value={t.waiting_customer} hint="We replied last" href="/support?status=waiting_customer" />
-            <StatTile label="Overdue" value={t.overdue} hint="Past the first-response target" tone={t.overdue ? "attention" : "default"} />
+            <StatTile
+              label="Overdue"
+              value={t.overdue}
+              hint="We owe a reply and the target has passed"
+              tone={t.overdue ? "attention" : "default"}
+              href="/support?status=overdue"
+            />
             <StatTile label="Unassigned" value={t.unassigned} hint="Nobody owns these" tone={t.unassigned ? "attention" : "default"} href="/support?assigned=none" />
-            <StatTile label="Avg first response" value={formatMinutes(t.avg_first_response_minutes)} hint="Last 7 days" />
+            <StatTile label="Avg first response" value={formatMinutes(t.avg_first_response_minutes)} hint="Last 30 days" />
             <StatTile label="Resolved, 7 days" value={t.resolved_7d} />
           </div>
           <h2 className="text-muted-foreground mt-6 mb-2 text-[11px] font-medium tracking-wider uppercase">Related work in other queues</h2>
@@ -115,7 +179,7 @@ export function SupportDesk() {
             <StatTile
               label="Deals to follow up"
               value={s.related.deals_to_follow_up}
-              hint="Accepted, unpaid after 2 days: call both sides"
+              hint={`Delivered, unpaid after ${s.follow_up_hours} hours: call both sides`}
               href="/marketplace/hires?follow_up=1"
               tone={s.related.deals_to_follow_up ? "attention" : "default"}
             />
@@ -161,8 +225,9 @@ export function SupportDesk() {
             </label>
             <Input
               id="support-q"
-              className="h-8 w-64 text-xs"
-              placeholder="Search ref, subject, name, phone, email"
+              type="search"
+              className="h-8 w-full text-xs sm:w-64"
+              placeholder="Search ref, subject, contact or message text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -173,6 +238,11 @@ export function SupportDesk() {
                 </option>
               ))}
             </NativeSelect>
+            <NativeSelect aria-label="Waiting on" value={waiting} onChange={(e) => setParam({ waiting: e.target.value || null, page: null })}>
+              <option value="">Waiting on anyone</option>
+              <option value="us">Waiting on us</option>
+              <option value="customer">Waiting on the customer</option>
+            </NativeSelect>
             <NativeSelect aria-label="Priority" value={priority} onChange={(e) => setParam({ priority: e.target.value || null, page: null })}>
               <option value="">Any priority</option>
               {(Object.keys(PRIORITY_LABELS) as TicketPriority[]).map((p) => (
@@ -181,7 +251,67 @@ export function SupportDesk() {
                 </option>
               ))}
             </NativeSelect>
-            {tickets.isFetching && <span className="text-muted-foreground text-[11px]">Updating…</span>}
+            <NativeSelect aria-label="Source" value={source} onChange={(e) => setParam({ source: e.target.value || null, page: null })}>
+              <option value="">Any source</option>
+              {SOURCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </NativeSelect>
+            <NativeSelect aria-label="Sort" value={sort} onChange={(e) => setParam({ sort: e.target.value === "triage" ? null : e.target.value, page: null })}>
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </NativeSelect>
+            <label className="flex items-center gap-1 text-[11px]">
+              <span className="text-muted-foreground">Opened from</span>
+              <Input
+                type="date"
+                className="h-8 w-36 text-xs"
+                value={since}
+                max={until || undefined}
+                onChange={(e) => setParam({ since: e.target.value || null, page: null })}
+              />
+            </label>
+            <label className="flex items-center gap-1 text-[11px]">
+              <span className="text-muted-foreground">to</span>
+              <Input
+                type="date"
+                className="h-8 w-36 text-xs"
+                value={until}
+                min={since || undefined}
+                onChange={(e) => setParam({ until: e.target.value || null, page: null })}
+              />
+            </label>
+            {filtered && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setQuery("");
+                  setParam({ priority: null, source: null, waiting: null, since: null, until: null, sort: null, q: null, page: null });
+                }}
+              >
+                Clear filters
+              </Button>
+            )}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {tickets.isFetching && <span className="text-muted-foreground text-[11px]">Updating…</span>}
+              <Link href="/support/replies" className="text-primary text-xs hover:underline">
+                Saved replies
+              </Link>
+              <Button variant="outline" size="sm" loading={exporting} disabled={!tickets.payload?.total} onClick={() => void download()}>
+                Export CSV
+              </Button>
+            </div>
+            {exportError && (
+              <p className="text-destructive w-full text-xs" role="alert">
+                {exportError}
+              </p>
+            )}
           </div>
 
           {tickets.isLoading ? (
@@ -200,9 +330,10 @@ export function SupportDesk() {
                     <th className="px-3 py-2 font-medium">Queue</th>
                     <th className="px-3 py-2 font-medium">Priority</th>
                     <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 font-medium">First response</th>
+                    <th className="px-3 py-2 font-medium">Reply due</th>
+                    <th className="px-3 py-2 font-medium">Waiting on</th>
                     <th className="px-3 py-2 font-medium">Assignee</th>
-                    <th className="px-3 py-2 font-medium">Updated</th>
+                    <th className="px-3 py-2 font-medium">Age</th>
                   </tr>
                 </thead>
                 <tbody className="divide-border divide-y">
@@ -235,14 +366,19 @@ export function SupportDesk() {
                         <TicketStatusBadge status={tk.status} label={tk.status_label} />
                       </td>
                       <td className="px-3 py-2.5">
-                        {tk.first_response_at ? (
-                          <span className="text-muted-foreground">Answered</span>
+                        {tk.next_response_due_at ? (
+                          <SlaBadge due={tk.next_response_due_at} overdue={tk.overdue} />
                         ) : (
-                          <SlaBadge due={tk.sla_due_at} overdue={tk.overdue} done={tk.status === "resolved" || tk.status === "closed"} />
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <WaitingOn ticket={tk} />
+                      </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">{tk.assignee_name ?? <span className="text-muted-foreground">Unassigned</span>}</td>
-                      <td className="text-muted-foreground px-3 py-2.5 whitespace-nowrap">{timeAgo(tk.last_message_at ?? tk.updated_at)}</td>
+                      <td className="text-muted-foreground px-3 py-2.5 whitespace-nowrap" title={`Opened ${tk.created_at}`}>
+                        {timeAgo(tk.created_at)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -250,19 +386,7 @@ export function SupportDesk() {
             </div>
           )}
 
-          {pages > 1 && (
-            <nav className="mt-3 flex items-center justify-between text-xs" aria-label="Pagination">
-              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setParam({ page: page - 1 ? String(page - 1) : null })}>
-                Previous
-              </Button>
-              <span className="text-muted-foreground">
-                Page {page + 1} of {pages} · {tickets.payload?.total} requests
-              </span>
-              <Button variant="outline" size="sm" disabled={page + 1 >= pages} onClick={() => setParam({ page: String(page + 1) })}>
-                Next
-              </Button>
-            </nav>
-          )}
+          <Pager page={page} pageSize={PAGE_SIZE} total={tickets.payload?.total ?? 0} onPage={setPage} />
         </div>
       </div>
     </AdminPage>

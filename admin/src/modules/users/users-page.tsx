@@ -14,7 +14,6 @@ import {
   useUserSecurityActions,
 } from "@cn/core/api/admin";
 import { getErrorMessage } from "@cn/core/lib/errors";
-import { useUserStore } from "@cn/core/store/user-store";
 import { AdminPage } from "@/modules/components/admin-page";
 import { formatDate, formatDateTime, timeAgo } from "@cn/core/lib/format";
 import { cn } from "@cn/core/lib/utils";
@@ -25,7 +24,8 @@ import { StatTile } from "@/modules/shared/stat-tile";
 import type { AdminUser } from "@cn/core/types/admin";
 
 const PAGE_SIZE = 25;
-const ROLES = ["user", "agent", "admin"] as const;
+// Public accounts are customers or providers; staff are managed under Access, Staff
+const ROLES = ["user", "agent"] as const;
 
 function UserRow({ user, isSelf }: { user: AdminUser; isSelf: boolean }) {
   const { updateUser, isPending } = useUpdateUser();
@@ -163,7 +163,7 @@ export function UsersPage() {
   };
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: "users", label: "Users and roles", count: allUsers },
+    { id: "users", label: "Accounts", count: allUsers },
     { id: "activity", label: "Recent sign-in activity", count: allEvents },
   ];
 
@@ -177,8 +177,8 @@ export function UsersPage() {
 
   return (
     <AdminPage
-      title="Users & roles"
-      description="Everyone with an account. Admins manage this dashboard; agents are approved Guday Geday (role is set automatically on approval)."
+      title="Public users · የህዝብ ተጠቃሚዎች"
+      description="Everyone with a public site account: customers, and providers (agents are approved Guday Geday; the role is set on approval). Staff accounts are separate, under Access, Staff."
     >
       <div
         role="tablist"
@@ -223,7 +223,6 @@ export function UsersPage() {
 }
 
 function UsersTab() {
-  const me = useUserStore((s) => s.user);
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [role, setRole] = useState("");
@@ -278,7 +277,7 @@ function UsersTab() {
             </thead>
             <tbody>
               {payload.items.map((u) => (
-                <UserRow key={u.id} user={u} isSelf={u.id === me?.id} />
+                <UserRow key={u.id} user={u} isSelf={false} />
               ))}
             </tbody>
           </table>

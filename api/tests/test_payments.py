@@ -130,6 +130,12 @@ def test_vat_registered_provider_and_receipts(client, make_user):
     vat = lambda body: client.patch(f"{API}/providers/me", json=body, headers=agent["headers"])  # noqa: E731
     assert vat({"vat_registered": True}).status_code == 400  # needs the VAT number
     assert vat({"vat_registered": True, "vat_number": "0012345678"}).status_code == 200
+    # An approved provider's VAT change waits for staff to check the certificate
+    detail = client.get(f"{API}/admin/marketplace/providers/{provider['id']}", headers=admin["headers"]).json()["payload"]["provider"]
+    assert detail["vat_registered"] is False
+    assert client.post(f"{API}/admin/marketplace/providers/{provider['id']}/changes/{detail['pending_change']['id']}",
+                       json={"decision": "approve", "note": "VAT certificate matches the number"},
+                       headers=admin["headers"]).status_code == 200
     hire = _hire(client, customer, provider)
     _job(client, agent, hire["id"], "accept", price=1000)
     mine = client.get(f"{API}/hires", headers=customer["headers"]).json()["payload"]["items"][0]
@@ -181,6 +187,10 @@ def test_webhook_needs_a_valid_signature(client, monkeypatch):
     good = hmac.new(b"whsec-test", body, hashlib.sha256).hexdigest()
     assert client.post(f"{API}/payments/chapa/webhook", content=body,
                        headers={"x-chapa-signature": good}).status_code == 200
+    # The webhook remembers each delivery for a week (replay protection); forget this test one
+    from services.db import execute
+
+    execute("delete from once_keys where bucket = 'chapa_webhook' and key = %s", (hashlib.sha256(body).hexdigest(),))
 
 
 def test_payout_review_shows_what_it_pays_for_and_blocks_someone_elses_account(client, make_user):

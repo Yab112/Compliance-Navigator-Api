@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { withQuery } from "../catalog/with-query";
 import { useFetchData } from "../../hooks/use-query";
@@ -7,17 +8,25 @@ import useMutationFunc from "../../hooks/use-mutation";
 import { apiPaths } from "../../lib/constants/api-paths";
 import { MTD } from "../../lib/constants/methods";
 import { useUserStore } from "../../store/user-store";
+import useAxiosAuth from "../../hooks/use-axios-auth";
 import { useAdminMutation, useAdminQuery } from "../admin/use-admin-query";
 import type { APIResponse } from "../../types/global";
 import type {
   AdminTicketDetail,
+  CannedReply,
+  CannedReplyInput,
+  CannedReplyList,
+  CustomerContext,
   NewTicketInput,
   SupportMeta,
   SupportSummary,
   SupportTicket,
+  TicketFilters,
   TicketPatch,
   TicketThread,
 } from "../../types/support";
+
+export type { TicketFilters } from "../../types/support";
 
 const p = apiPaths.support;
 const a = apiPaths.admin;
@@ -69,27 +78,67 @@ export const useSupportWrite = () => {
 
 // ---------------------------------------------------------------- staff
 
-export type TicketFilters = {
-  queue?: string;
-  status?: string;
-  assigned?: "me" | "none";
-  priority?: string;
-  q?: string;
-  limit?: number;
-  offset?: number;
-};
+function ticketQuery(filters: TicketFilters): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) if (v !== undefined && v !== "") qs.set(k, String(v));
+  return qs.toString();
+}
 
 export const useSupportSummary = () =>
   useAdminQuery<SupportSummary>(["support", "summary"], a.supportSummary, { refetchInterval: 60 * 1000 });
 
-export const useSupportTickets = (filters: TicketFilters) => {
-  const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(filters)) if (v !== undefined && v !== "") qs.set(k, String(v));
-  return useAdminQuery<{ total: number; items: SupportTicket[] }>(
+export const useSupportTickets = (filters: TicketFilters) =>
+  useAdminQuery<{ total: number; items: SupportTicket[] }>(
     ["support", "tickets", filters],
-    `${a.supportTickets}?${qs.toString()}`,
+    `${a.supportTickets}?${ticketQuery(filters)}`,
     { refetchInterval: 30 * 1000 },
   );
+
+/** Downloads the filtered list as CSV (built on the server, at most 5,000 rows). */
+export const useSupportExport = () => {
+  const axiosAuth = useAxiosAuth();
+  return useCallback(
+    async (filters: TicketFilters) => {
+      const res = await axiosAuth.get<Blob>(`/${a.supportExport}?${ticketQuery({ ...filters, limit: undefined, offset: undefined })}`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `support-requests-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    [axiosAuth],
+  );
+};
+
+/** The person behind a ticket: account, hires, payments and other requests. */
+export const useSupportCustomer = (id: string) =>
+  useAdminQuery<CustomerContext>(["support", "customer", id], a.supportCustomer(id));
+
+export const CANNED_PAGE_SIZE = 25;
+
+/** Saved replies. With ticketId: only that team's, filled in for the ticket. */
+export const useCannedReplies = (opts: { ticketId?: string; queue?: string; q?: string; page?: number; limit?: number } = {}) => {
+  const limit = opts.limit ?? CANNED_PAGE_SIZE;
+  const qs = new URLSearchParams({ limit: String(limit), offset: String((opts.page ?? 0) * limit) });
+  if (opts.ticketId) qs.set("ticket_id", opts.ticketId);
+  if (opts.queue) qs.set("queue", opts.queue);
+  if (opts.q) qs.set("q", opts.q);
+  return useAdminQuery<CannedReplyList>(["support", "replies", opts], `${a.supportReplies}?${qs.toString()}`);
+};
+
+export const useCannedReplyAdmin = () => {
+  const { run, isPending } = useAdminMutation<CannedReply, CannedReplyInput | undefined>();
+  return {
+    create: (body: CannedReplyInput) => run(a.supportReplies, MTD.POST, body),
+    update: (id: string, body: CannedReplyInput) => run(a.supportReply(id), MTD.PUT, body),
+    remove: (id: string) => run(a.supportReply(id), MTD.DELETE),
+    isPending,
+  };
 };
 
 export const useSupportTicket = (id: string) =>
@@ -98,7 +147,13 @@ export const useSupportTicket = (id: string) =>
 export const useSupportDesk = () => {
   const { run, isPending } = useAdminMutation<TicketThread, unknown>();
   return {
-    reply: (id: string, body: string, internal: boolean) => run(a.supportMessages(id), MTD.POST, { body, internal }),
+    reply: (id: string, body: string, internal: boolean, opts: { resolve?: boolean; cannedReplyId?: string | null } = {}) =>
+      run(a.supportMessages(id), MTD.POST, {
+        body,
+        internal,
+        resolve: !!opts.resolve,
+        ...(opts.cannedReplyId && { canned_reply_id: opts.cannedReplyId }),
+      }),
     update: (id: string, patch: TicketPatch) => run(a.supportTicket(id), MTD.PATCH, patch),
     isPending,
   };

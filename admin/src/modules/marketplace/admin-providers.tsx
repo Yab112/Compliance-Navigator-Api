@@ -3,24 +3,34 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useAdminProviders, useMarketAction, useMarketStats } from "@cn/core/api/providers";
+import {
+  useAdminProviders,
+  useMarketAction,
+  useMarketStats,
+  useSampleStatus,
+  type AdminProviderSort,
+} from "@cn/core/api/providers";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
+import { Pager, useUrlPage } from "@cn/ui/pager";
 import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { MTD } from "@cn/core/lib/constants/methods";
+import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
+import { useCan } from "@/modules/access/api";
 import {
   AgentStatusBadge,
   EmptyState,
   ErrorState,
   IdVerifiedBadge,
   LoadingState,
+  NativeSelect,
   formatDate,
   useDebounced,
 } from "@cn/ui/guday/shared";
 import { ScoreBadge } from "@cn/ui/marketplace/trust";
-import { TYPE_META, TYPE_ORDER } from "@cn/ui/marketplace/constants";
+import { AREA_OPTIONS, TYPE_META, TYPE_ORDER } from "@cn/ui/marketplace/constants";
 import type { ProviderStatus, ProviderType } from "@cn/core/types/provider";
 import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
 
@@ -32,6 +42,52 @@ const STATUS_TABS: { value: ProviderStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
 ];
 const PAGE_SIZE = 50;
+const SORTS: { value: AdminProviderSort; label: string }[] = [
+  { value: "queue", label: "Waiting longest first" },
+  { value: "newest", label: "Newest first" },
+  { value: "score", label: "Highest score" },
+  { value: "complaints", label: "Most open complaints" },
+  { value: "expiry", label: "Licence ends soonest" },
+];
+
+/** "Remove sample data": never on the live site, never when sample providers have money records. */
+function PurgeSamples() {
+  const { can } = useCan();
+  const { data } = useSampleStatus();
+  const purge = useMarketAction<undefined, { providers_removed: number; hires_removed: number }>();
+  const [confirm, setConfirm] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const status = data?.payload;
+  if (!can("marketplace.maintenance") || !status || (!status.providers && !message)) return null;
+  if (!status.can_purge && !message) {
+    return <p className="text-muted-foreground max-w-xs text-[11px]">{status.reason}</p>;
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      {confirm ? (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="destructive" loading={purge.isPending}
+            onClick={async () => {
+              setMessage(null);
+              try {
+                const res = await purge.run(apiPaths.admin.marketPurgeSamples, MTD.POST);
+                setMessage({ ok: true, text: `Removed ${res.providers_removed} sample providers and ${res.hires_removed} hires.` });
+              } catch (err) {
+                setMessage({ ok: false, text: getErrorMessage(err, "Could not remove the sample data") });
+              }
+              setConfirm(false);
+            }}>
+            Delete {status.providers} sample providers, their hires and reviews
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>Keep them</Button>
+        </div>
+      ) : status.can_purge ? (
+        <Button size="sm" variant="outline" onClick={() => setConfirm(true)}>Remove sample data</Button>
+      ) : null}
+      {message && <p role={message.ok ? "status" : "alert"} className={cn("text-[11px]", !message.ok && "text-destructive")}>{message.text}</p>}
+    </div>
+  );
+}
 
 export function AdminProviders() {
   const router = useRouter();
@@ -41,31 +97,39 @@ export function AdminProviders() {
   const status = (STATUS_TABS.some((t) => t.value === rawStatus) ? rawStatus : "pending") as ProviderStatus | "all";
   const type = (TYPE_ORDER.includes(params.get("type") as ProviderType) ? params.get("type") : "") as ProviderType | "";
   const licensePending = params.get("license") === "pending";
-  const page = Math.max(0, Number(params.get("page") ?? 0) || 0);
+  const expiring = params.get("expiring") === "30";
+  const area = params.get("area") ?? "";
+  const idUnverified = params.get("id") === "unverified";
+  const sort = (SORTS.some((o) => o.value === params.get("sort")) ? params.get("sort") : "queue") as AdminProviderSort;
+  const [page, setPage] = useUrlPage();
   const [query, setQuery] = useState(params.get("q") ?? "");
   const q = useDebounced(query.trim(), 300);
-  const purge = useMarketAction();
-  const [confirmPurge, setConfirmPurge] = useState(false);
 
+  // Every filter change starts again at page 1
   const setParam = (updates: Record<string, string | null>) => {
     const next = new URLSearchParams(params.toString());
     for (const [k, v] of Object.entries(updates)) {
       if (v) next.set(k, v);
       else next.delete(k);
     }
+    next.delete("page");
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   };
 
   useEffect(() => {
-    if ((params.get("q") ?? "") !== q) setParam({ q: q || null, page: null });
+    if ((params.get("q") ?? "") !== q) setParam({ q: q || null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
   const stats = useMarketStats().data?.payload;
   const { data, isLoading, isError, error, refetch } = useAdminProviders({
-    status: status === "all" || licensePending ? undefined : status,
+    status: status === "all" || licensePending || expiring ? undefined : status,
     type: type || undefined,
     license_status: licensePending ? "pending" : undefined,
+    expiring: expiring ? 30 : undefined,
+    area: area || undefined,
+    id_verified: idUnverified ? false : undefined,
+    sort,
     q: q || undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
@@ -78,28 +142,7 @@ export function AdminProviders() {
     <AdminPage
       title="Marketplace providers · አገልግሎት ሰጪዎች"
       description="Guday Geday agents and agencies. Approve applications, check sector licences and watch trust scores."
-      actions={
-        confirmPurge ? (
-          <>
-            <Button
-              size="sm"
-              variant="destructive"
-              loading={purge.isPending}
-              onClick={async () => {
-                await purge.run(apiPaths.admin.marketPurgeSamples, MTD.POST);
-                setConfirmPurge(false);
-              }}
-            >
-              Delete all sample providers, hires and reviews
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirmPurge(false)}>Keep them</Button>
-          </>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setConfirmPurge(true)}>
-            Remove sample data
-          </Button>
-        )
-      }
+      actions={<PurgeSamples />}
     >
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
         {[
@@ -121,7 +164,7 @@ export function AdminProviders() {
 
       <div className="mb-3 flex flex-wrap gap-2 text-xs">
         {[{ v: "", l: "All types" }, ...TYPE_ORDER.map((t) => ({ v: t, l: TYPE_META[t].label }))].map((o) => (
-          <button key={o.l} type="button" onClick={() => setParam({ type: o.v || null, page: null })}
+          <button key={o.l} type="button" onClick={() => setParam({ type: o.v || null })}
             className={cn("rounded-full border px-3 py-1", type === o.v ? "border-primary bg-secondary text-primary font-medium" : "border-border")}>
             {o.l}
           </button>
@@ -131,12 +174,20 @@ export function AdminProviders() {
             Licences to check ✕
           </button>
         )}
+        <button type="button" aria-pressed={expiring} onClick={() => setParam({ expiring: expiring ? null : "30" })}
+          className={cn("rounded-full border px-3 py-1", expiring ? "border-primary bg-secondary text-primary font-medium" : "border-border")}>
+          Licence ends within 30 days
+        </button>
+        <button type="button" aria-pressed={idUnverified} onClick={() => setParam({ id: idUnverified ? null : "unverified" })}
+          className={cn("rounded-full border px-3 py-1", idUnverified ? "border-primary bg-secondary text-primary font-medium" : "border-border")}>
+          ID not verified
+        </button>
       </div>
 
       <div className="border-border mb-4 flex gap-1 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none]" role="tablist">
         {STATUS_TABS.map((t) => (
           <button key={t.value} type="button" role="tab" aria-selected={status === t.value}
-            onClick={() => setParam({ status: t.value === "pending" ? null : t.value, page: null })}
+            onClick={() => setParam({ status: t.value === "pending" ? null : t.value })}
             className={cn("-mb-px shrink-0 border-b-2 border-transparent px-3 py-2 text-xs", status === t.value ? "border-primary font-medium" : "text-muted-foreground hover:text-foreground")}>
             {t.label}
             {t.value !== "all" && <span className="text-muted-foreground tabular-nums"> ({counts[t.value] ?? 0})</span>}
@@ -144,7 +195,16 @@ export function AdminProviders() {
         ))}
       </div>
 
-      <Input aria-label="Search providers" className="mb-4 max-w-md" placeholder="Name, phone, registration no., TIN or ID" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div className="mb-4 grid gap-2 text-xs sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <Input aria-label="Search providers" placeholder="Name, phone, registration no., TIN or ID" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <NativeSelect aria-label="Area" value={area} onChange={(e) => setParam({ area: e.target.value || null })}>
+          <option value="">Any area</option>
+          {AREA_OPTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+        </NativeSelect>
+        <NativeSelect aria-label="Sort" value={sort} onChange={(e) => setParam({ sort: e.target.value === "queue" ? null : e.target.value })}>
+          {SORTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </NativeSelect>
+      </div>
 
       {isLoading ? (
         <LoadingState />
@@ -184,7 +244,7 @@ export function AdminProviders() {
                   <td className="py-2 pr-3"><AgentStatusBadge status={p.status} /></td>
                   <td className="py-2 pr-3"><IdVerifiedBadge verified={p.id_verified} method={p.id_verification_method} /></td>
                   <td className="py-2 pr-3">
-                    {p.external_license_no ? (
+                    {p.has_external_license ? (
                       <span className={cn(p.external_license_status === "pending" && "font-medium text-amber-700", p.external_license_status === "verified" && "text-primary")}>
                         {p.external_license_status}
                       </span>
@@ -202,15 +262,9 @@ export function AdminProviders() {
               ))}
             </tbody>
           </table>
-          {total > PAGE_SIZE && (
-            <div className="mt-4 flex items-center gap-3 text-xs">
-              <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setParam({ page: String(page - 1) })}>Previous</Button>
-              <span>Page {page + 1} of {Math.ceil(total / PAGE_SIZE)}</span>
-              <Button size="sm" variant="outline" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setParam({ page: String(page + 1) })}>Next</Button>
-            </div>
-          )}
         </div>
       )}
+      <Pager page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
     </AdminPage>
   );
 }

@@ -5,6 +5,7 @@ import { Button } from "@cn/ui/button";
 import { Textarea } from "@cn/ui/textarea";
 import { useCypherQuery } from "@cn/core/api/admin";
 import { getErrorMessage } from "@cn/core/lib/errors";
+import type { CypherResult } from "@cn/core/types/admin";
 import { EmptyState } from "@/modules/shared/states";
 
 const EXAMPLES = [
@@ -35,27 +36,30 @@ function cell(value: unknown): string {
 export function CypherConsole() {
   const { runQuery, isPending } = useCypherQuery();
   const [query, setQuery] = useState(EXAMPLES[0].query);
-  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  const [result, setResult] = useState<CypherResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const run = async () => {
     setError(null);
     try {
-      const res = await runQuery(query);
-      setRows(res.rows);
+      setResult(await runQuery(query));
     } catch (e) {
-      setRows(null);
+      setResult(null);
       setError(getErrorMessage(e, "Query failed"));
     }
   };
 
+  const rows = result?.rows ?? null;
   const columns = rows?.length ? Object.keys(rows[0]) : [];
 
   return (
     <div className="space-y-3">
-      <p className="text-muted-foreground text-xs">
-        Read-only: the console runs in a READ transaction, so CREATE / MERGE / SET / DELETE are rejected by Neo4j.
-        Results are capped at 200 rows. Edit data through the documents table or data source runs instead.
+      <p className="text-muted-foreground text-xs leading-relaxed">
+        For staff who know Cypher, the graph query language. It can only read: anything that changes data, reads
+        files or web links (LOAD CSV), or runs admin, APOC or dbms commands is refused before it reaches the
+        database, and the database itself runs the query in read-only mode. A query stops after 10 seconds and
+        shows at most 200 rows. Every query is logged with your name. To change data, use the documents table
+        above or Data sources.
       </p>
       <div className="flex flex-wrap gap-1.5">
         {EXAMPLES.map((ex) => (
@@ -86,13 +90,20 @@ export function CypherConsole() {
         </Button>
         <span className="text-muted-foreground text-[11px]">Ctrl + Enter</span>
       </div>
-      {error && <p className="text-destructive text-xs break-words">{error}</p>}
+      {error && (
+        <p role="alert" className="text-destructive text-xs break-words">
+          {error}
+        </p>
+      )}
       {rows &&
         (rows.length === 0 ? (
           <EmptyState title="No rows returned" />
         ) : (
           <div className="max-h-96 overflow-auto">
-            <p className="text-muted-foreground mb-1 text-[11px]">{rows.length} row(s)</p>
+            <p className="text-muted-foreground mb-1 text-[11px]" aria-live="polite">
+              {rows.length} row{rows.length === 1 ? "" : "s"}
+              {result?.truncated && ` shown, there are more. Add LIMIT or a WHERE filter to narrow it down.`}
+            </p>
             <table className="w-full text-left font-mono text-[11px]">
               <thead className="text-muted-foreground">
                 <tr>

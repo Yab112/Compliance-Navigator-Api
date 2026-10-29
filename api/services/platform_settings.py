@@ -50,6 +50,8 @@ GROUPS = [
      "description": "Printed on every payment and payout receipt."},
     {"key": "marketplace", "title": "Marketplace rules", "am": "የገበያ ደንቦች",
      "description": "Timings and thresholds behind hires, Job Success and client records."},
+    {"key": "vetting", "title": "Vetting Guday Geday and agencies", "am": "የአገልግሎት ሰጪዎች ማጣሪያ",
+     "description": "What a provider must hand in before staff can approve or renew a listing."},
     {"key": "operations", "title": "Organizations and support", "am": "ድርጅቶች እና ድጋፍ",
      "description": "Upkeep of organization data and limits on the support desk."},
 ]
@@ -64,6 +66,9 @@ FIELDS: list[Field] = [
           "bool", lambda: settings.platform_vat_registered, applies="New payments"),
     Field("min_payout_etb", "money", "Smallest withdrawal", "Providers can't ask for less than this.",
           "money", lambda: 100, 1, 1_000_000, "ETB", applies="New withdrawal requests"),
+    Field("payout_approval_threshold_etb", "money", "Second approval for payouts from",
+          "A payout of this amount or more needs a second staff member to approve it. 0 means every payout.",
+          "money", lambda: 50_000, 0, 10_000_000, "ETB", applies="Payout approvals"),
     Field("payout_new_account_days", "money", "Flag recently changed bank accounts",
           "Payout review warns when the account was added or changed this recently.",
           "int", lambda: 7, 0, 90, "days", applies="Payout reviews"),
@@ -96,10 +101,29 @@ FIELDS: list[Field] = [
           "A client pressing Pay again within this time gets the same checkout instead of a new one.",
           "int", lambda: 30, 5, 240, "minutes"),
 
+    Field("vetting_min_education", "vetting", "Lowest education accepted",
+          "Individual Guday Geday must show a certificate at this level or higher: grade_10, grade_12 "
+          "(ESSLCE or grade 12 completion), tvet (TVET certificate or COC), diploma, or degree.",
+          "text", lambda: "grade_12", required=True, pattern=r"^(grade_10|grade_12|tvet|diploma|degree)$",
+          pattern_hint="one of grade_10, grade_12, tvet, diploma, degree", placeholder="grade_12",
+          applies="Approvals and renewals from now on"),
+    Field("police_clearance_max_age_days", "vetting", "Police clearance accepted for",
+          "A clearance older than this, counted from its issue date, no longer counts. Listings whose "
+          "clearance gets too old are suspended until a new one is verified.",
+          "int", lambda: 180, 30, 730, "days after issue"),
+    Field("police_clearance_remind_days", "vetting", "Remind providers before the clearance gets too old",
+          "The provider gets a notification this many days before.", "int", lambda: 30, 1, 120, "days"),
+    Field("vetting_references_required", "vetting", "References required",
+          "When on, individuals need two references that staff have phoned and confirmed.",
+          "bool", lambda: False, applies="Approvals and renewals from now on"),
+
     Field("org_confirm_every_days", "operations", "Ask organizations to confirm services every",
           "Services not confirmed this long are flagged as due.", "int", lambda: 90, 7, 365, "days"),
     Field("support_tickets_per_ip_hour", "operations", "Support requests per visitor per hour",
           "Stops one address from flooding the support desk.", "int", lambda: 10, 1, 1000, "requests"),
+    Field("feedback_flags_per_ip_hour", "operations", "'This is wrong' reports per visitor per hour",
+          "Stops one address (or one account) from flooding the feedback queue and organizations' inboxes.",
+          "int", lambda: 10, 1, 1000, "reports"),
 ]
 
 BY_KEY = {f.key: f for f in FIELDS}

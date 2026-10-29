@@ -12,7 +12,17 @@ import type { SessionPayload } from "../types/user-types";
 // A bare client: the main `api` instance retries 401s through refreshSession, which must not recurse
 const authClient = axios.create({ baseURL: env.NEXT_PUBLIC_API_BASE_URL, withCredentials: true });
 
-const CHANNEL = "cn-auth";
+/**
+ * Which sign-in realm this app uses. The public site keeps the defaults; the admin app switches to
+ * the separate staff realm once at start-up (see lib/staff-session.ts) before any request is made.
+ */
+const realm = { refreshPath: "auth/refresh", channel: "cn-auth" };
+
+export function configureAuthRealm(next: { refreshPath: string; channel: string }): void {
+  realm.refreshPath = next.refreshPath;
+  realm.channel = next.channel;
+}
+
 type AuthMessage = { type: "signed-in" } | { type: "signed-out" };
 
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -20,7 +30,7 @@ let expiresAt = 0;
 let inFlight: Promise<boolean> | null = null;
 
 function channel(): BroadcastChannel | null {
-  return typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(CHANNEL);
+  return typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(realm.channel);
 }
 
 /** Tell other tabs, which share the cookie, to pick up the new state. */
@@ -68,7 +78,7 @@ export function endSession(): void {
  */
 export function refreshSession(): Promise<boolean> {
   inFlight ??= authClient
-    .post<{ payload: SessionPayload }>("auth/refresh")
+    .post<{ payload: SessionPayload }>(realm.refreshPath)
     .then((res) => {
       applySession(res.data.payload);
       return true;

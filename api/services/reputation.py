@@ -112,9 +112,7 @@ def request_change(engagement_id: str, *, user_id: str, rating: int, comment: st
         """,
         (review["id"], user_id, review["rating"], review["comment"], rating, comment, reason.strip()[:1000]),
     )
-    admins = [r["id"] for r in fetch_all("select id::text from users where role = 'admin' and is_active")]
-    notifications.notify(admins, kind="review_change", title="A client asked to change a review",
-                         body=reason.strip()[:140], link="/admin/marketplace/reviews?tab=changes")
+    # Staff have no notification inbox: the request waits in the admin Reviews > Changes queue
     return pending_change(review["id"])
 
 

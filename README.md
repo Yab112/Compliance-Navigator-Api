@@ -45,7 +45,7 @@ Everything runs self-hosted — no third-party auth or database service.
 
 ```bash
 cd api
-cp .env.sample .env          # set SECRET_KEY and ADMIN_EMAILS
+cp .env.sample .env          # set SECRET_KEY
 docker compose up -d postgres neo4j redis
 ```
 
@@ -77,13 +77,15 @@ links on the public site redirect to the admin app.
 
 ### Admin accounts
 
-Any email listed in `ADMIN_EMAILS` becomes an admin when it registers or signs in. To promote an existing account or create one from the shell:
+Staff accounts are separate from public accounts: the admin app has its own sign-in, and nothing on the
+public site grants admin power. Create the first Super admin from the shell (it asks for the password):
 
 ```bash
-cd api && uv run python -m scripts.create_admin admin@example.gov.et "Full Name"
+cd api && uv run python -m scripts.create_staff admin@example.gov.et "Full Name"
 ```
 
-Admins can grant roles to other users under **Admin → Users & roles**.
+Everyone else is invited from **Admin → Access → Staff** (they get an email with a one-time link to choose
+a password). Roles, permissions and second-person approvals are described in `api/docs/staff-access.md`.
 
 ### AI provider
 
@@ -121,7 +123,7 @@ Self-hosted, in `api/auth/` (`security.py` primitives, `service.py` flows) and `
 - **Self-service** at `/account`: profile, change password (signs out other devices), list and sign out devices, recent security activity.
 - **Audit:** every sign-in, failure, lockout, logout, reset and admin action goes to `auth_events`; admins see a summary and the log on the Users page.
 - **Production:** set `ENVIRONMENT=production` (refuses the default `SECRET_KEY`), `AUTH_COOKIE_SECURE=true` behind HTTPS, and `AUTH_COOKIE_SAMESITE=none` only if the web and API live on different sites. Run uvicorn with `--proxy-headers` behind a reverse proxy so rate limits see real client IPs.
-- **Roles:** `user`, `agent` (granted automatically when a Guday Geday application is approved), `admin` (via `ADMIN_EMAILS` or `scripts/create_admin.py`).
+- **Roles:** `user`, `agent` (granted automatically when a Guday Geday application is approved), staff are separate accounts (see Admin accounts).
 - **Public:** catalog, Guday Geday directory, business directory, roadmap create/get, feedback.
 - **Signed in:** chat, saving progress, Guday Geday registration (needs Fayda ID verification), client requests, business registration.
 - **Admin only:** everything under `/api/v1/admin/*`.
@@ -133,3 +135,45 @@ Guday Geday applicants verify their identity with Fayda (National ID Program, MO
 - `FAYDA_MODE=sandbox` (default): a clearly marked test screen; one-time code `111111`. Use only for demos.
 - `FAYDA_MODE=live`: real eSignet flow (PKCE, `private_key_jwt`, signed userinfo checked against Fayda's JWKS). Requires registering as a relying party with NIDP: client ID, an RSA key pair (public key as JWK to NIDP), the whitelisted callback `…/guday/register/fayda-callback`, and the authorize/token/userinfo/JWKS URLs. Set `FAYDA_*` and a permanent `ID_HASH_PEPPER` in `api/.env`.
 - The full Fayda number is never stored: only a peppered hash (one ID per account) and the last four digits.
+
+## Deploying
+
+The API ships as a Docker image (`api/Dockerfile`): it runs as a non-root user, without auto-reload, with a health check on `/`, and `api/.dockerignore` keeps `.env`, logs, `uploads/` and tests out of the image. `docker compose` (in `api/`) publishes every port on `127.0.0.1` only; put a TLS reverse proxy (nginx, Caddy) in front of the API on `127.0.0.1:8080`.
+
+```bash
+cd api
+cp .env.sample .env            # then fill in every value below
+docker compose up -d --build postgres neo4j redis web
+```
+
+### Production checklist
+
+Set these in `api/.env` (or your host's secret store) before the first start:
+
+- [ ] `ENVIRONMENT=production`: hides `/docs` and `/openapi.json`, turns off auto-reload and refuses a weak `SECRET_KEY`.
+- [ ] `SECRET_KEY`: 32 or more random characters (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Never reuse the sample value.
+- [ ] `ID_HASH_PEPPER`: its own random value, set once and never changed (it keys the stored national ID hashes).
+- [ ] `POSTGRES_PASSWORD`, `NEO4J_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`: strong, unique passwords. Compose refuses to start without them. Use letters and digits only for `POSTGRES_PASSWORD`, since it is placed inside `DATABASE_URL`.
+- [ ] `AUTH_COOKIE_SECURE=true` (HTTPS only). `AUTH_COOKIE_SAMESITE=none` only if the web site and the API are on different sites.
+- [ ] `CORS_ORIGINS`: only your real web and admin addresses, for example `https://example.et,https://admin.example.et`.
+- [ ] `WEB_BASE_URL`, `ADMIN_BASE_URL`, `API_PUBLIC_URL`: the public HTTPS addresses (used in emails, payment returns and the Chapa webhook).
+- [ ] `PAYMENTS_MODE=chapa` with the live `CHAPA_SECRET_KEY` (not `CHASECK_TEST-`) and `CHAPA_WEBHOOK_SECRET` from the Chapa dashboard.
+- [ ] `FAYDA_MODE=live` with the `FAYDA_*` values issued by the National ID Program. Never run the sandbox in production.
+- [ ] SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`) so password reset links go by email and are never written to logs.
+- [ ] `FORWARDED_ALLOW_IPS`: the address of your reverse proxy, so rate limits see real client IPs.
+- [ ] `WEB_CONCURRENCY`: number of API worker processes. Keep it at 1 for now: every process runs the database migrations at start-up, and they do not yet take a lock.
+- [ ] VAT and receipts: `PLATFORM_LEGAL_NAME`, `PLATFORM_TIN`, `PLATFORM_VAT_NUMBER`, `PLATFORM_ADDRESS`.
+- [ ] `ADMIN_EMAILS` empty or limited to real staff addresses.
+
+### Logs
+
+- `LOG_LEVEL` (default `INFO`). Do not run production at `DEBUG`.
+- Outside Docker, logs go to stdout and to `LOG_FILE` (default `logs/api.log`), rotated at `LOG_MAX_BYTES` (10 MB) keeping `LOG_BACKUP_COUNT` (5) old files. The image sets `LOG_FILE` empty and logs to stdout only; read them with `docker compose logs web`.
+- Request bodies are never logged, and access log lines drop the query string.
+
+### Data and backups
+
+- Uploaded files (including national ID copies) live on the `uploads` volume, never in the image. Back it up together with the databases and keep the backups encrypted.
+- Postgres is the system of record. Back it up every day, for example `docker compose exec postgres pg_dump -U navigator compliance_navigator | gzip > backup-$(date +%F).sql.gz`, keep copies off the server, and test a restore regularly.
+- Neo4j holds the compliance graph, which can be rebuilt from the seed scripts and data sources, but a dump (`neo4j-admin database dump`) saves time.
+- Database migrations run automatically when the API starts.

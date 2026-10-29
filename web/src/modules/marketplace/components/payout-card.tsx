@@ -21,7 +21,8 @@ function PayoutForm({ current, onDone, onCancel }: {
   const [name, setName] = useState(current?.account_name ?? "");
   const [error, setError] = useState<string | null>(null);
   const items = banks.data?.payload.items ?? [];
-  const valid = !!bank && number.trim().length >= 5 && name.trim().length >= 2;
+  const valid = !!bank && /^\d{6,20}$/.test(number.replace(/\s+/g, "")) && name.trim().length >= 2;
+  const verified = current?.verified_name;
 
   return (
     <form
@@ -39,7 +40,9 @@ function PayoutForm({ current, onDone, onCancel }: {
       }}
     >
       <p className="text-muted-foreground text-xs leading-relaxed">
-        Your earnings are paid out to this account when you request a withdrawal and our team approves it.
+        Your earnings are paid out to this account when you request a withdrawal and our team approves it. The account
+        must be in your own name (or your company&apos;s). Our team checks the holder name against the name on your
+        verified ID before sending money.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Bank · ባንክ" htmlFor="payout-bank" required className="sm:col-span-2">
@@ -54,10 +57,14 @@ function PayoutForm({ current, onDone, onCancel }: {
           <Input id="payout-number" inputMode="numeric" autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value)} />
         </Field>
         <Field label="Account holder name · የባለሂሳቡ ስም" htmlFor="payout-name" required>
-          <Input id="payout-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input id="payout-name" value={name} onChange={(e) => setName(e.target.value)} aria-describedby="payout-name-hint" />
+          <p id="payout-name-hint" className="text-muted-foreground mt-1 text-[11px]">
+            Exactly as the bank has it.
+            {verified ? <> Your verified ID says <strong>{verified}</strong>.</> : null}
+          </p>
         </Field>
       </div>
-      {error && <p className="text-destructive text-xs">{error}</p>}
+      {error && <p className="text-destructive text-xs" role="alert">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={!valid} loading={isPending}>Save payout account</Button>
         {onCancel && <Button type="button" size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>}
@@ -98,8 +105,17 @@ export function PayoutCard({ className }: { className?: string }) {
             <p className="text-muted-foreground mt-1 text-xs">
               Your earnings are paid out to this account when you request a withdrawal and our team approves it. {commission}% platform commission is deducted from each client payment.
             </p>
+            {payout.name_matches === false && (
+              <p className="mt-1 text-xs text-amber-800" role="note">
+                The holder name doesn&apos;t match the name on your verified ID{payout.verified_name ? ` (${payout.verified_name})` : ""}. Payouts to
+                someone else&apos;s account are held for a check, so use an account in your own name.
+              </p>
+            )}
+            {payout.locked && (
+              <p className="text-muted-foreground mt-1 text-xs">A payout is on its way to this account, so you can change it once that payout is paid or refused.</p>
+            )}
           </div>
-          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Change</Button>
+          <Button size="sm" variant="outline" onClick={() => setEditing(true)} disabled={payout.locked}>Change</Button>
         </div>
       ) : (
         <PayoutForm

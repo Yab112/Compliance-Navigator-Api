@@ -1,6 +1,7 @@
 """Client records, providers rating clients, and staff-approved review changes."""
 
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -44,20 +45,20 @@ def my_record(user: AuthUser = Depends(get_current_user)):
 
 
 @router.post("/providers/me/jobs/{engagement_id}/rate-client")
-def rate_client(engagement_id: str, body: ClientRating, user: AuthUser = Depends(get_current_user)):
+def rate_client(engagement_id: UUID, body: ClientRating, user: AuthUser = Depends(get_current_user)):
     from services import provider_service
 
     try:
-        job = reputation.rate_client(engagement_id, user_id=user.id, rating=body.rating, comment=body.comment)
+        job = reputation.rate_client(str(engagement_id), user_id=user.id, rating=body.rating, comment=body.comment)
     except ReputationError as exc:
         _raise(exc)
     return _ok({"job": provider_service.provider_view(job)})
 
 
 @router.post("/hires/{engagement_id}/review/change")
-def request_review_change(engagement_id: str, body: ReviewChange, user: AuthUser = Depends(get_current_user)):
+def request_review_change(engagement_id: UUID, body: ReviewChange, user: AuthUser = Depends(get_current_user)):
     try:
-        return _ok({"change": reputation.request_change(engagement_id, user_id=user.id, rating=body.rating,
+        return _ok({"change": reputation.request_change(str(engagement_id), user_id=user.id, rating=body.rating,
                                                          comment=body.comment, reason=body.reason)})
     except ReputationError as exc:
         _raise(exc)
@@ -70,9 +71,9 @@ def review_changes(status: Literal["pending", "approved", "rejected"] = "pending
 
 
 @router.post("/admin/marketplace/review-changes/{change_id}")
-def decide_review_change(change_id: str, body: ChangeDecision, user: AuthUser = Depends(require_admin)):
+def decide_review_change(change_id: UUID, body: ChangeDecision, user: AuthUser = Depends(require_admin)):
     try:
-        return _ok({"change": reputation.decide_change(change_id, approve=body.decision == "approve",
+        return _ok({"change": reputation.decide_change(str(change_id), approve=body.decision == "approve",
                                                         note=body.note, actor=user.email)})
     except ReputationError as exc:
         _raise(exc)

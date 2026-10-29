@@ -11,7 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useFaydaStatus } from "@/api/guday";
-import { useJoinMarketplace, useMyProvider } from "@cn/core/api/providers";
+import { useJoinMarketplace, useMyProvider, useUploadVettingDocument, useVettingRequirements } from "@cn/core/api/providers";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
@@ -20,7 +20,9 @@ import { cn } from "@cn/core/lib/utils";
 import { ErrorState, Field, LoadingState } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
 import { useUserStore } from "@/store";
-import type { EntityType, ProviderType } from "@cn/core/types/provider";
+import type { EntityType, ProviderType, VettingDocKind } from "@cn/core/types/provider";
+import { DocumentFields, EMPTY_DRAFT, draftError, type DocumentDraft } from "@/modules/marketplace/components/vetting-checklist";
+import { ProviderAgreementCheckbox, useProviderAgreement } from "@/modules/legal/components/provider-agreement-checkbox";
 import { VerifiedIdentityCard, VerifyStep } from "@/modules/marketplace/components/fayda-step";
 import { PhotoUploader } from "@/modules/marketplace/components/photo-uploader";
 import { EMPTY_PROVIDER_FORM, ProviderForm, cleanForm } from "@/modules/marketplace/components/provider-form";
@@ -89,6 +91,9 @@ export function JoinMarketplace() {
   const mine = useMyProvider(gate === "ready");
   const fayda = useFaydaStatus(gate === "ready");
   const join = useJoinMarketplace();
+  const uploadDocument = useUploadVettingDocument();
+  const agreement = useProviderAgreement();
+  const [agreementMissing, setAgreementMissing] = useState(false);
 
   const initialType = TYPE_ORDER.includes(params.get("type") as ProviderType) ? (params.get("type") as ProviderType) : null;
   const [type, setType] = useState<ProviderType | null>(initialType);
@@ -98,12 +103,16 @@ export function JoinMarketplace() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [view, setView] = useState<1 | 2 | 3 | null>(null);
   const [formReached, setFormReached] = useState(false);
-  const [licenseDoc, setLicenseDoc] = useState<File | null>(null);
+  const [drafts, setDrafts] = useState<Partial<Record<VettingDocKind, DocumentDraft>>>({});
   const [idDoc, setIdDoc] = useState<File | null>(null);
   const [nationalId, setNationalId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  const requirements = useVettingRequirements(confirmed ? entity : null);
+  const vetting = requirements.data?.payload.vetting;
+  // ID copies are handled by the national ID fields below when Fayda is off
+  const docItems = (vetting?.items ?? []).filter((i) => i.kind !== "id_copy");
   const existing = mine.data?.payload.provider;
   useEffect(() => {
     if (existing) router.replace("/me/provider");
@@ -253,9 +262,43 @@ export function JoinMarketplace() {
                         } : undefined}
                       />
                     </div>
-                    {entity === "company" && (
-                      <FileField id="pf-licdoc" label="Trade licence copy" hint="Required. Only staff can see it." accept="image/png,image/jpeg,image/webp,application/pdf" onFile={setLicenseDoc} />
-                    )}
+                    <section aria-labelledby="pf-docs-title" className="border-border space-y-4 border-t pt-4 sm:col-span-2">
+                      <div>
+                        <h3 id="pf-docs-title" className="font-semibold">Documents for vetting · የማጣሪያ ሰነዶች</h3>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          Clients trust a Guday Geday with their papers and money, so staff check every agent before listing them.
+                          Only staff can open these files. You can also add or replace them later from your profile.
+                        </p>
+                      </div>
+                      {requirements.isLoading && <LoadingState label="Loading what we need…" />}
+                      {requirements.isError && <ErrorState message="Could not load the document list" onRetry={() => requirements.refetch()} />}
+                      {vetting && docItems.map((item) => (
+                        <fieldset key={item.key} className="border-border rounded-md border p-3">
+                          <legend className="px-1 text-sm font-medium">
+                            {item.label} <span className="text-muted-foreground font-normal">· {item.label_am}</span>
+                          </legend>
+                          {item.help && <p className="text-muted-foreground mb-3 text-xs">{item.help}</p>}
+                          <DocumentFields
+                            item={item}
+                            value={drafts[item.kind!] ?? EMPTY_DRAFT}
+                            onChange={(d) => setDrafts((all) => ({ ...all, [item.kind!]: d }))}
+                            levels={vetting.education_levels}
+                            maxMb={vetting.max_upload_mb}
+                            idPrefix="join"
+                          />
+                        </fieldset>
+                      ))}
+                      {vetting?.references_required && entity === "individual" && (
+                        <p className="text-muted-foreground text-xs">You will also add two references (people who know your work) on your profile after joining.</p>
+                      )}
+                    </section>
+                    {/* Provider Agreement: ticked and recorded before the profile is created (the server checks too) */}
+                    <div className="sm:col-span-2">
+                      <ProviderAgreementCheckbox {...agreement.props} invalid={agreementMissing && !agreement.checked} />
+                      {agreementMissing && !agreement.checked && (
+                        <p className="text-destructive mt-1 text-xs" role="alert">Tick the box to accept the Provider Agreement.</p>
+                      )}
+                    </div>
                     {!status?.required && (
                       <>
                         <Field label="National ID number" htmlFor="pf-nid" required>
@@ -270,20 +313,50 @@ export function JoinMarketplace() {
                 isSubmitting={submitting}
                 serverError={serverError}
                 onSubmit={async (values) => {
-                  if (entity === "company" && !licenseDoc) {
-                    setServerError("Attach a copy of the trade licence.");
+                  if (!vetting) {
+                    setServerError("The document list has not loaded yet. Try again in a moment.");
+                    return;
+                  }
+                  for (const item of docItems) {
+                    const problem = draftError(item, drafts[item.kind!] ?? EMPTY_DRAFT, vetting.max_upload_mb);
+                    if (problem) {
+                      setServerError(`${item.label}: ${problem}`);
+                      return;
+                    }
+                  }
+                  if (!agreement.checked) {
+                    setAgreementMissing(true);
+                    setServerError("Accept the Provider Agreement to continue.");
                     return;
                   }
                   setSubmitting(true);
                   setServerError(null);
+                  const licence = drafts.trade_licence;
+                  let joined = false;
                   try {
+                    await agreement.recordAcceptance();
                     await join(
                       { ...cleanForm(values), provider_type: type, entity_type: entity, national_id: nationalId || undefined },
-                      { photo, licenseDocument: licenseDoc, idDocument: idDoc },
+                      { photo, licenseDocument: entity === "company" ? licence?.file : null, idDocument: idDoc },
+                      licence && entity === "company" ? { issued_on: licence.issued_on, expires_on: licence.expires_on, reference_no: licence.reference_no } : undefined,
                     );
-                    router.push("/me/provider?joined=1");
+                    joined = true;
+                    // The rest go up one by one; anything that fails can be retried from the Documents tab
+                    const failed: string[] = [];
+                    for (const item of docItems) {
+                      if (item.kind === "trade_licence" && entity === "company") continue;
+                      const d = drafts[item.kind!];
+                      if (!d?.file) continue;
+                      try {
+                        await uploadDocument({ ...d, file: d.file, kind: item.kind!, reference_no: d.reference_no?.trim() || undefined });
+                      } catch {
+                        failed.push(item.label);
+                      }
+                    }
+                    router.push(failed.length ? "/me/provider?joined=1&tab=vetting" : "/me/provider?joined=1");
                   } catch (err) {
-                    setServerError(getErrorMessage(err, "Could not submit your profile"));
+                    if (joined) router.push("/me/provider?joined=1&tab=vetting");
+                    else setServerError(getErrorMessage(err, "Could not submit your profile"));
                   } finally {
                     setSubmitting(false);
                   }

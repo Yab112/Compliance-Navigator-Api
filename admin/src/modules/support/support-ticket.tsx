@@ -1,13 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
-import { useSupportDesk, useSupportTicket } from "@cn/core/api/support";
+import { useCannedReplies, useSupportCustomer, useSupportDesk, useSupportTicket } from "@cn/core/api/support";
 import { Button } from "@cn/ui/button";
 import { Textarea } from "@cn/ui/textarea";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
-import { formatDateTime, humanize } from "@cn/core/lib/format";
+import { formatDate, formatDateTime, humanize, timeAgo } from "@cn/core/lib/format";
 import { NativeSelect } from "@/modules/shared/native-select";
 import { ErrorState, LoadingState } from "@/modules/shared/states";
 import { SlaBadge, TicketStatusBadge } from "@cn/ui/support/ticket-badges";
@@ -122,20 +123,48 @@ function Controls({ ticket, staff }: { ticket: SupportTicket; staff: { id: strin
   );
 }
 
+/** Pick a saved reply for this ticket's team; it arrives filled in and can still be edited. */
+function CannedPicker({ ticketId, onPick }: { ticketId: string; onPick: (text: string, id: string) => void }) {
+  const { payload, isLoading, error } = useCannedReplies({ ticketId, limit: 100 });
+  const items = payload?.items ?? [];
+  if (error) return <span className="text-muted-foreground text-[11px]">Saved replies could not be loaded</span>;
+  return (
+    <NativeSelect
+      aria-label="Insert a saved reply"
+      value=""
+      disabled={isLoading || !items.length}
+      onChange={(e) => {
+        const r = items.find((i) => i.id === e.target.value);
+        if (r) onPick(r.rendered ?? r.body, r.id);
+      }}
+    >
+      <option value="">{isLoading ? "Loading saved replies…" : items.length ? "Insert a saved reply…" : "No saved replies for this team"}</option>
+      {items.map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.title}
+        </option>
+      ))}
+    </NativeSelect>
+  );
+}
+
 function ReplyBox({ ticket }: { ticket: SupportTicket }) {
-  const { reply, update, isPending } = useSupportDesk();
+  const { reply, isPending } = useSupportDesk();
   const [body, setBody] = useState("");
+  const [cannedId, setCannedId] = useState<string | null>(null);
   const [internal, setInternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fromChat = !!ticket.conversation_id;
+  const done = ticket.status === "resolved" || ticket.status === "closed";
 
+  // One request: the reply and the resolve succeed or fail together, so a retry never sends it twice
   const send = async (resolve: boolean) => {
-    if (!body.trim()) return;
+    if (!body.trim() || isPending) return;
     setError(null);
     try {
-      await reply(ticket.id, body.trim(), internal);
-      if (resolve && !internal) await update(ticket.id, { status: "resolved" });
+      await reply(ticket.id, body.trim(), internal, { resolve: resolve && !internal, cannedReplyId: internal ? null : cannedId });
       setBody("");
+      setCannedId(null);
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -153,12 +182,31 @@ function ReplyBox({ ticket }: { ticket: SupportTicket }) {
         <label htmlFor="staff-reply" className="text-xs font-medium">
           {internal ? "Internal note (only staff see this)" : "Reply to the customer"}
         </label>
-        <label className="flex items-center gap-1.5 text-xs">
-          <input type="checkbox" className="accent-primary size-3.5" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
-          Internal note
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          {!internal && (
+            <CannedPicker
+              ticketId={ticket.id}
+              onPick={(text, id) => {
+                setBody((b) => (b.trim() ? `${b.trimEnd()}\n\n${text}` : text));
+                setCannedId(id);
+              }}
+            />
+          )}
+          <label className="flex items-center gap-1.5 text-xs">
+            <input type="checkbox" className="accent-primary size-3.5" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
+            Internal note
+          </label>
+        </div>
       </div>
-      <Textarea id="staff-reply" rows={4} value={body} maxLength={4000} onChange={(e) => setBody(e.target.value)} />
+      <Textarea
+        id="staff-reply"
+        rows={5}
+        value={body}
+        maxLength={4000}
+        aria-invalid={!!error}
+        aria-describedby={error ? "staff-reply-error" : undefined}
+        onChange={(e) => setBody(e.target.value)}
+      />
       {!internal && (
         <p className="text-muted-foreground text-[11px]">
           {fromChat
@@ -168,18 +216,143 @@ function ReplyBox({ ticket }: { ticket: SupportTicket }) {
               : `They aren't signed in: also call or email them (${ticket.contact_phone || ticket.contact_email || "no contact given"}).`}
         </p>
       )}
-      {error && <p className="text-destructive text-xs">{error}</p>}
+      {error && (
+        <p id="staff-reply-error" className="text-destructive text-xs" role="alert">
+          {error}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" disabled={!body.trim()} loading={isPending}>
           {internal ? "Add note" : "Send reply"}
         </Button>
-        {!internal && (
+        {!internal && !done && (
           <Button type="button" size="sm" variant="outline" disabled={!body.trim() || isPending} onClick={() => void send(true)}>
             Send and resolve
           </Button>
         )}
       </div>
     </form>
+  );
+}
+
+const HIRE_STATUS: Record<string, string> = {
+  open: "Waiting for a provider",
+  requested: "Sent to provider",
+  accepted: "Accepted",
+  declined: "Declined",
+  completed: "Delivered",
+  confirmed: "Confirmed",
+  cancelled: "Cancelled",
+};
+
+/** Who is behind the ticket: account, hires, payments, other requests. Loaded once, not polled. */
+function CustomerBox({ ticketId }: { ticketId: string }) {
+  const { payload: c, isLoading, error } = useSupportCustomer(ticketId);
+  if (isLoading) {
+    return (
+      <Box title="This customer">
+        <p className="text-muted-foreground text-xs">Loading…</p>
+      </Box>
+    );
+  }
+  if (error || !c) {
+    return (
+      <Box title="This customer">
+        <p className="text-destructive text-xs">{getErrorMessage(error, "Could not load the customer")}</p>
+      </Box>
+    );
+  }
+  const acct = c.account;
+  return (
+    <Box title="This customer">
+      {acct ? (
+        <dl>
+          <Row label="Account">{acct.name}</Row>
+          <Row label="Email">{acct.email}</Row>
+          <Row label="Phone">{acct.phone}</Row>
+          <Row label="Joined">{formatDate(acct.created_at)}</Row>
+          <Row label="Last sign-in">{acct.last_login_at ? timeAgo(acct.last_login_at) : "Never"}</Row>
+          <Row label="Status">{acct.is_active ? "Active" : "Disabled"}</Row>
+          <Row label="Roadmaps">{acct.roadmaps}</Row>
+          <Row label="Provider">
+            {c.provider && (
+              <Link href={`/marketplace/${c.provider.id}`} className="text-primary hover:underline">
+                {c.provider.display_name} ({humanize(c.provider.status)})
+              </Link>
+            )}
+          </Row>
+        </dl>
+      ) : (
+        <p className="text-muted-foreground text-xs">No account. Other requests below match the phone or email they gave.</p>
+      )}
+
+      {acct && c.hires && (
+        <div className="mt-3">
+          <h3 className="mb-1 text-xs font-medium">
+            Hires ({c.hires.total}){" "}
+            {c.hires.total > c.hires.items.length && <span className="text-muted-foreground font-normal">latest {c.hires.items.length}</span>}
+          </h3>
+          {c.hires.items.length ? (
+            <ul className="divide-border divide-y text-xs">
+              {c.hires.items.map((h) => (
+                <li key={h.id} className="py-1">
+                  <span className="block truncate font-medium">{h.title}</span>
+                  <span className="text-muted-foreground">
+                    {HIRE_STATUS[h.status] ?? humanize(h.status)}
+                    {h.payment_status && h.payment_status !== "none" ? ` · ${humanize(h.payment_status)}` : ""}
+                    {h.disputed ? ` · complaint ${h.dispute_status ?? ""}` : ""}
+                    {h.provider_name ? ` · ${h.provider_name}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground text-xs">No hires.</p>
+          )}
+        </div>
+      )}
+
+      {acct && c.payments && (
+        <div className="mt-3">
+          <h3 className="mb-1 text-xs font-medium">Payments ({c.payments.total})</h3>
+          {c.payments.items.length ? (
+            <ul className="divide-border divide-y text-xs">
+              {c.payments.items.map((p) => (
+                <li key={p.tx_ref} className="flex justify-between gap-2 py-1">
+                  <span className="min-w-0 truncate">{p.hire_title ?? p.tx_ref}</span>
+                  <span className="shrink-0 tabular-nums">
+                    {Number(p.amount).toLocaleString("en")} {p.currency} · {humanize(p.status)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground text-xs">No payments.</p>
+          )}
+        </div>
+      )}
+      {acct && c.hidden.length > 0 && (
+        <p className="text-muted-foreground mt-2 text-[11px]">Your role does not show their {c.hidden.join(" and ")}.</p>
+      )}
+
+      <div className="mt-3">
+        <h3 className="mb-1 text-xs font-medium">Other requests ({c.tickets.total})</h3>
+        {c.tickets.items.length ? (
+          <ul className="divide-border divide-y text-xs">
+            {c.tickets.items.map((o) => (
+              <li key={o.id} className="flex items-center justify-between gap-2 py-1">
+                <Link href={`/support/${o.id}`} className="text-primary min-w-0 truncate hover:underline">
+                  <span className="font-mono">{o.ref}</span> {o.subject}
+                </Link>
+                <TicketStatusBadge status={o.status} label={o.status_label} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-muted-foreground text-xs">None.</p>
+        )}
+      </div>
+    </Box>
   );
 }
 
@@ -214,12 +387,15 @@ export function SupportTicketDetail({ id }: { id: string }) {
         <div className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <TicketStatusBadge status={t.status} label={t.status_label} />
-            {t.first_response_at ? (
-              <span className="text-muted-foreground">First reply {formatDateTime(t.first_response_at)}</span>
-            ) : (
-              <SlaBadge due={t.sla_due_at} overdue={t.overdue} done={done} />
+            {t.next_response_due_at && <SlaBadge due={t.next_response_due_at} overdue={t.overdue} done={done} />}
+            {t.waiting_on === "us" && <span className="text-primary font-semibold">● Customer waiting for us {timeAgo(t.waiting_since)}</span>}
+            {t.waiting_on === "customer" && <span className="text-muted-foreground">Waiting for the customer since {timeAgo(t.waiting_since)}</span>}
+            <span className="text-muted-foreground">Opened {timeAgo(t.created_at)}</span>
+            {t.follow_up_of && (
+              <Link href={`/support/${t.follow_up_of}`} className="text-primary hover:underline">
+                Follows up {t.follow_up_of_ref}
+              </Link>
             )}
-            {t.awaiting_staff && <span className="text-primary font-semibold">● Customer is waiting for us</span>}
           </div>
           <div className="border-border bg-background border p-4">
             <TicketThread messages={messages} viewer="staff" />
@@ -253,6 +429,7 @@ export function SupportTicketDetail({ id }: { id: string }) {
 
         <aside className="space-y-3">
           <Controls ticket={t} staff={staff} />
+          <CustomerBox ticketId={t.id} />
           <Box title="Contact">
             <dl>
               <Row label="Name">{t.contact_name}</Row>
@@ -298,7 +475,9 @@ export function SupportTicketDetail({ id }: { id: string }) {
               <Row label="Source">{SOURCE_LABELS[t.source] ?? t.source}</Row>
               <Row label="Category">{t.category && humanize(t.category)}</Row>
               <Row label="Opened">{formatDateTime(t.created_at)}</Row>
-              <Row label="Reply due">{formatDateTime(t.sla_due_at)}</Row>
+              <Row label="First reply due">{formatDateTime(t.sla_due_at)}</Row>
+              <Row label="First reply">{t.first_response_at ? formatDateTime(t.first_response_at) : "Not yet"}</Row>
+              <Row label="Reply due now">{t.next_response_due_at && formatDateTime(t.next_response_due_at)}</Row>
               <Row label="Resolved">{t.resolved_at && formatDateTime(t.resolved_at)}</Row>
               <Row label="Messages">{t.message_count}</Row>
             </dl>

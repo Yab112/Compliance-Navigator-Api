@@ -1,7 +1,9 @@
+import re
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, EmailStr, Field
 
 ORG_TYPES = (
     "federal_institution", "regional_bureau", "sub_city_office", "woreda_office", "bank",
@@ -14,6 +16,36 @@ OrgType = Literal[
 # Landlines and mobiles, local or international format
 PHONE = r"^\+?[0-9][0-9 ()\-]{6,19}$"
 KEY = r"^[a-z0-9][a-z0-9_\-]{0,39}$"
+# A form the organization uploaded to us is stored at a path on our own site
+OWN_UPLOAD = re.compile(r"^/uploads/public/[A-Za-z0-9._-]+$")
+
+
+def _blank_to_none(value):
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
+
+
+def _web_link(value: str | None) -> str | None:
+    """Only http(s) links (or our own uploads) reach the public pages; 'example.gov.et' becomes https://example.gov.et."""
+    if value is None:
+        return None
+    if OWN_UPLOAD.match(value):
+        return value
+    if any(c.isspace() or ord(c) < 32 for c in value):
+        raise ValueError("A link can't contain spaces")
+    if "://" not in value and not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", value):
+        value = "https://" + value
+    parts = urlsplit(value)
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname or "." not in parts.hostname:
+        raise ValueError("Links must start with http:// or https:// and name a website")
+    if parts.username or parts.password:
+        raise ValueError("Links can't contain a user name or password")
+    return value
+
+
+WebLink = Annotated[str | None, BeforeValidator(_blank_to_none), AfterValidator(_web_link)]
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -39,7 +71,7 @@ class BranchIn(BaseModel):
     address: str | None = Field(None, max_length=300)
     latitude: float | None = Field(None, ge=-90, le=90)
     longitude: float | None = Field(None, ge=-180, le=180)
-    map_url: str | None = Field(None, max_length=500)
+    map_url: WebLink = Field(None, max_length=500)
     phone: str | None = Field(None, pattern=PHONE)
     hours: str | None = Field(None, max_length=200)
     landmark: str | None = Field(None, max_length=200)
@@ -54,7 +86,7 @@ class OrgRegistration(BaseModel):
     sector: str | None = Field(None, max_length=80)
     parent_org_id: str | None = None
     description: str | None = Field(None, max_length=2000)
-    website: str | None = Field(None, max_length=300)
+    website: WebLink = Field(None, max_length=300)
     phone: str | None = Field(None, pattern=PHONE)
     email: EmailStr | None = None
     hq_address: str | None = Field(None, max_length=300)
@@ -74,7 +106,7 @@ class OrgUpdate(BaseModel):
     org_type: OrgType | None = None
     sector: str | None = Field(None, max_length=80)
     description: str | None = Field(None, max_length=2000)
-    website: str | None = Field(None, max_length=300)
+    website: WebLink = Field(None, max_length=300)
     phone: str | None = Field(None, pattern=PHONE)
     email: EmailStr | None = None
     hq_address: str | None = Field(None, max_length=300)
@@ -102,7 +134,7 @@ class MemberInvite(BaseModel):
 
 class LinkItem(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
-    url: str = Field(..., min_length=1, max_length=500)
+    url: Annotated[str, BeforeValidator(_blank_to_none), AfterValidator(_web_link)] = Field(..., min_length=1, max_length=500)
 
 
 class FaqItem(BaseModel):
@@ -189,7 +221,7 @@ class ServiceIn(BaseModel):
     summary: str | None = Field(None, max_length=2000)
     who_can_apply: str | None = Field(None, max_length=1000)
     delivery: Literal["in_person", "online", "both"] = "in_person"
-    online_url: str | None = Field(None, max_length=500)
+    online_url: WebLink = Field(None, max_length=500)
     fee_amount_min: float | None = Field(None, ge=0)
     fee_amount_max: float | None = Field(None, ge=0)
     fee_currency: str = Field("ETB", min_length=3, max_length=3)
@@ -212,7 +244,7 @@ class ServiceIn(BaseModel):
     no_documents_required: bool = False
     appointment_required: bool = False
     appointment_how: str | None = Field(None, max_length=300)
-    appointment_url: str | None = Field(None, max_length=500)
+    appointment_url: WebLink = Field(None, max_length=500)
     appointment_phone: str | None = Field(None, pattern=PHONE)
     proxy_allowed: Literal["yes", "with_poa", "no"] | None = None
     proxy_notes: str | None = Field(None, max_length=500)
@@ -240,7 +272,9 @@ class ServiceSubmit(BaseModel):
 
 
 class ReportResponse(BaseModel):
-    status: Literal["resolved", "dismissed", "open"]
+    """The organization's answer to a report. Only staff close reports."""
+
+    verdict: Literal["fixed", "correct"]
     response: str = Field(..., min_length=2, max_length=1000)
 
 

@@ -1,13 +1,17 @@
 """Clients pay online; providers see their earnings and request payouts that staff approve."""
 
+import hashlib
 import json
+from datetime import date
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from core.deps import get_current_user, require_admin
+from core.verified import get_verified_user
 from schemas.auth_user import AuthUser
 from services import payment_service, platform_settings
 from services.payment_service import PaymentError
@@ -138,12 +142,22 @@ async def chapa_webhook(request: Request):
         event = json.loads(raw or b"{}")
     except ValueError:
         raise HTTPException(status_code=400, detail="Bad payload") from None
+    # Replay protection: an identical delivery is handled once a week, and each payment is checked with
+    # Chapa at most a few times a minute, so a captured signature can't be used to hammer us or Chapa
+    from core import ratelimit
+
+    digest = hashlib.sha256(raw).hexdigest()
+    if not ratelimit.once("chapa_webhook", digest, 7 * 86400):
+        return _ok({"received": True, "duplicate": True})
     tx_ref = event.get("tx_ref")
+    if tx_ref and isinstance(tx_ref, str) and ratelimit.hit("chapa_webhook", tx_ref[:100]) is not None:
+        ratelimit.forget("chapa_webhook", digest)  # so Chapa's own retry later still counts
+        return _ok({"received": True, "throttled": True})
     if tx_ref and payment_service.get(tx_ref):
         try:
             payment_service.confirm(tx_ref)  # verifies with Chapa again before recording anything
         except PaymentError:
-            pass
+            ratelimit.forget("chapa_webhook", digest)
     return _ok({"received": True})
 
 
@@ -152,8 +166,27 @@ class PayoutRequest(BaseModel):
 
 
 class PayoutDecision(BaseModel):
-    decision: Literal["approve", "reject", "refresh"]
+    decision: Literal["approve", "reject", "refresh", "mark_failed"]
     note: str | None = Field(None, max_length=500)
+
+
+class ClientBank(BaseModel):
+    bank_name: str = Field(..., min_length=2, max_length=80)
+    account_name: str = Field(..., min_length=2, max_length=120)
+    account_number: str = Field(..., min_length=6, max_length=30)
+
+
+class RefundBody(BaseModel):
+    amount: float | None = Field(None, gt=0, le=10_000_000)  # empty: everything not refunded yet
+    reason: str = Field(..., min_length=5, max_length=500)
+    method: Literal["gateway", "manual"] = "gateway"
+    client_bank: ClientBank | None = None
+
+
+class RefundAction(BaseModel):
+    action: Literal["refresh", "confirm", "mark_failed"]
+    note: str | None = Field(None, max_length=500)
+    transfer_reference: str | None = Field(None, max_length=120)
 
 
 @router.get("/providers/me/earnings")
@@ -181,7 +214,7 @@ def my_payouts(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0
 
 
 @router.post("/providers/me/payouts", status_code=201)
-def request_payout(body: PayoutRequest, user: AuthUser = Depends(get_current_user)):
+def request_payout(body: PayoutRequest, user: AuthUser = Depends(get_verified_user)):
     try:
         return _ok({"payout": payment_service.request_payout(user.id, body.amount)})
     except PaymentError as exc:
@@ -192,6 +225,14 @@ def request_payout(body: PayoutRequest, user: AuthUser = Depends(get_current_use
 def payment_receipt(tx_ref: str, user: AuthUser = Depends(get_current_user)):
     try:
         return _ok({"receipt": payment_service.payment_receipt(tx_ref, user=user)})
+    except PaymentError as exc:
+        _raise(exc)
+
+
+@router.get("/refunds/{refund_id}/receipt")
+def refund_receipt(refund_id: UUID, user: AuthUser = Depends(get_current_user)):
+    try:
+        return _ok({"receipt": payment_service.refund_receipt(str(refund_id), user=user)})
     except PaymentError as exc:
         _raise(exc)
 
@@ -207,10 +248,68 @@ def payout_receipt(payout_id: str, user: AuthUser = Depends(get_current_user)):
 # ---------------------------------------------------------------- staff
 
 
+PaymentStatus = Literal["pending", "success", "failed", "cancelled"]
+
+
 @router.get("/admin/marketplace/payments", dependencies=[Depends(require_admin)])
-def admin_payments(status: Literal["pending", "success", "failed", "cancelled"] | None = None,
-                   limit: int = 50, offset: int = 0):
-    return _ok(payment_service.admin_list(status, min(max(limit, 1), 200), max(offset, 0)))
+def admin_payments(status: PaymentStatus | None = None, limit: int = 50, offset: int = 0,
+                   q: str | None = Query(None, max_length=120), date_from: date | None = Query(None, alias="from"),
+                   date_to: date | None = Query(None, alias="to"), needs_refund: bool | None = None,
+                   engagement_id: UUID | None = None):
+    return _ok(payment_service.admin_list(status, min(max(limit, 1), 200), max(offset, 0), q=q, date_from=date_from,
+                                          date_to=date_to, needs_refund=needs_refund,
+                                          engagement_id=str(engagement_id) if engagement_id else None))
+
+
+@router.get("/admin/marketplace/payments.csv", dependencies=[Depends(require_admin)])
+def admin_payments_csv(status: PaymentStatus | None = None, q: str | None = Query(None, max_length=120),
+                       date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
+                       needs_refund: bool | None = None):
+    body = payment_service.admin_csv(status, q=q, date_from=date_from, date_to=date_to, needs_refund=needs_refund)
+    return Response(content=body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="payments.csv"'})
+
+
+@router.post("/admin/marketplace/payments/{tx_ref}/verify", dependencies=[Depends(require_admin)])
+def admin_verify_payment(tx_ref: str):
+    """Ask Chapa again about a payment (for one still pending because the client never came back)."""
+    try:
+        return _ok(payment_service.admin_verify(tx_ref))
+    except PaymentError as exc:
+        _raise(exc)
+
+
+@router.post("/admin/marketplace/payments/{tx_ref}/refund")
+def admin_refund(tx_ref: str, body: RefundBody, user=Depends(require_admin)):
+    """
+    A refund always needs a second staff member: require_admin stores it for approval (202) through the
+    payment.refund rule. This body only runs when nobody else could approve (the waiver is audited).
+    """
+    try:
+        plan = payment_service.refund_plan(tx_ref, amount=body.amount, reason=body.reason, method=body.method,
+                                           client_bank=body.client_bank.model_dump() if body.client_bank else None)
+        return _ok({"refund": payment_service.execute_refund(plan["payload"],
+                                                             f"{user.email} (no second approver available)")})
+    except PaymentError as exc:
+        _raise(exc)
+
+
+@router.get("/admin/marketplace/refunds")
+def admin_refunds(tx_ref: str | None = Query(None, max_length=80),
+                  status: Literal["sending", "processing", "refunded", "manual_pending", "needs_check", "failed"] | None = None,
+                  limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0), user=Depends(require_admin)):
+    return _ok(payment_service.admin_refunds(tx_ref=tx_ref, status=status, limit=limit, offset=offset,
+                                             show_account=user.can("payments.refund")))
+
+
+@router.post("/admin/marketplace/refunds/{refund_id}")
+def admin_refund_action(refund_id: UUID, body: RefundAction, user=Depends(require_admin)):
+    try:
+        return _ok({"refund": payment_service.refund_action(str(refund_id), action=body.action, note=body.note,
+                                                            transfer_reference=body.transfer_reference,
+                                                            actor=user.email)})
+    except PaymentError as exc:
+        _raise(exc)
 
 
 @router.get("/admin/marketplace/payouts", dependencies=[Depends(require_admin)])
@@ -228,9 +327,9 @@ def payout_review(payout_id: UUID):
 
 
 @router.post("/admin/marketplace/payouts/{payout_id}")
-def decide_payout(payout_id: str, body: PayoutDecision, user: AuthUser = Depends(require_admin)):
+def decide_payout(payout_id: UUID, body: PayoutDecision, user: AuthUser = Depends(require_admin)):
     try:
-        return _ok({"payout": payment_service.decide_payout(payout_id, decision=body.decision, note=body.note,
+        return _ok({"payout": payment_service.decide_payout(str(payout_id), decision=body.decision, note=body.note,
                                                             actor=user.email)})
     except PaymentError as exc:
         _raise(exc)

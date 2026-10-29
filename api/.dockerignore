@@ -1,0 +1,31 @@
+# Secrets: configuration comes from the runtime environment, never the image
+.env
+.env.*
+!.env.sample
+
+# Logs and user data (uploads hold national ID copies; mount a volume instead)
+*.log
+logs/
+uploads/
+models_store/train.log
+models_store/assistant/.last_run*
+
+# Local tooling, caches and build leftovers
+.venv/
+.cache/
+.git/
+.github/
+.gitignore
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+.python-version
+
+# Not needed to run the API
+tests/
+img/
+Doc/
+docker-compose*.yml
+Dockerfile
+.dockerignore

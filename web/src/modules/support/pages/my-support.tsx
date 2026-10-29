@@ -108,8 +108,10 @@ export function MySupportTicket({ id }: { id: string }) {
   const { reply, isPending } = useSupportWrite();
   const [body, setBody] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
+  const [followingUp, setFollowingUp] = useState(false);
   const thread = data?.payload;
   const t = thread?.ticket;
+  const ended = t?.status === "resolved" || t?.status === "closed";
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,30 +150,57 @@ export function MySupportTicket({ id }: { id: string }) {
                 <span className="text-muted-foreground">About:</span> {t.service_title}
               </span>
             )}
+            {t.follow_up_of && (
+              <Link href={`/account/support/${t.follow_up_of}`} className="text-primary hover:underline">
+                Follows up {t.follow_up_of_ref}
+              </Link>
+            )}
           </div>
           <TicketThread messages={thread.messages.filter((m) => !m.internal)} viewer="customer" />
-          <form onSubmit={send} className="border-border bg-card space-y-2 rounded-md border p-4">
-            <label htmlFor="reply" className="text-sm font-medium">
-              {t.status === "resolved" || t.status === "closed"
-                ? "Still need help? Writing again reopens the request."
-                : "Reply to the team · መልስ"}
-            </label>
-            <Textarea
-              id="reply"
-              rows={3}
-              value={body}
-              maxLength={4000}
-              onChange={(e) => setBody(e.target.value)}
-            />
-            {failure && (
-              <p className="text-destructive text-xs" role="alert">
-                {failure}
+          {ended && !t.can_reopen ? (
+            <div className="border-border bg-card space-y-3 rounded-md border p-4">
+              <p className="text-sm">
+                This request ended more than 7 days ago, so it can&apos;t be reopened. If you still need help,
+                send a new request; our team will see it follows up {t.ref}.
+                <span className="text-muted-foreground block" lang="am">
+                  ይህ ጥያቄ ከ7 ቀን በፊት ተዘግቷል። እገዛ ከፈለጉ አዲስ ጥያቄ ይላኩ።
+                </span>
               </p>
-            )}
-            <Button type="submit" disabled={!body.trim()} loading={isPending}>
-              Send reply
-            </Button>
-          </form>
+              {followingUp ? (
+                <ContactForm followUp={t} />
+              ) : (
+                <Button onClick={() => setFollowingUp(true)}>Send a new request</Button>
+              )}
+            </div>
+          ) : (
+            <form onSubmit={send} className="border-border bg-card space-y-2 rounded-md border p-4">
+              <label htmlFor="reply" className="text-sm font-medium">
+                {ended ? "Still need help? Writing again reopens the request." : "Reply to the team · መልስ"}
+              </label>
+              {ended && t.reopen_until && (
+                <p id="reply-hint" className="text-muted-foreground text-xs">
+                  You can reopen it until {formatDateTime(t.reopen_until)}. After that, send a new request.
+                </p>
+              )}
+              <Textarea
+                id="reply"
+                rows={3}
+                value={body}
+                maxLength={4000}
+                aria-describedby={ended && t.reopen_until ? "reply-hint" : undefined}
+                aria-invalid={!!failure}
+                onChange={(e) => setBody(e.target.value)}
+              />
+              {failure && (
+                <p className="text-destructive text-xs" role="alert">
+                  {failure}
+                </p>
+              )}
+              <Button type="submit" disabled={!body.trim()} loading={isPending}>
+                {ended ? "Send and reopen" : "Send reply"}
+              </Button>
+            </form>
+          )}
         </div>
       )}
     </PageShell>

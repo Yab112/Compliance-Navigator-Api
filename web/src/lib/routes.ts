@@ -12,6 +12,8 @@ const WEB_ROUTES: RouteDef[] = [
   { pattern: "/chat", label: "Ask", parent: "/" },
   { pattern: "/about", label: "About", parent: "/" },
   { pattern: "/how-it-works", label: "How it works", parent: "/" },
+  { pattern: "/legal", label: "Legal", parent: "/" },
+  { pattern: "/legal/[slug]", parent: "/legal" },
   // Marketplace
   { pattern: "/hire", label: "Hire", parent: "/" },
   { pattern: "/hire/how-scores-work", label: "How scores work", parent: "/hire" },

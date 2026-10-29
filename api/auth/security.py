@@ -14,6 +14,8 @@ from jwt import PyJWTError
 from config.config import settings
 
 ISSUER = "compliance-navigator"
+# Staff tokens come from a different issuer and say so in a claim, so neither realm accepts the other's
+STAFF_ISSUER = "compliance-navigator-staff"
 # bcrypt only looks at the first 72 bytes, longer passwords are rejected, not silently truncated
 MAX_PASSWORD_BYTES = 72
 # Compared against when the email is unknown so both paths cost one bcrypt check
@@ -73,4 +75,31 @@ def decode_access_token(token: str) -> dict | None:
         )
     except PyJWTError:
         return None
+    if claims.get("realm", "public") != "public":
+        return None
     return claims
+
+
+def issue_staff_token(staff_id: str, session_id: str) -> tuple[str, int]:
+    ttl = settings.access_token_ttl_minutes * 60
+    now = int(time.time())
+    token = jwt.encode(
+        {"sub": staff_id, "sid": session_id, "realm": "staff", "iss": STAFF_ISSUER, "iat": now, "exp": now + ttl},
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+    return token, ttl
+
+
+def decode_staff_token(token: str) -> dict | None:
+    try:
+        claims = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            issuer=STAFF_ISSUER,
+            options={"require": ["sub", "sid", "exp", "iat", "realm"]},
+        )
+    except PyJWTError:
+        return None
+    return claims if claims.get("realm") == "staff" else None

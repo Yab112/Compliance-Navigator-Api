@@ -11,8 +11,10 @@ from __future__ import annotations
 import logging
 import smtplib
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from email.message import EmailMessage
+from typing import Any
 
 from auth import security
 from config.config import settings
@@ -29,6 +31,9 @@ MAX_REGISTRATIONS_PER_IP_HOUR = 10
 # A second refresh with a just-rotated token (two tabs at once) is not treated as theft
 ROTATION_GRACE_SECONDS = 30
 RESET_TTL_MINUTES = 60
+VERIFY_TTL_HOURS = 48
+# Sign-up attempts for one address: the owner gets at most this many "someone used your email" notes an hour
+MAX_REGISTER_EMAILS_PER_HOUR = 3
 
 
 class AuthError(Exception):
@@ -41,6 +46,13 @@ class AuthError(Exception):
 class ClientInfo:
     ip: str | None = None
     user_agent: str | None = None
+
+
+@dataclass
+class Email:
+    to: str
+    subject: str
+    text: str
 
 
 @dataclass
@@ -134,6 +146,7 @@ def public_user(user: dict) -> dict:
         "telegramUsername": user.get("telegram_username"),
         "role": user["role"],
         "preferredSubCity": user.get("preferred_sub_city"),
+        "emailVerified": user.get("email_verified_at") is not None,
     }
 
 
@@ -197,26 +210,43 @@ def count_active_sessions(user_ids: list[str]) -> dict[str, int]:
 # ---------------------------------------------------------------- register / sign in
 
 
-def register(email: str, password: str, fullname: str, phone: str | None, client: ClientInfo) -> SessionTokens:
+def register(email: str, password: str, fullname: str, phone: str | None, client: ClientInfo,
+             on_created: Callable[[Any, dict], None] | None = None) -> Email | None:
+    """Create an unverified account and return the email to send (in the background).
+
+    The caller answers "Check your email to continue" either way. When the address already has an
+    account, nothing is created and its owner is told someone tried to sign up with it, so the
+    response never reveals who has an account. `on_created(conn, user)` runs in the same
+    transaction as the new account (e.g. saving consents).
+    """
     problem = security.password_problem(password)
     if problem:
         raise AuthError(problem, 422)
     recent = fetch_one(
         """
         select count(*) as c from auth_events
-        where event = 'register' and ip = %s and created_at > now() - interval '1 hour'
+        where event in ('register', 'register_existing') and ip = %s and created_at > now() - interval '1 hour'
         """,
         (client.ip,),
     )
     if client.ip and recent["c"] >= MAX_REGISTRATIONS_PER_IP_HOUR:
         raise AuthError("Too many accounts created from this network. Try again later.", 429)
-    if user_store.get_user_by_email(email):
-        raise AuthError("An account with this email already exists", 409)
-    user = user_store.create_user(email, fullname.strip(), security.hash_password(password), phone=phone)
+    # Hash before looking the address up, so both answers take about as long
+    password_hash = security.hash_password(password)
+    existing = user_store.get_user_by_email(email)
+    if existing:
+        record_event("register_existing", user_id=existing["id"], email=email, client=client)
+        from core import ratelimit
+
+        if ratelimit.hit("register_email", existing["id"], (ratelimit.Rule(MAX_REGISTER_EMAILS_PER_HOUR, 3600),)):
+            return None
+        return _existing_account_email(existing)
+    with connection() as conn, conn.transaction():
+        user = user_store.create_user(email, fullname.strip(), password_hash, phone=phone, conn=conn)
+        if on_created:
+            on_created(conn, user)
     record_event("register", user_id=user["id"], email=email, client=client)
-    tokens = _create_session(user, client)
-    user_store.touch_login(user["id"], user["email"])
-    return tokens
+    return _verification_email(user, create_verification_link(user))
 
 
 def login(email: str, password: str, client: ClientInfo) -> SessionTokens:
@@ -236,7 +266,6 @@ def login(email: str, password: str, client: ClientInfo) -> SessionTokens:
         record_event("login_failed", user_id=user["id"], email=email, client=client, detail="deactivated")
         raise AuthError("This account has been deactivated. Contact an administrator.", 403)
     user_store.touch_login(user["id"], user["email"])
-    user = user_store.get_user(user["id"])  # role may have been promoted via ADMIN_EMAILS
     record_event("login_success", user_id=user["id"], email=email, client=client)
     return _create_session(user, client)
 
@@ -347,7 +376,7 @@ def resolve_access_token(token: str) -> tuple[AuthUser, str] | None:
         return None
     row = fetch_one(
         """
-        select u.id::text, u.email, u.fullname, u.role
+        select u.id::text, u.email, u.fullname, u.role, u.email_verified_at is not null as email_verified
         from users u join auth_sessions s on s.user_id = u.id
         where u.id = %s and s.id = %s and u.is_active
           and s.revoked_at is null and s.expires_at > now()
@@ -356,7 +385,8 @@ def resolve_access_token(token: str) -> tuple[AuthUser, str] | None:
     )
     if not row:
         return None
-    return AuthUser(id=row["id"], email=row["email"], fullname=row["fullname"], role=row["role"]), claims["sid"]
+    return AuthUser(id=row["id"], email=row["email"], fullname=row["fullname"], role=row["role"],
+                    email_verified=row["email_verified"]), claims["sid"]
 
 
 # ---------------------------------------------------------------- passwords
@@ -392,29 +422,47 @@ def create_reset_link(user: dict, created_by: str) -> str:
     return f"{settings.web_base_url.rstrip('/')}/reset-password?token={token}"
 
 
-def request_password_reset(email: str, client: ClientInfo) -> None:
-    """Always succeeds from the caller's point of view, so it can't reveal who has an account."""
+def request_password_reset(email: str, client: ClientInfo) -> Email | None:
+    """The email to send, if any. The caller always answers the same, so it can't reveal who has an account."""
     user = user_store.get_user_by_email(email)
     record_event("password_reset_requested", user_id=user["id"] if user else None, email=email, client=client)
     if not user or not user["is_active"]:
-        return
+        return None
+    from core import ratelimit
+
+    # A few links an hour per address; more requests are quietly not sent (each one replaces the last link)
+    if ratelimit.hit("forgot_password_email", user["id"]):
+        return None
     link = create_reset_link(user, created_by="self")
-    if settings.smtp_host:
-        _send_reset_email(user, link)
-    else:
-        log.warning("Password reset link for %s (no SMTP configured): %s", user["email"], link)
-
-
-def _send_reset_email(user: dict, link: str) -> None:
-    msg = EmailMessage()
-    msg["Subject"] = "Reset your Compliance Navigator password"
-    msg["From"] = settings.smtp_from
-    msg["To"] = user["email"]
-    msg.set_content(
-        f"Hello {user['fullname'] or ''},\n\n"
-        f"Use this link within {RESET_TTL_MINUTES} minutes to choose a new password:\n{link}\n\n"
-        "If you didn't ask for this, you can ignore this email.\n"
+    return Email(
+        to=user["email"],
+        subject="Reset your Compliance Navigator password",
+        text=(
+            f"Hello {user['fullname'] or ''},\n\n"
+            f"Use this link within {RESET_TTL_MINUTES} minutes to choose a new password:\n{link}\n\n"
+            "If you didn't ask for this, you can ignore this email.\n"
+        ),
     )
+
+
+# ---------------------------------------------------------------- email
+
+
+def send_email(email: Email) -> None:
+    """Send through SMTP. Without SMTP (development only: production refuses to start) the
+    message, link included, goes to the API log so a developer can follow it."""
+    if not settings.smtp_host:
+        if settings.is_production:
+            log.error("Email not sent, SMTP is not configured: %s", email.subject)
+        else:
+            log.warning("DEVELOPMENT ONLY, no SMTP configured. Email to %s: %s\n%s",
+                        email.to, email.subject, email.text)
+        return
+    msg = EmailMessage()
+    msg["Subject"] = email.subject
+    msg["From"] = settings.smtp_from
+    msg["To"] = email.to
+    msg.set_content(email.text)
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
             smtp.starttls()
@@ -422,7 +470,85 @@ def _send_reset_email(user: dict, link: str) -> None:
                 smtp.login(settings.smtp_username, settings.smtp_password or "")
             smtp.send_message(msg)
     except Exception:
-        log.exception("Could not send password reset email to %s", user["email"])
+        log.exception("Could not send email: %s", email.subject)
+
+
+def _existing_account_email(user: dict) -> Email:
+    base = settings.web_base_url.rstrip("/")
+    return Email(
+        to=user["email"],
+        subject="Someone tried to create a Compliance Navigator account with your email",
+        text=(
+            f"Hello {user['fullname'] or ''},\n\n"
+            "Someone just tried to create an account with this email address, but you already have one.\n"
+            f"If it was you, sign in here: {base}/login\n"
+            f"Forgot your password? Choose a new one here: {base}/forgot-password\n\n"
+            "If it wasn't you, you can ignore this email. Nothing has changed on your account.\n"
+        ),
+    )
+
+
+# ---------------------------------------------------------------- email verification
+
+
+def create_verification_link(user: dict) -> str:
+    token = security.new_opaque_token()
+    with connection() as conn, conn.transaction():
+        # Only the newest link works
+        conn.execute(
+            "update email_verification_tokens set used_at = now() where user_id = %s and used_at is null",
+            (user["id"],),
+        )
+        conn.execute(
+            """
+            insert into email_verification_tokens (user_id, token_hash, email, expires_at)
+            values (%s, %s, lower(%s), now() + make_interval(hours => %s))
+            """,
+            (user["id"], security.token_hash(token), user["email"], VERIFY_TTL_HOURS),
+        )
+    return f"{settings.web_base_url.rstrip('/')}/verify-email?token={token}"
+
+
+def _verification_email(user: dict, link: str) -> Email:
+    return Email(
+        to=user["email"],
+        subject="Confirm your email for Compliance Navigator",
+        text=(
+            f"Hello {user['fullname'] or ''},\n\n"
+            f"Please confirm this is your email address. The link works once, within {VERIFY_TTL_HOURS} hours:\n"
+            f"{link}\n\n"
+            "You can already use your account. Until you confirm, you can't offer services as a provider,\n"
+            "create or join an organization, or receive payouts.\n\n"
+            "If you didn't create this account, you can ignore this email.\n"
+        ),
+    )
+
+
+def resend_verification(user_id: str, client: ClientInfo) -> Email | None:
+    """A fresh link for a signed-in person who hasn't confirmed yet; None when already confirmed."""
+    user = user_store.get_user(user_id)
+    if not user or user.get("email_verified_at") is not None:
+        return None
+    record_event("email_verification_sent", user_id=user_id, client=client)
+    return _verification_email(user, create_verification_link(user))
+
+
+def verify_email(token: str, client: ClientInfo) -> dict:
+    """Use a verification link once. Returns the person's public profile."""
+    with connection() as conn, conn.transaction():
+        row = conn.execute(
+            """
+            update email_verification_tokens set used_at = now()
+            where token_hash = %s and used_at is null and expires_at > now()
+            returning user_id::text, email
+            """,
+            (security.token_hash(token),),
+        ).fetchone()
+        user = user_store.mark_email_verified(row["user_id"], row["email"], conn=conn) if row else None
+    if not user:
+        raise AuthError("This link is invalid or has expired. Sign in and ask for a new one.", 400)
+    record_event("email_verified", user_id=user["id"], client=client)
+    return public_user(user)
 
 
 def reset_password(token: str, new: str, client: ClientInfo) -> None:

@@ -5,7 +5,7 @@ import uuid
 from datetime import date, timedelta
 
 import pytest
-from conftest import API
+from conftest import API, approve_pending
 
 from services import custom_sources, data_sources, rag_service
 from services.db import execute, fetch_one
@@ -60,7 +60,7 @@ def _chunks(source_id: str) -> int:
                      (custom_sources.chunk_service_id(source_id),))["c"]
 
 
-def test_custom_source_crud_and_run(client, admin, cleanup):
+def test_custom_source_crud_and_run(client, admin, cleanup, make_user):
     created = _create(client, admin, cleanup)
     src, key = created["source"], created["key"]
     assert key == f"custom:{src['id']}"
@@ -87,8 +87,11 @@ def test_custom_source_crud_and_run(client, admin, cleanup):
     assert got["source"]["text"].startswith("Proclamation 1150/2019")
 
     # Delete removes its passages from the AI knowledge base; run history keeps a readable label
+    # Deleting needs a second staff member; it runs when they approve
     r = client.delete(f"{API}/admin/data-sources/custom/{src['id']}", headers=admin["headers"])
-    assert r.status_code == 200 and r.json()["payload"]["deleted"]["chunks_removed"] >= 1
+    assert r.status_code == 202 and _chunks(src["id"]) > 0
+    decided = approve_pending(client, r, make_user("admin"))
+    assert decided["status"] == "executed" and decided["result"]["deleted"]["chunks_removed"] >= 1
     assert _chunks(src["id"]) == 0
     assert data_sources.list_runs(key, limit=1)[0]["source_label"] == "Deleted source"
     assert client.delete(f"{API}/admin/data-sources/custom/{src['id']}", headers=admin["headers"]).status_code == 404

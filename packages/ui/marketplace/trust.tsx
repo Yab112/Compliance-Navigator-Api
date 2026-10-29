@@ -111,10 +111,15 @@ export function TypeBadge({ type, entity }: { type: PublicProvider["provider_typ
 }
 
 /** What has been checked: Fayda ID, business registration, sector licence. */
-export function VerificationBadges({ provider }: { provider: Pick<PublicProvider, "id_verified" | "registered_business" | "external_license_status" | "external_license_type" | "entity_type"> }) {
+export function VerificationBadges({ provider }: { provider: Pick<PublicProvider, "id_verified" | "id_test" | "registered_business" | "external_license_status" | "external_license_type" | "entity_type"> }) {
   return (
     <span className="flex flex-wrap gap-1.5">
-      {provider.id_verified && (
+      {provider.id_test && (
+        <Badge className="bg-amber-100 text-[10px] text-amber-900" title="Checked on the Fayda test screen, not a real national ID check">
+          Test ID only
+        </Badge>
+      )}
+      {provider.id_verified && !provider.id_test && (
         <Badge className="bg-emerald-100 text-[10px] text-emerald-900" title="National ID verified with Fayda">
           ✓ ID verified
         </Badge>

@@ -15,6 +15,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 import time
@@ -29,6 +30,8 @@ from psycopg.errors import UniqueViolation
 
 from config.config import settings
 from services.db import connection, fetch_one
+
+log = logging.getLogger(__name__)
 
 STATE_TTL = timedelta(minutes=10)
 SANDBOX_OTP = "111111"
@@ -49,7 +52,40 @@ class VerificationError(Exception):
 
 def mode() -> str:
     m = (settings.fayda_mode or "off").lower()
+    if m == "sandbox" and settings.is_production:
+        # config.py already refuses to start like this; never accept made-up IDs in production regardless
+        return "off"
     return m if m in ("off", "sandbox", "live") else "off"
+
+
+def is_test(method: str | None) -> bool:
+    """A sandbox verification proves nothing: show it as a test ID, never as verified."""
+    return method == "fayda_sandbox"
+
+
+def retire_sandbox_verifications() -> int:
+    """In live mode, test (sandbox) verifications left over from before stop counting anywhere: the person's
+    record is superseded and their provider profile loses the ID badge until they verify with real Fayda.
+    Runs at startup; does nothing outside live mode. Returns how many were retired."""
+    if mode() != "live":
+        return 0
+    with connection() as conn, conn.transaction():
+        rows = conn.execute(
+            """
+            update id_verifications set status = 'superseded', error = 'sandbox_retired'
+            where method = 'fayda_sandbox' and status = 'verified'
+            returning id
+            """
+        ).fetchall()
+        conn.execute(
+            """
+            update providers set national_id_verified = false, updated_at = now()
+            where id_verification_method = 'fayda_sandbox' and national_id_verified
+            """
+        )
+    if rows:
+        log.warning("Retired %s test (sandbox) ID verifications now that Fayda is live", len(rows))
+    return len(rows)
 
 
 def is_required() -> bool:
@@ -265,9 +301,11 @@ def _client_assertion() -> str:
 
 def _verify_jws(token: str, *, audience: str | None = None) -> dict:
     key = jwt.PyJWKClient(settings.fayda_jwks_url).get_signing_key_from_jwt(token)
+    issuer = settings.fayda_issuer or None
     return jwt.decode(
         token, key.key, algorithms=["RS256", "PS256", "ES256"],
-        audience=audience, options={"verify_aud": audience is not None},
+        audience=audience, issuer=issuer,
+        options={"verify_aud": audience is not None, "verify_iss": issuer is not None},
     )
 
 
@@ -296,7 +334,11 @@ def _exchange(row: dict, code: str) -> dict:
             raise VerificationError("Could not read your Fayda details", 502)
     # eSignet returns userinfo as a signed JWT
     body = info.text.strip()
-    return _verify_jws(body) if body.count(".") == 2 else info.json()
+    claims = _verify_jws(body) if body.count(".") == 2 else info.json()
+    # The details must belong to the person who signed in
+    if claims.get("sub") and id_claims.get("sub") and claims["sub"] != id_claims["sub"]:
+        raise VerificationError("Fayda response did not match this request", 400)
+    return claims
 
 
 def complete_live(user_id: str, *, code: str, state: str) -> dict:

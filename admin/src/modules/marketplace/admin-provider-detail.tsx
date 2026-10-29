@@ -25,6 +25,7 @@ import { HireStatusBadge, ScoreBreakdown, SpecialtyChips, Stars } from "@cn/ui/m
 import { TYPE_META, areaLabel, formatFee } from "@cn/ui/marketplace/constants";
 import type { AdminProvider, ProviderAdminAction, Review } from "@cn/core/types/provider";
 import { PrivateDocument } from "@/modules/marketplace/private-document";
+import { PendingChangePanel, VettingPanel } from "@/modules/marketplace/admin-vetting-panel";
 import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
 
 type ActionDef = {
@@ -38,7 +39,7 @@ type ActionDef = {
 
 // Approving and renewing are only as good as the checks behind them, so both ask what was checked;
 // the note goes into the audit log as the proof.
-const CHECKED = "What did you check? For example: Fayda ID matches, licence confirmed with the office, references called. Kept in the audit log.";
+const CHECKED = "What did you check? For example: met in person, clearance number confirmed with the police, references called. Kept in the audit log.";
 const REASON = "Reason. The provider sees this.";
 const ACTIONS: Record<string, ActionDef[]> = {
   pending: [
@@ -117,7 +118,11 @@ function Actions({ p }: { p: AdminProvider }) {
     }
   };
   const renewBlocked = p.renewal?.blocker;
-  const actions = (ACTIONS[p.status] ?? []).filter((a) => a.action !== "renew" || !renewBlocked);
+  // The server refuses these too; hiding them saves staff a pointless round trip
+  const vettingBlocked = p.vetting && !p.vetting.complete ? p.vetting.blocker : null;
+  const actions = (ACTIONS[p.status] ?? []).filter(
+    (a) => !(a.action === "renew" && renewBlocked) && !(a.action === "approve" && vettingBlocked),
+  );
 
   return (
     <Panel title="Decision">
@@ -130,6 +135,9 @@ function Actions({ p }: { p: AdminProvider }) {
           </>
         )}
       </p>
+      {vettingBlocked && (p.status === "pending" || p.status === "rejected") && (
+        <p className="mt-2 text-xs text-amber-800">Approval opens once every vetting requirement is verified (see Vetting).</p>
+      )}
       {!open && (
         <div className="mt-3 flex flex-wrap gap-2">
           {actions.map((a) => (
@@ -166,7 +174,7 @@ function Actions({ p }: { p: AdminProvider }) {
             Sector licence: <strong>{p.external_license_type ?? "Licence"}</strong> no. <span className="font-mono">{p.external_license_no}</span>{" "}
             <span className="text-muted-foreground">({p.external_license_status}{p.external_license_verified_by ? ` by ${p.external_license_verified_by}` : ""})</span>
           </p>
-          <p className="text-muted-foreground mt-1 text-[11px]">Confirm the number with the issuing office before verifying. A verified licence adds 7 points to the trust score.</p>
+          <p className="text-muted-foreground mt-1 text-[11px]">Confirm the number with the issuing office before verifying. A verified licence adds 4 points to the trust score.</p>
           {open === "license_rejected" ? (
             <form className="mt-2 space-y-2" onSubmit={(e) => { e.preventDefault(); void call(apiPaths.admin.marketProviderLicense(p.id), { decision: "rejected" }, "Licence marked not valid."); }}>
               <label htmlFor="license-note" className="block text-xs font-medium">{REASON}</label>
@@ -295,9 +303,13 @@ export function AdminProviderDetail({ id }: { id: string }) {
             {p.bio && <p className="text-muted-foreground mt-3 text-xs whitespace-pre-line">{p.bio}</p>}
           </Panel>
 
+          <PendingChangePanel p={p} />
+          <VettingPanel p={p} />
           <div className="grid gap-4 md:grid-cols-2">
             <IdentityPanel p={p} />
-            <Panel title="Trade licence copy"><PrivateDocument fileKey={p.license_document_url} label="Licence copy" /></Panel>
+            {p.license_document_url && (
+              <Panel title="Trade licence copy (older sign-up)"><PrivateDocument fileKey={p.license_document_url} label="Licence copy" /></Panel>
+            )}
           </div>
 
           <Panel title={`Reviews (${p.reviews?.total ?? 0}, including hidden)`}>

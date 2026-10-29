@@ -10,7 +10,7 @@ const FACTORS = [
   {
     title: "Verification",
     points: "up to 25",
-    body: "Fayda national ID verified (10), phone (3), TIN and, for companies, trade licence (5), and a sector licence checked by our staff with the issuing office (7), such as a customs clearing permit or an employment agency licence.",
+    body: "Fayda national ID verified (8), phone (2), a current police clearance checked by our staff (5), an education certificate checked by our staff (3, individuals), TIN (3), or TIN and trade licence for companies (6), and a sector licence checked by our staff with the issuing office (4), such as a customs clearing permit or an employment agency licence.",
   },
   {
     title: "Reliability",

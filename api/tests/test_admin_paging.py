@@ -75,12 +75,12 @@ def test_source_health_counts_last_30_days(client, make_user, fake_source):
 def test_sign_in_activity_pages_with_total(client, make_user):
     admin = make_user("admin")
     someone = make_user()
-    for _ in range(3):  # register already logged one event for this user
+    for _ in range(3):  # register and the first sign-in already logged two events for this user
         client.post(f"{API}/auth/login", json={"email": someone["email"], "password": "wrong-password-9"})
     get = lambda **p: client.get(f"{API}/admin/auth/events", params=p, headers=admin["headers"]).json()["payload"]  # noqa: E731
 
     mine = get(user_id=someone["id"], limit=2)
-    assert mine["total"] == 4 and len(mine["events"]) == 2
+    assert mine["total"] == 5 and len(mine["events"]) == 2
     rest = get(user_id=someone["id"], limit=2, offset=2)["events"]
     assert len(rest) == 2 and not {e["id"] for e in rest} & {e["id"] for e in mine["events"]}
     assert mine["events"][0]["created_at"] >= rest[0]["created_at"]

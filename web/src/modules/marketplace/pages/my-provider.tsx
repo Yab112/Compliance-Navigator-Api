@@ -40,10 +40,12 @@ import { ReviewItem } from "@/modules/marketplace/pages/provider-profile";
 import { usePayoutPromptStore } from "@/store/payout-prompt-store";
 import { autoCloseDate, hireStage, providerNext, STAGE_LABEL } from "@/lib/hire-stage";
 import { HireTimeline } from "@/modules/marketplace/components/hire-timeline";
+import { VettingChecklist } from "@/modules/marketplace/components/vetting-checklist";
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "jobs", label: "Jobs" },
+  { key: "vetting", label: "Documents" },
   { key: "earnings", label: "Earnings" },
   { key: "reviews", label: "Reviews" },
   { key: "profile", label: "Edit profile" },
@@ -675,6 +677,15 @@ function Team({ p }: { p: MyProvider }) {
   );
 }
 
+const CHANGE_LABELS: Record<string, string> = {
+  display_name: "your name",
+  legal_name: "the legal name",
+  tin: "the TIN",
+  trade_license_no: "the trade licence number",
+  vat_registered: "VAT registration",
+  vat_number: "the VAT number",
+};
+
 function EditProfile({ p }: { p: MyProvider }) {
   const { run, isPending } = useMarketAction();
   const [error, setError] = useState<string | null>(null);
@@ -682,9 +693,20 @@ function EditProfile({ p }: { p: MyProvider }) {
   return (
     <div className="space-y-4">
       <PayoutCard />
+      {p.pending_change && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+          Waiting for staff: your change to {Object.keys(p.pending_change.changes).map((k) => CHANGE_LABELS[k] ?? k).join(", ")}. Your profile shows
+          the old details until it is approved.
+        </p>
+      )}
+      {p.rejected_change && (
+        <p className="text-destructive rounded-md border border-red-300 bg-red-50 p-3 text-sm" role="status">
+          Your change to {Object.keys(p.rejected_change.changes).map((k) => CHANGE_LABELS[k] ?? k).join(", ")} was not accepted: {p.rejected_change.note}
+        </p>
+      )}
       <Card>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          {saved ? <p className="text-primary text-sm">Saved ✓</p> : <p className="text-muted-foreground text-xs">Changes to your name or licences may need staff review.</p>}
+          {saved ? <p className="text-primary text-sm">Saved ✓</p> : <p className="text-muted-foreground text-xs">Changes to your name, TIN, trade licence or VAT are checked by staff before they show.</p>}
           {p.status === "approved" && (
             <Link href={`/providers/${p.slug}`} target="_blank" className="text-primary text-xs font-semibold hover:underline">
               Preview public profile ↗
@@ -823,6 +845,12 @@ export function MyProviderPage() {
               </div>
             </div>
             <QuickStats p={p} onOpen={setTab} />
+            {p.vetting && !p.vetting.complete && (
+              <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                {p.status === "approved" ? "Some of your documents need attention to stay listed." : "Staff can approve your listing once your documents are verified."}{" "}
+                <button type="button" className="font-medium underline" onClick={() => setTab("vetting")}>Open documents</button>
+              </p>
+            )}
           </section>
 
           <div role="tablist" className="border-border flex gap-1 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none]">
@@ -836,6 +864,7 @@ export function MyProviderPage() {
 
           {tab === "overview" && <Overview p={p} />}
           {tab === "jobs" && <Jobs />}
+          {tab === "vetting" && (p.vetting ? <VettingChecklist vetting={p.vetting} /> : <LoadingState />)}
           {tab === "earnings" && <EarningsPanel />}
           {tab === "reviews" && <Reviews p={p} />}
           {tab === "profile" && <EditProfile p={p} />}

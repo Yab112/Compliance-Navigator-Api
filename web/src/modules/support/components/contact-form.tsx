@@ -14,14 +14,30 @@ import { QUEUE_LABELS, type SupportQueue, type SupportTicket } from "@cn/core/ty
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** "Write to our team": becomes a support ticket. Works signed out with a way to call back. */
-export function ContactForm({ conversationId, onSent }: { conversationId?: string | null; onSent?: (t: SupportTicket) => void }) {
+export function ContactForm({
+  conversationId,
+  followUp,
+  onSent,
+}: {
+  conversationId?: string | null;
+  /** An older request (theirs) this one continues; the team sees the link */
+  followUp?: SupportTicket | null;
+  onSent?: (t: SupportTicket) => void;
+}) {
   const signedIn = useUserStore((s) => s.status === "authenticated");
   const meta = useSupportMeta();
   const { createTicket, isPending } = useSupportWrite();
   const queues = meta.data?.payload.queues?.length
     ? meta.data.payload.queues
     : (Object.keys(QUEUE_LABELS) as SupportQueue[]).map((key) => ({ key, label: QUEUE_LABELS[key], description: null }));
-  const [v, setV] = useState({ queue: "customer_support", subject: "", body: "", name: "", phone: "", email: "" });
+  const [v, setV] = useState({
+    queue: followUp?.queue ?? "customer_support",
+    subject: followUp ? `Follow-up to ${followUp.ref}: ${followUp.subject}`.slice(0, 160) : "",
+    body: "",
+    name: "",
+    phone: "",
+    email: "",
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [sent, setSent] = useState<SupportTicket | null>(null);
@@ -48,6 +64,7 @@ export function ContactForm({ conversationId, onSent }: { conversationId?: strin
         subject: v.subject.trim(),
         body: v.body.trim(),
         conversation_id: conversationId ?? undefined,
+        follow_up_of: followUp?.id,
         ...(!signedIn && {
           name: v.name.trim(),
           phone: v.phone.replace(/\s/g, "") || undefined,
@@ -92,6 +109,11 @@ export function ContactForm({ conversationId, onSent }: { conversationId?: strin
 
   return (
     <form onSubmit={submit} className="space-y-2.5" noValidate>
+      {followUp && (
+        <p className="text-muted-foreground text-xs">
+          Our team will see that this follows up <span className="font-mono">{followUp.ref}</span>.
+        </p>
+      )}
       <Field label="Topic · ርዕስ" htmlFor="cf-queue">
         <NativeSelect id="cf-queue" className="h-9 text-sm" value={v.queue} onChange={(e) => set("queue", e.target.value)}>
           {queues.map((q) => (

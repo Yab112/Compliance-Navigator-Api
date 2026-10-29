@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from conftest import API
+from conftest import API, approve_pending
 from services import platform_settings
 from services.db import execute, fetch_all
 from test_providers import _approved, _deliver, _hire, _job, _pay
@@ -58,10 +58,14 @@ def test_bad_values_change_nothing(client, make_user):
 
 
 def test_commission_change_applies_to_new_payments_and_is_logged(client, make_user):
-    admin, agent, customer = make_user("admin"), make_user(), make_user()
+    admin, checker, agent, customer = make_user("admin"), make_user("admin"), make_user(), make_user()
     r = client.patch(f"{API}/admin/settings", json={"values": {"commission_percent": 12, "min_payout_etb": 300}},
                      headers=admin["headers"])
-    assert r.status_code == 200 and set(r.json()["payload"]["changed"]) == {"commission_percent", "min_payout_etb"}
+    # Money settings wait for a second person; nothing changes until then
+    assert platform_settings.get("commission_percent") != 12
+    decided = approve_pending(client, r, checker)
+    assert decided["status"] == "executed" and set(decided["result"]["changed"]) == {"commission_percent", "min_payout_etb"}
+    platform_settings.clear_cache()
     assert client.get(f"{API}/payments/config").json()["payload"]["commission_percent"] == 12
 
     provider = _approved(client, admin, agent)
@@ -78,10 +82,13 @@ def test_commission_change_applies_to_new_payments_and_is_logged(client, make_us
 
     history = client.get(f"{API}/admin/settings/history", headers=admin["headers"]).json()["payload"]
     latest = {h["key"]: h for h in history["items"][:2]}
-    assert latest["commission_percent"]["new_value"] == 12 and latest["commission_percent"]["changed_by"] == admin["email"]
+    assert latest["commission_percent"]["new_value"] == 12
+    assert latest["commission_percent"]["changed_by"] == f"{admin['email']} (approved by {checker['email']})"
 
     reset = client.delete(f"{API}/admin/settings/commission_percent", headers=admin["headers"])
-    assert reset.status_code == 200 and _fields(reset.json()["payload"])["commission_percent"]["is_default"]
+    assert approve_pending(client, reset, checker)["status"] == "executed"
+    platform_settings.clear_cache()
+    assert platform_settings.get("commission_percent") == platform_settings.BY_KEY["commission_percent"].default()
     assert client.delete(f"{API}/admin/settings/nope", headers=admin["headers"]).status_code == 404
     execute("delete from platform_settings_history where changed_by = %s or changed_by like %s",
             (admin["email"], admin["email"] + "%"))

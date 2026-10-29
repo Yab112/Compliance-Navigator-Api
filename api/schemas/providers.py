@@ -113,16 +113,19 @@ class ReviewModeration(BaseModel):
 
 
 class EngagementAdminUpdate(BaseModel):
-    provider_id: str | None = None
-    status: str | None = Field(
-        None, pattern="^(open|requested|accepted|in_progress|completed|declined|cancelled)$"
-    )
-    note: str | None = Field(None, max_length=500)
+    """A staff change to a hire. Staff never move a job forward (only the provider does); see
+    provider_service.STAFF_HIRE_ACTIONS for what is allowed from which status."""
+
+    action: str = Field(..., pattern="^(assign|cancel|reopen|note)$")
+    provider_id: str | None = Field(None, max_length=80)
+    # Required: the history must say why
+    note: str = Field(..., min_length=5, max_length=1000)
 
 
 class DisputeDecision(BaseModel):
     decision: str = Field(..., pattern="^(upheld|dismissed)$")
-    note: str | None = Field(None, max_length=1000)
+    # The finding both sides are told
+    note: str = Field(..., min_length=5, max_length=1000)
 
 
 class TeamInvite(BaseModel):
