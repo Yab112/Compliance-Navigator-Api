@@ -7,12 +7,14 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     <>
       <AdminHeader />
       <AdminGuard>
-        <div className="flex min-h-[calc(100dvh-var(--nav-h))] flex-col lg:flex-row">
-          {/* Stays in place while the page scrolls; long menus scroll on their own */}
-          <aside className="border-border bg-muted/30 border-b lg:sticky lg:top-(--nav-h) lg:h-[calc(100dvh-var(--nav-h))] lg:w-56 lg:shrink-0 lg:self-start lg:border-r lg:border-b-0">
+        {/* On wide screens the window never scrolls: the sidebar and the main area scroll on their own */}
+        <div className="flex min-h-[calc(100dvh-var(--nav-h))] flex-col lg:h-[calc(100dvh-var(--nav-h))] lg:flex-row lg:overflow-hidden">
+          <aside className="border-border bg-muted/30 border-b lg:h-full lg:w-56 lg:shrink-0 lg:border-r lg:border-b-0">
             <AdminSidebar />
           </aside>
-          <main className="min-w-0 flex-1">{children}</main>
+          <main id="staff-main" className="min-w-0 flex-1 lg:h-full lg:overflow-y-auto">
+            {children}
+          </main>
         </div>
       </AdminGuard>
     </>

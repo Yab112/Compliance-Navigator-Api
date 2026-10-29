@@ -2,7 +2,8 @@
 
 import { siteUrl } from "@cn/core/config/env";
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button, buttonVariants } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Label } from "@cn/ui/label";
@@ -20,6 +21,20 @@ import type { CatalogInstitution, CatalogStats, MesobCenter } from "@cn/core/typ
 import { CatalogServices } from "@/modules/catalog/catalog-services";
 
 const STALE_AFTER_DAYS = 7;
+
+const TABS = ["institutions", "services", "centers"] as const;
+type Tab = (typeof TABS)[number];
+const TAB_TEXT: Record<Tab, { title: string; description: string }> = {
+  institutions: {
+    title: "Institutions",
+    description: "Government institutions that offer services through MESOB, busiest first. Press \u201cServices\u201d to open one institution\u2019s services in the Services tab.",
+  },
+  services: {
+    title: "Services",
+    description: "Every service in the snapshot with its fee, time and required documents, as citizens see it on the public site. To correct something, it has to change on mesobcenter.et and then be refreshed here.",
+  },
+  centers: { title: "MESOB centers", description: "Where citizens can go in person to use these services" },
+};
 
 function RefreshButton() {
   const { runSource } = useRunDataSource();
@@ -179,6 +194,32 @@ export function CatalogPage() {
   const stale = age !== null && age > STALE_AFTER_DAYS;
   const logos = Object.fromEntries((institutions.payload?.institutions ?? []).map((i) => [i.id, i]));
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const tab: Tab = TABS.includes(params.get("tab") as Tab) ? (params.get("tab") as Tab) : "institutions";
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ institutions: null, services: null, centers: null });
+  const selectTab = (next: Tab, focus = false) => {
+    const sp = new URLSearchParams(window.location.search);
+    if (next === "institutions") sp.delete("tab");
+    else sp.set("tab", next);
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    if (focus) tabRefs.current[next]?.focus();
+  };
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: "institutions", label: "Institutions", count: s?.institutions },
+    { id: "services", label: institution ? `Services of ${institution.name}` : "Services", count: institution ? undefined : s?.services },
+    { id: "centers", label: "MESOB centers", count: s?.centers },
+  ];
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const i = tabs.findIndex((t) => t.id === tab);
+    const moves: Record<string, number> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 };
+    if (!(e.key in moves)) return;
+    e.preventDefault();
+    selectTab(tabs[(moves[e.key] + tabs.length) % tabs.length].id, true);
+  };
+
   return (
     <AdminPage
       title="MESOB catalog"
@@ -214,32 +255,59 @@ export function CatalogPage() {
         </>
       )}
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle>Institutions</CardTitle>
-            <CardDescription>
-              Government institutions that offer services through MESOB, busiest first. Press &ldquo;Services&rdquo;
-              to list one institution&rsquo;s services below.
-            </CardDescription>
-          </CardHeader>
+      <div
+        role="tablist"
+        aria-label="Catalog sections"
+        className="border-border mt-6 mb-4 flex gap-1 overflow-x-auto overflow-y-hidden border-b [scrollbar-width:none]"
+        onKeyDown={onKeyDown}
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            ref={(el) => {
+              tabRefs.current[t.id] = el;
+            }}
+            id={`catalog-tab-${t.id}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            aria-controls={`catalog-panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
+            onClick={() => selectTab(t.id)}
+            className={cn(
+              "-mb-px shrink-0 border-b-2 border-transparent px-3 py-2 text-xs",
+              tab === t.id ? "border-primary font-medium" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.label}
+            {t.count != null && <span className="text-muted-foreground tabular-nums"> ({t.count.toLocaleString("en")})</span>}
+          </button>
+        ))}
+      </div>
+
+      <Card role="tabpanel" id={`catalog-panel-${tab}`} aria-labelledby={`catalog-tab-${tab}`}>
+        <CardHeader>
+          <CardTitle>{TAB_TEXT[tab].title}</CardTitle>
+          <CardDescription>{TAB_TEXT[tab].description}</CardDescription>
+        </CardHeader>
+        {tab === "institutions" && (
           <CardContent>
             <InstitutionsTable
               logos={logos}
               selected={institution?.id ?? null}
               onPick={(inst) => {
                 setInstitution(inst);
-                document.getElementById("catalog-services")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                selectTab("services");
               }}
             />
           </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>MESOB centers</CardTitle>
-            <CardDescription>Where citizens can go in person to use these services</CardDescription>
-          </CardHeader>
+        )}
+        {tab === "services" && (
+          <CardContent>
+            <CatalogServices institution={institution} onClearInstitution={() => setInstitution(null)} />
+          </CardContent>
+        )}
+        {tab === "centers" && (
           <CardContent>
             {centers.isLoading ? (
               <LoadingState />
@@ -248,9 +316,9 @@ export function CatalogPage() {
             ) : !centers.payload?.centers.length ? (
               <EmptyState title="No centers in the snapshot" />
             ) : (
-              <ul className="divide-border max-h-[32rem] divide-y overflow-y-auto text-xs" aria-label="MESOB centers">
+              <ul className="grid gap-x-6 text-xs sm:grid-cols-2 xl:grid-cols-3" aria-label="MESOB centers">
                 {centers.payload.centers.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between gap-2 py-2">
+                  <li key={c.id} className="border-border flex items-center justify-between gap-2 border-b py-2">
                     <span className="min-w-0">
                       <span className="block truncate">{c.name}</span>
                       {c.city && <span className="text-muted-foreground block truncate text-[11px]">{c.city}</span>}
@@ -271,20 +339,7 @@ export function CatalogPage() {
               </ul>
             )}
           </CardContent>
-        </Card>
-      </div>
-
-      <Card className="mt-6" id="catalog-services">
-        <CardHeader>
-          <CardTitle>Services</CardTitle>
-          <CardDescription>
-            Every service in the snapshot with its fee, time and required documents, as citizens see it on the
-            public site. To correct something, it has to change on mesobcenter.et and then be refreshed here.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CatalogServices institution={institution} onClearInstitution={() => setInstitution(null)} />
-        </CardContent>
+        )}
       </Card>
     </AdminPage>
   );
