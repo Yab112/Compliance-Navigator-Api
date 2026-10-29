@@ -74,7 +74,11 @@ def main() -> None:
         args.generate = _check_secret_path(args.generate)
         password = _generated_password()
     else:
-        password = getpass.getpass("New password (min 8 chars, a letter and a number): ")
+        try:
+            password = getpass.getpass("New password (min 8 chars, a letter and a number): ")
+        except EOFError:
+            sys.exit("No password was typed (this shell has no keyboard input). Run it in a normal terminal, "
+                     "or use --generate FILE.")
     problem = password_problem(password)
     if problem:
         sys.exit(problem)
