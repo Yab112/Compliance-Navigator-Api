@@ -254,7 +254,8 @@ class UserPatch(BaseModel):
 
 
 @router.patch("/users/{user_id}")
-def admin_patch_user(user_id: str, body: UserPatch, admin: AuthUser = Depends(require_admin)):
+def admin_patch_user(user_id: UUID, body: UserPatch, admin: AuthUser = Depends(require_admin)):
+    user_id = str(user_id)
     user = user_store.update_user(user_id, role=body.role, is_active=body.is_active)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

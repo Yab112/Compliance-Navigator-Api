@@ -71,7 +71,7 @@ export function AdminSubmissions() {
       {isLoading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState message={getErrorMessage(error)} error={error} onRetry={() => refetch()} />
       ) : !items.length ? (
         <EmptyState title="Nothing here" />
       ) : (
@@ -149,6 +149,14 @@ function Lines({ lines }: { lines: string[] }) {
   );
 }
 
+/** What already happened to a submission that is no longer waiting, in plain words: [what, then, show who decided]. */
+const DECIDED: Record<string, [string, string, boolean]> = {
+  published: ["Published", "", true],
+  scheduled: ["Approved", " It goes live on its start date.", true],
+  changes_requested: ["Sent back to the organization for changes", "", true],
+  superseded: ["Replaced by a newer submission from the organization", "", false],
+};
+
 export function AdminSubmissionDetail({ id }: { id: string }) {
   const { payload, isLoading, error, refetch } = useSubmission(id);
   const { review, isPending } = useReviewSubmission();
@@ -162,11 +170,12 @@ export function AdminSubmissionDetail({ id }: { id: string }) {
   if (error || !sub) {
     return (
       <AdminPage title="Submission">
-        <ErrorState message={getErrorMessage(error, "Not found")} onRetry={() => refetch()} />
+        <ErrorState message={getErrorMessage(error, "Not found")} error={error} onRetry={() => refetch()} />
       </AdminPage>
     );
   }
 
+  const decided = DECIDED[sub.status] ?? ["Already decided", "", true];
   const ctx = { branches: sub.branch_names ?? {}, services: sub.service_names ?? {} };
   const isUpdate = !!sub.published_snapshot;
   const rows = diffSnapshots(sub.published_snapshot as Record<string, unknown> | null, sub.snapshot as Record<string, unknown>, ctx);
@@ -279,9 +288,9 @@ export function AdminSubmissionDetail({ id }: { id: string }) {
           <h2 className="pt-2 font-semibold">Decision</h2>
           {sub.status !== "pending" ? (
             <p className="text-muted-foreground text-xs">
-              Already {sub.status.replace("_", " ")}
-              {sub.reviewed_by && ` by ${sub.reviewed_by}`}
-              {sub.admin_note && `: ${sub.admin_note}`}
+              {decided[0]}
+              {decided[2] && sub.reviewed_by && ` by ${sub.reviewed_by}`}.{decided[1]}
+              {sub.admin_note && ` Note to the organization: ${sub.admin_note}`}
             </p>
           ) : (
             <>

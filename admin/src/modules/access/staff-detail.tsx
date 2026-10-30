@@ -18,7 +18,7 @@ import {
   type StaffMember,
 } from "./api";
 import { RolePicker } from "./staff-page";
-import { AuditTable, Gate, Notice, When } from "./shared";
+import { AuditTable, describeUserAgent, Gate, Notice, When } from "./shared";
 
 const SESSION_PAGE = 10;
 
@@ -105,7 +105,7 @@ function Sessions({ id }: { id: string }) {
       <ul className="divide-border border-border divide-y border text-xs">
         {payload.items.map((s) => (
           <li key={s.id} className="p-2">
-            <p className="truncate">{s.user_agent ?? "Unknown browser"}</p>
+            <p className="truncate" title={s.user_agent ?? undefined}>{describeUserAgent(s.user_agent)}</p>
             <p className="text-muted-foreground">
               {s.ip ?? "unknown network"} · signed in <When at={s.created_at} />
             </p>
@@ -135,7 +135,7 @@ function Detail({ id }: { id: string }) {
   const [link, setLink] = useState<LinkResult | null>(null);
 
   if (isLoading) return <LoadingState />;
-  if (error || !payload) return <ErrorState message={getErrorMessage(error, "Not found")} onRetry={() => refetch()} />;
+  if (error || !payload) return <ErrorState error={error} message={getErrorMessage(error, "Not found")} onRetry={() => refetch()} />;
   const staff = payload.staff;
   const isSelf = staff.id === me?.user.id;
   // Only Super admins change Super admins; nobody changes their own access

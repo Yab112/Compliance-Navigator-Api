@@ -19,7 +19,8 @@ import type {
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Pager } from "@cn/ui/pager";
-import { ErrorState, Field, LoadingState, NativeSelect, formatDate, formatDateTime } from "@cn/ui/guday/shared";
+import { Field, LoadingState, NativeSelect, formatDate, formatDateTime } from "@cn/ui/guday/shared";
+import { ErrorState } from "@/modules/shared/states";
 import { PrivateDocument } from "@/modules/marketplace/private-document";
 
 const STATUS: Record<VettingStatus, { label: string; tone: string }> = {
@@ -295,7 +296,7 @@ function History({ p }: { p: AdminProvider }) {
   const { data, isLoading, isError, error, refetch } = useAdminProviderDocuments(p.id, page, true, size);
   const result = data?.payload;
   if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState message={error?.message ?? "Could not load"} onRetry={() => refetch()} />;
+  if (isError) return <ErrorState error={error} message={getErrorMessage(error, "Could not load")} onRetry={() => refetch()} />;
   if (!result?.items.length) return <p className="text-muted-foreground text-xs">Nothing uploaded.</p>;
   return (
     <>

@@ -36,7 +36,7 @@ function RolesList() {
       {isLoading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : !payload?.items.length ? (
         <EmptyState title="No roles" />
       ) : (
@@ -242,7 +242,7 @@ export function RoleEditorPage({ id, from }: { id?: string; from?: string | null
   const { payload, isLoading, error, refetch } = useRole(source);
   let body: React.ReactNode;
   if (source && isLoading) body = <LoadingState />;
-  else if (source && (error || !payload)) body = <ErrorState message={getErrorMessage(error, "Role not found")} onRetry={() => refetch()} />;
+  else if (source && (error || !payload)) body = <ErrorState error={error} message={getErrorMessage(error, "Role not found")} onRetry={() => refetch()} />;
   else body = <RoleForm key={payload?.role.updated_at ?? "new"} role={payload?.role ?? null} duplicate={!id} />;
   return <Gate perm={id ? "roles.view" : "roles.manage"}>{body}</Gate>;
 }
@@ -257,7 +257,7 @@ function PermissionsList() {
       {isLoading ? (
         <LoadingState />
       ) : error || !payload ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : (
         <div className="space-y-6">
           {payload.areas.map((area) => (
@@ -265,7 +265,7 @@ function PermissionsList() {
               <h2 id={`area-${area.key}`} className="mb-2 text-sm font-semibold">
                 {area.title}
               </h2>
-              <div className="overflow-x-auto">
+              <div className="relative overflow-x-auto">
                 <table className="w-full min-w-[640px] text-left text-xs">
                   <thead className="text-muted-foreground text-[11px]">
                     <tr>

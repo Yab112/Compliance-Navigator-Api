@@ -376,8 +376,7 @@ export function ProviderProfile({ slug }: { slug: string }) {
                     <li key={s.id} className="flex flex-wrap items-baseline justify-between gap-2 py-3">
                       <Link href={`/services/${s.id}`} className="hover:text-primary text-sm font-medium hover:underline">{s.name}</Link>
                       <span className="text-muted-foreground text-xs">
-                        {s.institution}
-                        {s.fee_text ? ` · official fee ${s.fee_text}` : ""}
+                        {s.summary ?? `${s.institution}${s.fee_text ? ` · official fee ${s.fee_text}` : ""}`}
                       </span>
                     </li>
                   ))}

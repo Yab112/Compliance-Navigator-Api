@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 
+from auth.common import Email
+from config.config import settings
 from services.db import connection, execute, fetch_all, fetch_one
 from .branches import _insert_branch, list_branches
 from .helpers import (
@@ -73,6 +76,9 @@ def registration_problems(org_id: str) -> list[str]:
     problems = []
     if not all(org.get(k) for k in REPRESENTATIVE_FIELDS):
         problems.append("Representative name, position and official email")
+    # Staff can't verify without it (review_org), so a registration isn't sent without one
+    if not org.get("has_authorization_letter"):
+        problems.append("The authorization letter naming your representative, signed and stamped")
     if not fetch_one("select 1 from organization_branches where org_id = %s", (org_id,)):
         problems.append("At least one branch where people get your services")
     if not org.get("steward_name") or not (org.get("steward_phone") or org.get("steward_email")):
@@ -206,13 +212,19 @@ def update_org(org_id: str, changes: dict, actor: str) -> dict:
     if not changes:
         return member_org(org_id)
     with connection() as conn, conn.transaction():
-        org = conn.execute("select status from organizations where id = %s for update", (org_id,)).fetchone()
+        org = conn.execute(
+            "select status, name, org_type from organizations where id = %s for update", (org_id,)
+        ).fetchone()
         if not org:
             raise OrgError("Organization not found", 404)
         if org["status"] == "suspended":
             raise OrgError("A suspended organization can't be edited. Contact the platform team.", 409)
         sets = ", ".join(f"{k} = %s" for k in changes)
-        reset = org["status"] == "verified" and IDENTITY_FIELDS & changes.keys()
+        # Only a real change of name or type sends a verified organization back to review; the profile
+        # form always sends both, so compare the values, not the keys
+        reset = org["status"] == "verified" and any(
+            k in changes and (changes[k] or "").strip() != (org[k] or "").strip() for k in IDENTITY_FIELDS
+        )
         conn.execute(
             f"update organizations set {sets}, updated_at = now()"
             + (", status = 'pending'" if reset else "")
@@ -231,7 +243,29 @@ def set_org_file(org_id: str, column: str, value: str, actor: str) -> dict:
     return member_org(org_id)
 
 
-def invite_member(org_id: str, email: str, role: str, actor: str) -> dict:
+def _invite_email(to: str, *, org_name: str, role: str, actor: str, has_account: bool) -> Email:
+    base = settings.web_base_url.rstrip("/")
+    if has_account:
+        how = f"Sign in and accept or decline it on your organization page: {base}/org\n"
+    else:
+        how = (
+            f"You don't have a Compliance Navigator account yet. To accept, create one with this email address ({to}): "
+            f"{base}/register\nThe invitation then waits for you on your organization page: {base}/org\n"
+        )
+    return Email(
+        to=to,
+        subject=f"Invitation to join {org_name} on Compliance Navigator",
+        text=(
+            f"Hello,\n\n{actor} invited you to help manage {org_name} on Compliance Navigator as {role}.\n\n"
+            f"{how}\nIf you weren't expecting this, you can ignore this email. Nothing happens until you accept.\n"
+        ),
+    )
+
+
+def invite_member(org_id: str, email: str, role: str, actor: str,
+                  send: Callable[[Email], object] | None = None) -> dict:
+    """Invite by email. `send` delivers the invitation email (the route sends it after the response);
+    without it the email is sent right away."""
     with connection() as conn, conn.transaction():
         if conn.execute(
             "select 1 from organization_members where org_id = %s and lower(invited_email) = lower(%s)",
@@ -258,6 +292,12 @@ def invite_member(org_id: str, email: str, role: str, actor: str) -> dict:
                                  link="/org")
         except Exception:
             log.exception("Could not notify an invited member of %s", org_id)
+    message = _invite_email(email, org_name=org["name"], role=role, actor=actor, has_account=bool(user))
+    if send is None:
+        from auth.emails import send_email
+
+        send = send_email
+    send(message)
     return member_org(org_id)
 
 

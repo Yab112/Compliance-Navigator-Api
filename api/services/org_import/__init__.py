@@ -21,7 +21,7 @@ from .csv_parser import template_csv
 from .rows import COLUMNS, HEADERS, _DOC_FLAGS, _document, _money, _row_to_service, _split, _yes
 
 __all__ = [
-    "COLUMNS", "HEADERS", "MAX_ROWS", "PARSERS", "_DOC_FLAGS",
+    "COLUMNS", "HEADERS", "MAX_ROWS", "PARSERS", "_DOC_FLAGS", "parser_for",
     "_document", "_money", "_row_to_service", "_split", "_yes", "import_services", "template_csv",
 ]
 
@@ -33,9 +33,18 @@ PARSERS: dict[str, Callable[[bytes], Iterable[tuple[int, dict]]]] = {
 }
 
 
-def import_services(org_id: str, raw: bytes, *, actor: str, dry_run: bool) -> dict:
+def parser_for(filename: str | None) -> Callable[[bytes], Iterable[tuple[int, dict]]]:
+    """The reader for an uploaded file, chosen by its extension (CSV when there is none)."""
+    ext = (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else "csv"
+    if ext not in PARSERS:
+        names = ", ".join(sorted(e.upper() for e in PARSERS))
+        raise OrgError(f"This file type can't be imported yet. Upload one of: {names}")
+    return PARSERS[ext]
+
+
+def import_services(org_id: str, raw: bytes, *, actor: str, dry_run: bool, filename: str | None = None) -> dict:
     """Check every row; unless dry_run, save the valid ones as drafts."""
-    rows = PARSERS["csv"](raw)
+    rows = parser_for(filename)(raw)
     branches = {b["name"].strip().lower(): b["id"] for b in org_service.list_branches(org_id)}
     existing = {r["name"].strip().lower() for r in org_service.list_org_services(org_id)}
     report = []
@@ -44,14 +53,21 @@ def import_services(org_id: str, raw: bytes, *, actor: str, dry_run: bool) -> di
         name = (row.get("name") or "").strip()
         # The template's explanation and example rows
         is_example = all((row.get(k) or "").strip() == example for k, _, example in COLUMNS)
-        if not name or is_example or name.startswith("Service name in English") or line > MAX_ROWS + 1:
-            if line > MAX_ROWS + 1:
-                report.append({"row": line, "name": name, "status": "error",
-                               "errors": [f"Only {MAX_ROWS} services per file"], "warnings": []})
+        # Fully blank rows (often left at the end of a spreadsheet) are not services
+        is_blank = not any((v or "").strip() for v in row.values() if isinstance(v, str))
+        if is_blank or is_example or name.startswith("Service name in English"):
+            continue
+        if line > MAX_ROWS + 1:
+            report.append({"row": line, "name": name, "status": "error",
+                           "errors": [f"Only {MAX_ROWS} services per file"], "warnings": [], "service_id": None})
+            continue
+        if not name:
+            report.append({"row": line, "name": "", "status": "error", "warnings": [], "service_id": None,
+                           "errors": ["The name column is empty. Every service needs a name in English"]})
             continue
         service, errors, warnings = _row_to_service(row, branches)
         if name.lower() in existing:
-            errors.append("A service with this name already exists; edit it in the dashboard instead")
+            errors.append("A service with this name already exists. Edit it in your dashboard instead")
             service = None
         entry = {"row": line, "name": name, "errors": errors, "warnings": warnings, "service_id": None}
         if service is None:

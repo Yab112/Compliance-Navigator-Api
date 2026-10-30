@@ -73,7 +73,7 @@ export function GraphPage() {
       {stats.isLoading ? (
         <LoadingState />
       ) : stats.error || !s ? (
-        <ErrorState message={getErrorMessage(stats.error, "The graph database (Neo4j) is not reachable")} onRetry={() => stats.refetch()} />
+        <ErrorState error={stats.error} message={getErrorMessage(stats.error, "The graph database (Neo4j) is not reachable")} onRetry={() => stats.refetch()} />
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <StatTile label="Items in the database" value={s.totalNodes} hint={`${Object.keys(s.nodes).length} kinds`} />
@@ -117,7 +117,7 @@ export function GraphPage() {
           {view.isLoading ? (
             <LoadingState />
           ) : view.error || !view.payload ? (
-            <ErrorState message={getErrorMessage(view.error)} onRetry={() => view.refetch()} />
+            <ErrorState error={view.error} message={getErrorMessage(view.error)} onRetry={() => view.refetch()} />
           ) : !view.payload.nodes.length ? (
             <EmptyState title="The graph is empty" description="Run “Compliance dependency graph” under Data sources." />
           ) : (

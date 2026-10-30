@@ -20,31 +20,31 @@ import {
   type Approval,
   type ApprovalBox,
 } from "./api";
-import { ApprovalChange, ApprovalStatusBadge, Notice, When } from "./shared";
+import { ApprovalChange, ApprovalStatusBadge, Notice, useAccessNames, When } from "./shared";
 
-function ApprovalCard({ approval, box }: { approval: Approval; box: ApprovalBox }) {
+/** The card disappears from "Waiting for me" once decided, so the result is reported to the page. */
+function ApprovalCard({ approval, box, onDone }: { approval: Approval; box: ApprovalBox; onDone: (message: string) => void }) {
   const { me } = useCan();
   const { decide, isPending } = useDecide();
+  const names = useAccessNames();
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const mine = approval.requested_by === me?.user.id;
   const canDecide = box === "waiting" && approval.status === "pending" && !mine;
   const noteId = `note-${approval.id}`;
 
   const act = async (how: "approve" | "reject" | "cancel") => {
     setError(null);
-    setMessage(null);
     if (how === "reject" && !note.trim()) return setError("Write why you are rejecting it.");
     try {
       const res = await decide(approval.id, how, note.trim() || undefined);
       const status = res.approval.status;
-      setMessage(
+      onDone(
         status === "executed"
-          ? "Approved. The change has been made."
+          ? `Approved. The change has been made: ${approval.title}.`
           : status === "failed"
-            ? `Approved, but the change could not be made: ${res.approval.error ?? "unknown error"}`
-            : `Request ${status}.`,
+            ? `Approved, but the change could not be made (${approval.title}): ${res.approval.error ?? "unknown error"}`
+            : `Request ${status}: ${approval.title}.`,
       );
     } catch (e) {
       setError(getErrorMessage(e, "Could not record the decision"));
@@ -65,7 +65,7 @@ function ApprovalCard({ approval, box }: { approval: Approval; box: ApprovalBox 
             · expires <When at={approval.expires_at} />
           </>
         )}
-        {" "}· approver needs <span className="font-mono">{approval.approver_permission}</span>
+        {" "}· approver needs the &ldquo;{names.permission(approval.approver_permission)}&rdquo; permission
       </p>
       <div className="mt-3">
         <ApprovalChange approval={approval} />
@@ -98,7 +98,6 @@ function ApprovalCard({ approval, box }: { approval: Approval; box: ApprovalBox 
       )}
       <div className="mt-2">
         <Notice message={error} tone="error" />
-        <Notice message={message} />
       </div>
     </li>
   );
@@ -118,6 +117,7 @@ export function ApprovalsPage() {
   const [status, setStatus] = useState("");
   const [page, setPage] = useUrlPage();
   const [size, setSize] = useUrlPageSize(PAGE_SIZE);
+  const [notice, setNotice] = useState<string | null>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const counts: Record<ApprovalBox, number | undefined> = {
     waiting: useApprovalCount("waiting"),
@@ -131,6 +131,7 @@ export function ApprovalsPage() {
     sp.set("box", next);
     sp.delete("page");
     setStatus("");
+    setNotice(null);
     router.replace(`${pathname}?${sp}`, { scroll: false });
     if (focus) tabRefs.current[next]?.focus();
   };
@@ -173,12 +174,15 @@ export function ApprovalsPage() {
         ))}
       </div>
       <div role="tabpanel" id="approvals-panel" aria-labelledby={`approvals-tab-${box}`}>
+        <div className={notice ? "mb-4" : undefined}>
+          <Notice message={notice} />
+        </div>
         {box !== "waiting" && (
           <NativeSelect className="mb-4" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} aria-label="Filter by status">
             <option value="">Any status</option>
             {["pending", "executed", "rejected", "failed", "cancelled", "expired"].map((s) => (
               <option key={s} value={s}>
-                {s}
+                {s === "executed" ? "Approved and done" : s.charAt(0).toUpperCase() + s.slice(1)}
               </option>
             ))}
           </NativeSelect>
@@ -186,13 +190,13 @@ export function ApprovalsPage() {
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+          <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
         ) : !payload?.items.length ? (
           <EmptyState title={box === "waiting" ? "Nothing is waiting for you" : "No requests"} />
         ) : (
           <ul className="space-y-3">
             {payload.items.map((a) => (
-              <ApprovalCard key={`${a.id}-${a.status}`} approval={a} box={box} />
+              <ApprovalCard key={`${a.id}-${a.status}`} approval={a} box={box} onDone={setNotice} />
             ))}
           </ul>
         )}

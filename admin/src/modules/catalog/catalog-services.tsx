@@ -97,7 +97,7 @@ export function CatalogServices({ institution, onClearInstitution }: Props) {
       {services.isLoading ? (
         <LoadingState />
       ) : services.error ? (
-        <ErrorState message={getErrorMessage(services.error)} onRetry={() => services.refetch()} />
+        <ErrorState error={services.error} message={getErrorMessage(services.error)} onRetry={() => services.refetch()} />
       ) : !items.length ? (
         <EmptyState
           title="No services match"

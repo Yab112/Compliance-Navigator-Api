@@ -7,6 +7,7 @@ import { useServiceDirectory } from "@/api/catalog";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
+import { apiAssetUrl } from "@cn/core/lib/api";
 import { cn } from "@cn/core/lib/utils";
 import { EmptyState, ErrorState, LoadingState, useDebounced } from "@cn/ui/guday/shared";
 import type { DirectoryItem, DirectorySource } from "@cn/core/types/catalog";
@@ -51,13 +52,14 @@ function fee(item: DirectoryItem): string | null {
 function ServiceRow({ item }: { item: DirectoryItem }) {
   const meta = SOURCE_META[item.source];
   const price = fee(item);
+  const logo = apiAssetUrl(item.providerLogo);
   return (
     <li>
       <Link href={item.href} className="hover:bg-secondary/40 flex gap-4 p-4">
         <span className="border-border bg-card flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md border">
-          {item.providerLogo ? (
+          {logo ? (
             // eslint-disable-next-line @next/next/no-img-element -- logos come from organizations and the partner catalog
-            <img src={item.providerLogo} alt="" className="size-9 object-contain" />
+            <img src={logo} alt="" className="size-9 object-contain" />
           ) : (
             <span className="text-primary text-xs font-bold">{(item.provider ?? item.title).slice(0, 2).toUpperCase()}</span>
           )}

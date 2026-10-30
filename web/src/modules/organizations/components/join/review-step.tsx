@@ -35,6 +35,7 @@ export function ReviewStep({ org, onBack, onEdit }: { org: MemberOrganization; o
   const summary: [string, string, number][] = [
     ["Organization", `${org.name}${org.sector ? ` · ${org.sector}` : ""}`, 0],
     ["Representative", org.representative_name ? `${org.representative_name}, ${org.representative_title ?? ""}` : "Not given", 1],
+    ["Authorization letter", org.has_authorization_letter ? "Uploaded" : "Not uploaded. Staff can't verify you without it", 1],
     ["Branches", `${org.branches?.length ?? 0}`, 2],
     ["Services", `${services.length}`, 3],
     ["Keeps the data current", org.steward_name ? `${org.steward_name}${org.data_commitment_at ? " · commitment given" : ""}` : "Not given", 4],

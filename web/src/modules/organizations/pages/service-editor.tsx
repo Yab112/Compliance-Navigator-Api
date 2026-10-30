@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useWorkingService, useWorkspace } from "@cn/core/api/organizations";
 import { PageShell } from "@/components/layout/page-shell";
 import { useRequireAuth } from "@cn/core/hooks/use-require-auth";
@@ -13,6 +14,8 @@ export function ServiceEditor({ orgId, serviceId }: { orgId: string; serviceId: 
   const workspace = useWorkspace(orgId, gate === "ready");
   const working = useWorkingService(orgId, serviceId);
   const loaded = working.data?.payload.service;
+  // The name as last saved, so a new service's title and "Back to" label stop saying "New service"
+  const [savedName, setSavedName] = useState<string | null>(null);
 
   if (gate === "loading" || workspace.isLoading || (serviceId && !loaded && working.isLoading)) {
     return (
@@ -30,7 +33,7 @@ export function ServiceEditor({ orgId, serviceId }: { orgId: string; serviceId: 
   }
   const org = workspace.data?.payload.organization;
   return (
-    <PageShell title={loaded?.name || "New service · አዲስ አገልግሎት"} description={org?.name} maxWidth="xl">
+    <PageShell title={savedName || loaded?.name || "New service · አዲስ አገልግሎት"} description={org?.name} maxWidth="xl">
       <ServiceForm
         orgId={orgId}
         org={org}
@@ -39,6 +42,7 @@ export function ServiceEditor({ orgId, serviceId }: { orgId: string; serviceId: 
         services={workspace.data?.payload.services}
         // Point the address bar at the new service without leaving the section the person is on
         onCreated={(id) => window.history.replaceState(null, "", `/org/${orgId}/services/${id}`)}
+        onSaved={setSavedName}
         onExit={() => router.push(`/org/${orgId}`)}
         exitLabel="Back to dashboard"
       />

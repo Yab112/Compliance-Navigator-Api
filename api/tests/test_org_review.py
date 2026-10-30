@@ -102,6 +102,24 @@ def test_invites_need_consent_and_do_not_reveal_accounts(client, make_user):
     assert client.get(f"{API}/organizations/mine", headers=existing["headers"]).json()["payload"]["invites"] == []
 
 
+def test_invite_sends_an_email_that_fits_the_address(client, make_user, monkeypatch):
+    from api.v1 import organizations as routes
+
+    sent = []
+    monkeypatch.setattr(routes, "send_email", sent.append)
+    owner, existing = make_user(), make_user()
+    org = _register(client, owner)
+    url = f"{API}/org/{org['id']}/members"
+    nobody = f"nobody-{uuid.uuid4().hex[:8]}@example.com"
+    assert client.post(url, json={"email": existing["email"]}, headers=owner["headers"]).status_code == 200
+    assert client.post(url, json={"email": nobody}, headers=owner["headers"]).status_code == 200
+    by_to = {e.to: e for e in sent}
+    assert org["name"] in by_to[existing["email"]].subject
+    assert "/org" in by_to[existing["email"]].text and "create one" not in by_to[existing["email"]].text
+    # No account yet: the email says to create one with this exact address
+    assert "create one with this email address" in by_to[nobody].text and nobody in by_to[nobody].text
+
+
 def test_anonymous_reports_are_rate_limited(client, monkeypatch):
     msg = f"Wrong fee [test] {uuid.uuid4().hex[:6]}"
     used = fetch_one("select count(*) as c from feedback_flags where ip = 'testclient' and user_id is null "

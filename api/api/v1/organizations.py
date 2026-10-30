@@ -10,6 +10,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Body,
     Depends,
     File,
@@ -22,6 +23,7 @@ from fastapi import (
 from fastapi.responses import PlainTextResponse
 from pydantic import ValidationError
 
+from auth.emails import send_email
 from core.deps import get_current_user
 from core.verified import UNVERIFIED_DETAIL, get_verified_user
 from schemas.auth_user import AuthUser
@@ -192,9 +194,16 @@ def workspace(org_id: UUID, user: AuthUser = Depends(get_current_user)):
 
 @router.patch("/org/{org_id}")
 def update_organization(org_id: UUID, body: OrgUpdate, user: AuthUser = Depends(get_current_user)):
-    _member(org_id, user)
+    role = _member(org_id, user)
+    changes = body.model_dump(exclude_unset=True)
+    if role not in ("owner", "admin") and org_service.OWNER_ONLY_FIELDS & changes.keys():
+        current = org_service.member_org(str(org_id)) or {}
+        # Editors may send these unchanged (the profile form always does), but only an owner can change them
+        if any(changes[k] != current.get(k) for k in org_service.OWNER_ONLY_FIELDS & changes.keys()):
+            raise HTTPException(status_code=403, detail="Only an owner can change the name, type or the "
+                                                        "representative and official email")
     try:
-        return _ok({"organization": org_service.update_org(str(org_id), body.model_dump(exclude_unset=True), user.email)})
+        return _ok({"organization": org_service.update_org(str(org_id), changes, user.email)})
     except OrgError as exc:
         _raise(exc)
 
@@ -221,10 +230,14 @@ async def upload_form(org_id: UUID, form: UploadFile = File(...), user: AuthUser
 
 
 @router.post("/org/{org_id}/members")
-def invite(org_id: UUID, body: MemberInvite, user: AuthUser = Depends(get_current_user)):
+def invite(org_id: UUID, body: MemberInvite, background: BackgroundTasks,
+           user: AuthUser = Depends(get_current_user)):
     _member(org_id, user, owner=True)
     try:
-        return _ok({"organization": org_service.invite_member(str(org_id), body.email, body.role, user.email)})
+        # The invitation email goes out after the response, so a slow mail server doesn't hold it up
+        return _ok({"organization": org_service.invite_member(
+            str(org_id), body.email, body.role, user.email,
+            send=lambda email: background.add_task(send_email, email))})
     except OrgError as exc:
         _raise(exc)
 
@@ -256,7 +269,10 @@ def edit_branch(org_id: UUID, branch_id: UUID, body: BranchIn, user: AuthUser = 
 @router.delete("/org/{org_id}/branches/{branch_id}")
 def remove_branch(org_id: UUID, branch_id: UUID, user: AuthUser = Depends(get_current_user)):
     _member(org_id, user)
-    return _ok({"branches": org_service.delete_branch(str(org_id), str(branch_id))})
+    try:
+        return _ok({"branches": org_service.delete_branch(str(org_id), str(branch_id))})
+    except OrgError as exc:
+        _raise(exc)
 
 
 @router.post("/org/{org_id}/services", status_code=status.HTTP_201_CREATED)
@@ -304,13 +320,14 @@ async def import_services(
     dry_run: bool = Form(True),
     user: AuthUser = Depends(get_current_user),
 ):
-    """Check a CSV of services row by row; with dry_run=false, save the valid rows as drafts."""
+    """Check a file of services (CSV for now) row by row; with dry_run=false, save the valid rows as drafts."""
     _member(org_id, user)
     raw = await file.read(2 * 1024 * 1024 + 1)
     if len(raw) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="The file is larger than 2 MB")
     try:
-        return _ok(org_import.import_services(str(org_id), raw, actor=user.email, dry_run=dry_run))
+        return _ok(org_import.import_services(str(org_id), raw, actor=user.email, dry_run=dry_run,
+                                              filename=file.filename))
     except OrgError as exc:
         _raise(exc)
 
@@ -318,14 +335,20 @@ async def import_services(
 @router.post("/org/{org_id}/services/confirm-all")
 def confirm_all(org_id: UUID, user: AuthUser = Depends(get_current_user)):
     _member(org_id, user)
-    return _ok({"confirmed": org_service.confirm_services(str(org_id), None, user.email)})
+    try:
+        return _ok({"confirmed": org_service.confirm_services(str(org_id), None, user.email)})
+    except OrgError as exc:
+        _raise(exc)
 
 
 @router.post("/org/{org_id}/services/{service_id}/confirm")
 def confirm_one(org_id: UUID, service_id: UUID, user: AuthUser = Depends(get_current_user)):
     """'Still accurate': the organization checked the live service and nothing changed."""
     _member(org_id, user)
-    count = org_service.confirm_services(str(org_id), [str(service_id)], user.email)
+    try:
+        count = org_service.confirm_services(str(org_id), [str(service_id)], user.email)
+    except OrgError as exc:
+        _raise(exc)
     if not count:
         raise HTTPException(status_code=404, detail="Only live services can be confirmed")
     return _ok({"confirmed": count})

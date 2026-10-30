@@ -150,7 +150,7 @@ export function SupportDesk() {
       {summary.isLoading ? (
         <LoadingState label="Loading summary…" />
       ) : summary.error || !t ? (
-        <ErrorState message={getErrorMessage(summary.error)} onRetry={() => summary.refetch()} />
+        <ErrorState error={summary.error} message={getErrorMessage(summary.error)} onRetry={() => summary.refetch()} />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
@@ -318,11 +318,11 @@ export function SupportDesk() {
           {tickets.isLoading ? (
             <LoadingState label="Loading requests…" />
           ) : tickets.error ? (
-            <ErrorState message={getErrorMessage(tickets.error)} onRetry={() => tickets.refetch()} />
+            <ErrorState error={tickets.error} message={getErrorMessage(tickets.error)} onRetry={() => tickets.refetch()} />
           ) : !tickets.payload?.items.length ? (
             <EmptyState title="Nothing here" description="No requests match this view. A clear queue is a good queue." />
           ) : (
-            <div className="border-border overflow-x-auto border">
+            <div className="border-border relative overflow-x-auto border">
               <table className="w-full min-w-[56rem] text-xs">
                 <thead className="bg-muted/50 text-muted-foreground text-left">
                   <tr>
@@ -364,7 +364,7 @@ export function SupportDesk() {
                         <PriorityBadge priority={tk.priority} />
                       </td>
                       <td className="px-3 py-2.5">
-                        <TicketStatusBadge status={tk.status} label={tk.status_label} />
+                        <TicketStatusBadge status={tk.status} />
                       </td>
                       <td className="px-3 py-2.5">
                         {tk.next_response_due_at ? (

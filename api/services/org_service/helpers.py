@@ -23,6 +23,8 @@ ORG_ACTIONS = {  # draft registrations aren't reviewable until the organization 
 NOTE_REQUIRED = {"reject", "suspend", "request_changes"}
 # Changing these on a verified organization sends it back for review
 IDENTITY_FIELDS = {"name", "org_type"}
+# Who speaks for the organization: only an owner may change these (or the identity fields)
+OWNER_ONLY_FIELDS = IDENTITY_FIELDS | {"representative_name", "representative_title", "official_email"}
 ORG_EDITABLE = (
     "name", "name_am", "org_type", "sector", "description", "website", "phone", "email",
     "hq_address", "region", "sub_city", "representative_name", "representative_title", "official_email",

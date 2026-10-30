@@ -14,6 +14,10 @@ export function InsightTab({ orgId }: { orgId: string }) {
         <p className="text-muted-foreground text-sm">Numbers appear once your services are live.</p>
       ) : (
         <div className="overflow-x-auto">
+          <p className="text-muted-foreground mb-2 text-sm">
+            Page views, requirement checks and path views are all-time totals. Last 30 days adds all
+            three together for the past 30 days, today included.
+          </p>
           <table className="w-full min-w-[520px] text-left text-sm">
             <thead className="text-muted-foreground text-xs">
               <tr>

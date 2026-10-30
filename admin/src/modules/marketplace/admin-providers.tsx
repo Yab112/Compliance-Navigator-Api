@@ -22,13 +22,13 @@ import { useCan } from "@/modules/access/api";
 import {
   AgentStatusBadge,
   EmptyState,
-  ErrorState,
   IdVerifiedBadge,
   LoadingState,
   NativeSelect,
   formatDate,
   useDebounced,
 } from "@cn/ui/guday/shared";
+import { ErrorState } from "@/modules/shared/states";
 import { ScoreBadge } from "@cn/ui/marketplace/trust";
 import { AREA_OPTIONS, TYPE_META, TYPE_ORDER } from "@cn/ui/marketplace/constants";
 import type { ProviderStatus, ProviderType } from "@cn/core/types/provider";
@@ -218,11 +218,11 @@ export function AdminProviders() {
       {isLoading ? (
         <LoadingState />
       ) : isError ? (
-        <ErrorState message={error?.message ?? "Could not load providers"} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error, "Could not load providers")} onRetry={() => refetch()} />
       ) : !items.length ? (
         <EmptyState title="No providers here" />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[860px] text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>

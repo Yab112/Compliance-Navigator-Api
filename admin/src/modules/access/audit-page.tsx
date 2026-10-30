@@ -81,7 +81,7 @@ function AuditList() {
       {isLoading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : !payload?.items.length ? (
         <EmptyState title="Nothing matches" />
       ) : (

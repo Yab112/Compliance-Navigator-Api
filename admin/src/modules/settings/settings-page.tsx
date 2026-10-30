@@ -11,6 +11,7 @@ import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { AdminPage } from "@/modules/components/admin-page";
+import { useCan } from "@/modules/access/api";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
 
 const HISTORY = "history";
@@ -82,7 +83,8 @@ function FieldInput({ field, raw, onChange, error }: { field: SettingField; raw:
 /** One group's form. Every change in the group is saved together; the server checks all of it first. */
 type Notice = { ok: boolean; text: string } | null;
 
-function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: Notice; onNotice: (n: Notice) => void }) {
+/** `readOnly`: staff who may only view settings see the values as text, with no save or reset. */
+function GroupForm({ group, notice, onNotice, readOnly }: { group: SettingGroup; notice: Notice; onNotice: (n: Notice) => void; readOnly: boolean }) {
   const initial = useMemo(
     () => Object.fromEntries(group.fields.map((f) => [f.key, f.type === "bool" ? (f.value as boolean) : String(f.value ?? "")])),
     [group],
@@ -133,7 +135,11 @@ function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: N
                 {f.applies && <p className="text-muted-foreground mt-1 text-[11px]">Applies to: {f.applies}</p>}
               </div>
               <div className="space-y-1">
-                <FieldInput field={f} raw={draft[f.key]} error={errors[f.key]} onChange={(v) => setDraft((d) => ({ ...d, [f.key]: v }))} />
+                {readOnly ? (
+                  <p id={`setting-${f.key}`} className="text-sm font-medium">{show(f.value, f)}</p>
+                ) : (
+                  <FieldInput field={f} raw={draft[f.key]} error={errors[f.key]} onChange={(v) => setDraft((d) => ({ ...d, [f.key]: v }))} />
+                )}
                 {errors[f.key] && fieldDirty && <p className="text-destructive text-[11px]">{errors[f.key]}</p>}
                 <p className="text-muted-foreground text-[11px]">
                   {f.is_default ? (
@@ -141,6 +147,7 @@ function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: N
                   ) : (
                     <>
                       Changed{f.updated_by ? ` by ${f.updated_by}` : ""} {formatDateTime(f.updated_at)} · default {show(f.default, f)}{" "}
+                      {!readOnly && (
                       <button
                         type="button"
                         className="text-primary hover:underline"
@@ -162,6 +169,7 @@ function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: N
                       >
                         Reset to default
                       </button>
+                      )}
                     </>
                   )}
                   {fieldDirty && !errors[f.key] && <span className="text-gov-ink font-medium"> · was {show(f.value, f)}</span>}
@@ -171,6 +179,9 @@ function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: N
           );
         })}
       </ul>
+      {readOnly ? (
+        <p className="text-muted-foreground border-t py-3 text-xs">You can view these settings. Changing them needs the &ldquo;Edit settings&rdquo; permission.</p>
+      ) : (
       <div className="bg-card sticky bottom-0 flex flex-wrap items-center gap-3 border-t py-3">
         <Button type="submit" disabled={!changed.length || invalid} loading={isPending}>
           {changed.length ? `Save ${changed.length} change${changed.length > 1 ? "s" : ""}` : "Save"}
@@ -192,6 +203,7 @@ function GroupForm({ group, notice, onNotice }: { group: SettingGroup; notice: N
           </p>
         )}
       </div>
+      )}
     </form>
   );
 }
@@ -201,11 +213,11 @@ function History() {
   const [size, setSize] = useUrlPageSize(SETTINGS_HISTORY_PAGE_SIZE);
   const { payload, isLoading, isError, error, refetch } = useSettingsHistory(page, size);
   if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState message={error?.message ?? "Could not load the history"} onRetry={() => refetch()} />;
+  if (isError) return <ErrorState error={error} message={getErrorMessage(error, "Could not load the history")} onRetry={() => refetch()} />;
   if (!payload?.items.length) return <EmptyState title="No settings have been changed yet." />;
   return (
     <>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead className="text-muted-foreground text-xs">
             <tr>
@@ -240,6 +252,7 @@ export function SettingsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const { payload, isLoading, isError, error, refetch } = usePlatformSettings();
+  const { can } = useCan();
   // Lives here: a save re-keys the form below, which would drop a message kept inside it
   const [notice, setNotice] = useState<Notice>(null);
   const groups = payload?.groups ?? [];
@@ -271,7 +284,7 @@ export function SettingsPage() {
       {isLoading ? (
         <LoadingState />
       ) : isError ? (
-        <ErrorState message={error?.message ?? "Could not load settings"} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error, "Could not load settings")} onRetry={() => refetch()} />
       ) : (
         <div className="flex flex-col gap-6 md:flex-row">
           <div role="tablist" aria-label="Settings" aria-orientation="vertical" className="flex gap-1 overflow-x-auto md:w-56 md:shrink-0 md:flex-col">
@@ -304,7 +317,7 @@ export function SettingsPage() {
                 </h2>
                 <p className="text-muted-foreground mt-1 text-xs">{active.description}</p>
                 {/* Keyed by the saved values so the form resets after a save or reset */}
-                <GroupForm key={JSON.stringify(active.fields.map((f) => [f.key, f.value]))} group={active} notice={notice} onNotice={setNotice} />
+                <GroupForm key={JSON.stringify(active.fields.map((f) => [f.key, f.value]))} group={active} notice={notice} onNotice={setNotice} readOnly={!can("settings.edit")} />
               </>
             ) : (
               <div className="pb-5">

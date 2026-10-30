@@ -204,7 +204,7 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
             _set_service(state, probe["candidate"].key)
         if state.get("service"):
             rec = _service_record(state["service"]["key"])
-            reply = _answer(intent, rec, state) if rec else _reply(state, t("need_service_first", lang), quick_replies=_popular_chips(lang))
+            reply = _answer(intent, rec, state, text) if rec else _reply(state, t("need_service_first", lang), quick_replies=_popular_chips(lang))
         elif probe["status"] == "ambiguous":
             state["pending_question"] = intent
             reply = _resolve_and_start(text, state, user)

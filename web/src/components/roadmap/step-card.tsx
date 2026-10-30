@@ -32,6 +32,12 @@ type StepCardProps = {
   canTrack?: boolean;
 };
 
+/** Paths store a bare range like "5–8"; say what it counts. */
+function withDays(value: string): string {
+  if (!/^[~\d\s–-]+$/.test(value)) return value;
+  return `${value} ${value.trim() === "1" ? "day" : "days"}`;
+}
+
 export function StepCard({ step, onMarkComplete, canTrack }: StepCardProps) {
   const [expanded, setExpanded] = useState(step.status === "active");
 
@@ -61,7 +67,7 @@ export function StepCard({ step, onMarkComplete, canTrack }: StepCardProps) {
       <CardContent className="space-y-3">
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
           <span>
-            <strong>Est. time:</strong> {step.estimatedDays}
+            <strong>Est. time:</strong> {withDays(step.estimatedDays)}
           </span>
           <span>
             <strong>Fee:</strong>{" "}

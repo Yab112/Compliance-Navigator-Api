@@ -183,23 +183,48 @@ def _attach_mesob(roadmap: dict) -> dict:
     return roadmap
 
 
+# Step fields the issuing organization's published data replaces, kept so they can be restored
+_ORG_OVERRIDES = ("issuingAuthority", "feeEtb", "paymentMethods", "requiredInputs", "rejectionReasons",
+                  "legalBasis", "lastVerified")
+
+
+def _clean_offices(steps: list[dict]) -> None:
+    """Saved paths may hold stand-in phone numbers from older seeds; never show them."""
+    for step in steps:
+        office = step.get("office")
+        if office:
+            office["phones"] = graph_service.real_phones(office.get("phones"))
+
+
 def _attach_org_data(roadmap: dict) -> dict:
     """Where the issuing organization published the service itself, its data leads the step.
 
     Runs on every read too, so saved paths always show the organization's current version.
     """
+    steps = roadmap.get("steps", [])
+    _clean_offices(steps)
     try:
         from services.org_service import org_data_for_steps
 
-        steps = roadmap.get("steps", [])
         found = org_data_for_steps([s["id"] for s in steps], roadmap.get("request", {}).get("subCity"))
     except Exception:
         return roadmap
     for step in steps:
         org = found.get(step["id"])
         if not org:
-            step.pop("orgService", None)
+            old = step.pop("orgService", None)
+            base = step.pop("graphDefaults", None)
+            if base:
+                for k, v in base.items():
+                    if v is None:
+                        step.pop(k, None)
+                    else:
+                        step[k] = v
+            elif old and step.get("issuingAuthority") == old.get("orgName"):
+                # Saved before graphDefaults existed: at least stop naming an office that no longer applies
+                step["issuingAuthority"] = (step.get("office") or {}).get("name") or step["title"]
             continue
+        step.setdefault("graphDefaults", {k: step.get(k) for k in _ORG_OVERRIDES})
         step["orgService"] = org
         step["issuingAuthority"] = org["orgName"]
         if org["isFree"]:

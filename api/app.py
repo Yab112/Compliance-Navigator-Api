@@ -65,6 +65,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # The web app reads it to say how long to wait after a 429
+    expose_headers=["Retry-After"],
 )
 
 

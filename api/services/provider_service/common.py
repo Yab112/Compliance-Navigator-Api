@@ -41,7 +41,9 @@ PUBLIC_COLUMNS = """
   p.completed_count, p.response_hours::float, p.trust_score, p.score_breakdown,
   p.rating_avg::float, p.rating_count, p.national_id_verified as id_verified, p.job_success, p.closed_jobs,
   (p.national_id_verified and p.id_verification_method = 'fayda_sandbox') as id_test,
-  (p.tin is not null and (p.entity_type = 'individual' or p.trade_license_no is not null)) as registered_business,
+  -- Badge only once staff have approved the profile (that is when the TIN and trade licence are checked)
+  (p.tin is not null and (p.entity_type = 'individual' or p.trade_license_no is not null)
+    and p.approved_at is not null) as registered_business,
   p.license_expires_at, p.approved_at, p.created_at, p.is_sample
 """
 

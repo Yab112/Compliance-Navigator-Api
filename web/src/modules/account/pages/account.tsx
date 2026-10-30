@@ -21,7 +21,7 @@ import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { PasswordInput, passwordIsValid } from "@cn/ui/auth/password-input";
-import { Field, LoadingState, NativeSelect, SubCityOptions, formatDateTime } from "@cn/ui/guday/shared";
+import { Field, LoadingState, NativeSelect, PHONE_RE, SubCityOptions, formatDateTime } from "@cn/ui/guday/shared";
 import { useUserStore } from "@cn/core/store/user-store";
 import type { AuthEvent, AuthSession } from "@cn/core/types/user-types";
 import { cleanTelegram, TELEGRAM_HINT, TELEGRAM_RE } from "@/lib/telegram";
@@ -46,6 +46,10 @@ const EVENT_LABEL: Record<string, string> = {
   sessions_revoked_by_admin: "Signed out by an administrator",
   refresh_reuse: "Suspicious session reuse, signed out for safety",
   admin_updated_user: "Account changed by an administrator",
+  register_existing: "Someone tried to register with your email",
+  email_verification_sent: "Verification email sent",
+  email_verified: "Email address verified",
+  legal_accepted: "Agreed to the terms",
 };
 
 /** "Chrome on Linux"-style label from a user agent string. */
@@ -85,6 +89,10 @@ function ProfileForm() {
       onSubmit={async (e) => {
         e.preventDefault();
         setMessage(null);
+        if (phone.trim() && !PHONE_RE.test(phone.replace(/\s/g, ""))) {
+          setMessage({ ok: false, text: "Enter an Ethiopian mobile number like 0911234567, or leave it empty." });
+          return;
+        }
         if (telegram.trim() && !TELEGRAM_RE.test(cleanTelegram(telegram))) {
           setMessage({ ok: false, text: TELEGRAM_HINT });
           return;
@@ -95,7 +103,7 @@ function ProfileForm() {
             method: MTD.PATCH,
             body: {
               fullname: fullname.trim(),
-              phone: phone.trim() || null,
+              phone: phone.replace(/\s/g, "") || null,
               telegram_username: telegram.trim() ? cleanTelegram(telegram) : null,
               preferred_sub_city: subCity || null,
             },
@@ -243,7 +251,7 @@ function ActivityList({ events }: { events: AuthEvent[] }) {
       {events.map((e) => (
         <li key={e.id} className="flex flex-wrap justify-between gap-2">
           <span className={/failed|blocked|reuse/.test(e.event) ? "text-destructive" : undefined}>
-            {EVENT_LABEL[e.event] ?? e.event}
+            {EVENT_LABEL[e.event] ?? e.event.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}
             <span className="text-muted-foreground"> · {deviceLabel(e.user_agent)}</span>
           </span>
           <span className="text-muted-foreground text-xs">{formatDateTime(e.created_at)}</span>

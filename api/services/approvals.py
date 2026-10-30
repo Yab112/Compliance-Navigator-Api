@@ -141,10 +141,20 @@ COLUMNS = """
 """
 
 
+def _without_secrets(value):
+    """Encrypted values (bank account numbers) stay in the stored payload for execution, never in answers."""
+    if isinstance(value, dict):
+        return {k: _without_secrets(v) for k, v in value.items() if not k.endswith("_enc")}
+    if isinstance(value, list):
+        return [_without_secrets(v) for v in value]
+    return value
+
+
 def _shape(row: dict | None) -> dict | None:
     if row:
         rule = RULES.get(row["action"])
         row["title"] = rule.title if rule else row["action"]
+        row["payload"] = _without_secrets(row.get("payload"))
     return row
 
 
@@ -256,8 +266,10 @@ def approve(request_id: str, approver: StaffActor, note: str | None, client: Cli
     audit("approval.approved", actor=approver, target=f"approval:{request_id}", client=client,
           details={"action": req["action"], "summary": req["summary"], "requested_by": req["requested_by_email"]})
     actor_label = f"{req['requested_by_email']} (approved by {approver.email})"
+    # Run the stored payload as saved (answers to staff leave out encrypted values, execution needs them)
+    stored = fetch_one("select payload from approval_requests where id = %s", (request_id,))["payload"]
     try:
-        result = rule.execute(req["payload"], actor_label)
+        result = rule.execute(stored, actor_label)
     except Exception as exc:
         message = str(exc) or exc.__class__.__name__
         if not hasattr(exc, "status_code"):

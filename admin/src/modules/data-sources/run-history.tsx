@@ -255,7 +255,7 @@ export function RunHistory({ sources, poll }: { sources: DataSource[]; poll: boo
       {runs.isLoading ? (
         <LoadingState />
       ) : runs.error ? (
-        <ErrorState message={getErrorMessage(runs.error)} onRetry={() => runs.refetch()} />
+        <ErrorState error={runs.error} message={getErrorMessage(runs.error)} onRetry={() => runs.refetch()} />
       ) : !items.length ? (
         filtered ? (
           <EmptyState title="No runs match" description="Try another source, result or date range." />
@@ -263,7 +263,7 @@ export function RunHistory({ sources, poll }: { sources: DataSource[]; poll: boo
           <EmptyState title="No runs yet" description="Use “Run now” on a source to start one." />
         )
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>

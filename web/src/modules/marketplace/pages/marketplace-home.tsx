@@ -17,6 +17,12 @@ import { PageNav } from "@cn/ui/layout/page-nav";
 const PAGE_SIZE = 24;
 const PRICE_STEPS = [0, 500, 1000, 2500, 5000, 10000];
 
+/** "1 Guday Geday agent", "28 Guday Geday agents", "1 agency": keeps the Guday Geday name capitalized. */
+function resultNoun(type: ProviderType, n: number): string {
+  if (type === "guday_geday") return n === 1 ? "Guday Geday agent" : "Guday Geday agents";
+  return n === 1 ? TYPE_META[type].label.toLowerCase() : TYPE_META[type].plural.toLowerCase();
+}
+
 type Filters = {
   type: ProviderType;
   specialty: string;
@@ -291,7 +297,7 @@ export function MarketplaceHome() {
               <p className="text-sm">
                 {payload ? (
                   <>
-                    <strong>{payload.total}</strong> {TYPE_META[f.type].plural.toLowerCase()}
+                    <strong>{payload.total}</strong> {resultNoun(f.type, payload.total)}
                     {f.area ? ` in ${AREA_OPTIONS.find((a) => a.value === f.area)?.label ?? f.area}` : ""}
                   </>
                 ) : (
@@ -329,6 +335,18 @@ export function MarketplaceHome() {
               </div>
             ) : isError ? (
               <ErrorState message={error?.message ?? "Could not load providers"} onRetry={() => refetch()} />
+            ) : !payload?.items.length && page > 0 && pages > 0 ? (
+              <div className="border-border bg-card rounded-xl border px-6 py-14 text-center">
+                <p className="text-lg font-semibold">This page is past the end</p>
+                <p className="text-muted-foreground mx-auto mt-2 max-w-md text-sm">
+                  There {pages === 1 ? "is only 1 page" : `are only ${pages} pages`} of results.
+                </p>
+                <div className="mt-5 flex justify-center">
+                  <Button variant="outline" onClick={() => setParam({ page: pages > 1 ? String(pages - 1) : null })}>
+                    Go to the last page
+                  </Button>
+                </div>
+              </div>
             ) : !payload?.items.length ? (
               <div className="border-border bg-card rounded-xl border px-6 py-14 text-center">
                 <p className="text-lg font-semibold">No providers match these filters</p>
@@ -357,7 +375,7 @@ export function MarketplaceHome() {
                 </div>
                 {pages > 1 && (
                   <nav aria-label="Pages" className="mt-8 flex items-center justify-center gap-1 text-sm">
-                    <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setParam({ page: String(page - 1) })}>
+                    <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setParam({ page: page > 1 ? String(page - 1) : null })}>
                       Previous
                     </Button>
                     {Array.from({ length: pages }, (_, i) => i)

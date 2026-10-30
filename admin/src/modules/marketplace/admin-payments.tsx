@@ -23,7 +23,8 @@ import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
 import { useCan } from "@/modules/access/api";
 import { StatTile } from "@/modules/shared/stat-tile";
-import { EmptyState, ErrorState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
+import { EmptyState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
+import { ErrorState } from "@/modules/shared/states";
 import type { AdminPayment, AdminPaymentFilters, PaymentStatus, PaymentsMode, Refund, RefundStatus } from "@cn/core/types/payments";
 import { RefundForm } from "./refund-dialog";
 
@@ -65,6 +66,15 @@ const UNAPPLIED: Record<string, string> = {
 const birr = (n: number) => `${formatBirr(n)} ETB`;
 
 /** One refund with the step staff take next: ask Chapa, confirm the bank transfer, or mark it failed. */
+
+/** approved_by is stored as "maker (approved by checker)"; show only the part after the maker. */
+function approvalNote(requestedBy: string | null | undefined, approvedBy: string | null | undefined): string | null {
+  if (!approvedBy) return null;
+  const inner = approvedBy.match(/\(([^()]+)\)$/)?.[1];
+  if (inner) return inner;
+  return approvedBy === requestedBy ? null : `approved by ${approvedBy}`;
+}
+
 function RefundRow({ r, canRefund }: { r: Refund; canRefund: boolean }) {
   const { act, isPending } = useRefundAction();
   const [mode, setMode] = useState<"idle" | "confirm" | "mark_failed">("idle");
@@ -93,7 +103,8 @@ function RefundRow({ r, canRefund }: { r: Refund; canRefund: boolean }) {
         </span>
       </div>
       <p className="text-muted-foreground">
-        {formatDateTime(r.created_at)} · asked by {r.requested_by ?? "?"} · {r.approved_by ?? ""}
+        {formatDateTime(r.created_at)} · asked by {r.requested_by ?? "?"}
+        {approvalNote(r.requested_by, r.approved_by) && <> · {approvalNote(r.requested_by, r.approved_by)}</>}
         {r.method === "manual" && r.client_bank_name && <> · to {r.client_bank_name} ({r.client_account_name}) ••••{r.client_account_last4}</>}
       </p>
       <p>Reason: {r.reason}</p>
@@ -215,12 +226,13 @@ function PaymentCard({ p, canRefund }: { p: AdminPayment; canRefund: boolean }) 
             {p.refund_needed && p.refundable > 0 && <span className="bg-destructive/10 text-destructive ml-2 rounded px-1.5 text-[10px] font-medium">Refund needed</span>}
           </p>
           <p className="text-muted-foreground">
-            {p.client_name} paid{" "}
+            {p.status === "success" ? `${p.client_name} paid` : p.status === "pending" ? `${p.client_name} is paying` : `Payment from ${p.client_name} to`}{" "}
             {p.provider_slug ? (
               <a href={siteUrl(`/providers/${p.provider_slug}`)} target="_blank" rel="noreferrer" className="text-primary hover:underline">{p.provider_name}</a>
             ) : (
               p.provider_name
-            )}{" "}
+            )}
+            {p.status === "failed" ? " failed" : p.status === "cancelled" ? " was cancelled" : ""}{" "}
             · {formatDateTime(p.created_at)}
             {p.verified_at && <> · verified {formatDateTime(p.verified_at)}</>}
           </p>
@@ -405,7 +417,7 @@ export function AdminPayments() {
       {isLoading ? (
         <LoadingState />
       ) : isError ? (
-        <ErrorState message={error?.message ?? "Could not load payments"} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error, "Could not load payments")} onRetry={() => refetch()} />
       ) : !items.length ? (
         <EmptyState title={needsRefund ? "No payments need a refund" : "No payments match"} />
       ) : (

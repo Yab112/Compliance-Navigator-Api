@@ -106,6 +106,7 @@ function InstitutionsTable({
         <LoadingState />
       ) : breakdown.error ? (
         <ErrorState
+          error={breakdown.error}
           message={getErrorMessage(breakdown.error, "The graph database (Neo4j) is not reachable")}
           onRetry={() => breakdown.refetch()}
         />
@@ -115,7 +116,7 @@ function InstitutionsTable({
           description={q ? "Try another name." : "Refresh the catalog; the refresh also copies it into the knowledge graph."}
         />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[520px] text-left text-xs">
             <caption className="sr-only">MESOB institutions and their services</caption>
             <thead className="text-muted-foreground text-[11px]">
@@ -236,7 +237,7 @@ export function CatalogPage() {
       {stats.isLoading ? (
         <LoadingState />
       ) : stats.error || !s ? (
-        <ErrorState message={getErrorMessage(stats.error)} onRetry={() => stats.refetch()} />
+        <ErrorState error={stats.error} message={getErrorMessage(stats.error)} onRetry={() => stats.refetch()} />
       ) : (
         <>
           {stale && (
@@ -312,7 +313,7 @@ export function CatalogPage() {
             {centers.isLoading ? (
               <LoadingState />
             ) : centers.error ? (
-              <ErrorState message={getErrorMessage(centers.error)} onRetry={() => centers.refetch()} />
+              <ErrorState error={centers.error} message={getErrorMessage(centers.error)} onRetry={() => centers.refetch()} />
             ) : !centers.payload?.centers.length ? (
               <EmptyState title="No centers in the snapshot" />
             ) : (

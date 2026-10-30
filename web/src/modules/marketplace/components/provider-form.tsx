@@ -191,7 +191,7 @@ export function ProviderForm({
           <Field label="Name in Amharic" htmlFor="pf-name-am">
             <Input id="pf-name-am" value={v.display_name_am ?? ""} onChange={(e) => set("display_name_am", e.target.value)} />
           </Field>
-          <Field label="Headline" htmlFor="pf-headline" hint="One line clients see first, for example: Apartments for rent in Bole" className="sm:col-span-2">
+          <Field label="Headline" htmlFor="pf-headline" hint="One line clients see first, for example: Trade license renewals in Bole" className="sm:col-span-2">
             <Input id="pf-headline" maxLength={140} value={v.headline ?? ""} onChange={(e) => set("headline", e.target.value)} />
           </Field>
           <Field label="About" htmlFor="pf-bio" required error={errors.bio} hint={`How you work, what you are good at, which offices you know. At least ${BIO_MIN} characters.`} className="sm:col-span-2">

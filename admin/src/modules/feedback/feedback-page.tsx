@@ -216,7 +216,7 @@ export function FeedbackPage() {
       {isLoading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : !payload?.flags.length ? (
         <EmptyState title="No reports here" description={filters.status === "open" ? "Nothing waiting for review." : undefined} />
       ) : (

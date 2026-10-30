@@ -68,7 +68,7 @@ export function Team({ p }: { p: MyProvider }) {
               Invite
             </Button>
           </div>
-          {msg && <p className={cn("mt-2 text-xs", msg.ok ? "text-primary" : "text-destructive")}>{msg.text}</p>}
+          {msg && <p role={msg.ok ? "status" : "alert"} className={cn("mt-2 text-xs", msg.ok ? "text-primary" : "text-destructive")}>{msg.text}</p>}
         </Card>
       </div>
     );
@@ -106,7 +106,7 @@ export function Team({ p }: { p: MyProvider }) {
       ) : (
         <p className="text-muted-foreground text-sm">Companies list their own team as an agency.</p>
       )}
-      {msg && <p className={cn("mt-2 text-xs", msg.ok ? "text-primary" : "text-destructive")}>{msg.text}</p>}
+      {msg && <p role={msg.ok ? "status" : "alert"} className={cn("mt-2 text-xs", msg.ok ? "text-primary" : "text-destructive")}>{msg.text}</p>}
     </Card>
   );
 }

@@ -177,11 +177,11 @@ function StaffList() {
       {isLoading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : !payload?.items.length ? (
         <EmptyState title="No staff match" />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>

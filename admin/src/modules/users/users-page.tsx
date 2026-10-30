@@ -15,7 +15,7 @@ import {
 } from "@cn/core/api/admin";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { AdminPage } from "@/modules/components/admin-page";
-import { formatDate, formatDateTime, timeAgo } from "@cn/core/lib/format";
+import { formatDate, formatDateTime, humanize, timeAgo } from "@cn/core/lib/format";
 import { cn } from "@cn/core/lib/utils";
 import { NativeSelect } from "@/modules/shared/native-select";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
@@ -90,7 +90,7 @@ function UserRow({ user, isSelf }: { user: AdminUser; isSelf: boolean }) {
         >
           {ROLES.map((r) => (
             <option key={r} value={r}>
-              {r}
+              {humanize(r)}
             </option>
           ))}
         </NativeSelect>
@@ -257,7 +257,7 @@ function UsersTab() {
           <option value="">All roles</option>
           {ROLES.map((r) => (
             <option key={r} value={r}>
-              {r}
+              {humanize(r)}
             </option>
           ))}
         </NativeSelect>
@@ -265,11 +265,11 @@ function UsersTab() {
       {isLoading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : !payload?.items.length ? (
         <EmptyState title="No users match" />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[860px] text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>
@@ -335,11 +335,11 @@ function SecurityActivity() {
       {isLoading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : !payload?.events.length ? (
         <EmptyState title="No sign-in activity yet" />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>

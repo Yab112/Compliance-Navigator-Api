@@ -150,7 +150,7 @@ export function IntentModelSection() {
               <StatTile label="Latency" value={`${m.latency_ms} ms`} hint="per message, CPU" />
               <StatTile label="Messages seen" value={info.payload?.usage.turns ?? 0} hint={`${info.payload?.usage.low_confidence ?? 0} low confidence · ${info.payload?.usage.labelled ?? 0} labelled`} />
             </div>
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[560px] text-left text-xs">
                 <thead className="text-muted-foreground">
                   <tr>
@@ -216,7 +216,7 @@ export function IntentModelSection() {
             <p className="text-muted-foreground mt-1 mb-2">
               Switch back to an earlier version if the newest one answers worse in practice. The change is immediate.
             </p>
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[480px] text-left">
                 <thead className="text-muted-foreground text-[11px]">
                   <tr>
@@ -305,9 +305,9 @@ export function IntentModelSection() {
           {turns.isLoading ? (
             <LoadingState />
           ) : turns.error ? (
-            <ErrorState message={getErrorMessage(turns.error)} onRetry={() => turns.refetch()} />
+            <ErrorState error={turns.error} message={getErrorMessage(turns.error)} onRetry={() => turns.refetch()} />
           ) : turns.payload?.items.length ? (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[640px] text-left">
                 <thead className="text-muted-foreground text-[11px]">
                   <tr>

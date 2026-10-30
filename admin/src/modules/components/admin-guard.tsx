@@ -22,7 +22,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   if (me.error || !me.payload) {
     return (
       <div className="mx-auto max-w-md px-4 py-20">
-        <ErrorState message={getErrorMessage(me.error, "Could not load your staff account")} onRetry={() => me.refetch()} />
+        <ErrorState error={me.error} message={getErrorMessage(me.error, "Could not load your staff account")} onRetry={() => me.refetch()} />
       </div>
     );
   }

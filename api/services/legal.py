@@ -5,7 +5,7 @@ The text of each document lives in the web app (web/src/content/legal/*.ts). Thi
 version and effective date that are currently in force, and which ones a person must accept:
   everyone       Terms of Service, Privacy Policy, Marketplace Rules (the Refund and Dispute Policy is
                  part of the Terms, so it has no separate tick box)
-  providers      the Guday Geday Provider Agreement as well
+  providers      the Provider Agreement (Guday Geday agents and agencies) as well
 
 When a document changes in a way people must agree to again, bump its version here AND in the matching
 web content file (tests/test_legal.py checks they agree). Everyone is then asked to accept the new
@@ -47,8 +47,8 @@ DOCUMENTS: dict[str, LegalDocument] = {
         LegalDocument("privacy", "Privacy Policy", "የግላዊነት ፖሊሲ", "1.0", "2026-10-29", "/legal/privacy"),
         LegalDocument("marketplace_rules", "Marketplace Rules and Off-platform Payment Policy",
                       "የገበያ ደንቦች እና ከመድረኩ ውጭ ክፍያ ፖሊሲ", "1.0", "2026-10-29", "/legal/marketplace-rules"),
-        LegalDocument("provider_agreement", "Guday Geday Provider Agreement", "የጉዳይ ገዳይ አገልግሎት ሰጪ ስምምነት",
-                      "1.0", "2026-10-29", "/legal/provider-agreement"),
+        LegalDocument("provider_agreement", "Provider Agreement for Guday Geday agents and agencies",
+                      "የጉዳይ ገዳይ እና ኤጀንሲ አገልግሎት ሰጪ ስምምነት", "1.0", "2026-10-29", "/legal/provider-agreement"),
         LegalDocument("refund_policy", "Refund and Dispute Policy", "የገንዘብ ተመላሽ እና የክርክር ፖሊሲ",
                       "1.0", "2026-10-29", "/legal/refunds"),
     )

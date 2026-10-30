@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -15,6 +16,27 @@ def _query_rows(cypher: str, params: dict | None = None) -> list[dict]:
     gc = GraphConnection()
     result = gc.evaluate_query(cypher, params or {})
     return [dict(rec) for rec in (result.records_raw or [])]
+
+
+# Seed templates used +251 11 000 000x as stand-in numbers. Never show those as real contacts.
+_PLACEHOLDER_PHONE = re.compile(r"^(251)?0?11000000\d$")
+
+
+def real_phones(phones: list[str] | None) -> list[str]:
+    return [p for p in phones or [] if p and not _PLACEHOLDER_PHONE.match(re.sub(r"\D", "", p))]
+
+
+# Offices that serve residents by where they live: the right desk is their own woreda office
+_RESIDENT_DOCS = {"birth_certificate", "kebele_id"}
+
+
+def _office_note(doc_id: str, sub_label: str, has_phone: bool) -> str | None:
+    if doc_id in _RESIDENT_DOCS:
+        return (f"Go to the woreda office where you are registered as a resident in {sub_label}. "
+                f"If you are not sure which one, ask at the {sub_label} sub-city administration.")
+    if not has_phone:
+        return f"We do not have a verified phone for this office yet. Confirm the address at the {sub_label} sub-city administration before you go."
+    return None
 
 
 def graph_is_seeded() -> bool:
@@ -126,14 +148,17 @@ def get_path_document_ids(
     return steps if steps else [target_id]
 
 
-def get_document_with_office(doc_id: str, sub_city: str) -> dict | None:
+_MAIN_OFFICES = ("ics_main", "motri_main", "nbe_main")
+
+
+def get_document_with_office(doc_id: str, sub_city: str, sub_label: str | None = None) -> dict | None:
     rows = _query_rows(
         """
         MATCH (d:Document {id: $doc_id})
         OPTIONAL MATCH (d)-[:ISSUED_BY]->(o:Office)-[:LOCATED_IN]->(sc:SubCity {id: $sub_city})
         WITH d, o AS office_subcity
         OPTIONAL MATCH (d)-[:ISSUED_BY]->(oMain:Office)
-        WHERE oMain.id IN ['ics_main', 'motri_main', 'nbe_main']
+        WHERE oMain.id IN $main_offices
         WITH d, coalesce(office_subcity, oMain) AS o
         RETURN d.id AS id, d.name AS name, d.name_am AS name_am,
                d.issuing_authority AS issuing_authority, d.form_code AS form_code,
@@ -148,7 +173,7 @@ def get_document_with_office(doc_id: str, sub_city: str) -> dict | None:
                o.working_hours AS office_hours
         LIMIT 1
         """,
-        {"doc_id": doc_id, "sub_city": sub_city},
+        {"doc_id": doc_id, "sub_city": sub_city, "main_offices": list(_MAIN_OFFICES)},
     )
     if not rows:
         d = DocumentNode.match(doc_id)
@@ -175,7 +200,9 @@ def get_document_with_office(doc_id: str, sub_city: str) -> dict | None:
 
     office = None
     if row.get("office_id"):
-        sub_label = sub_city.replace("_", " ").title()
+        sub_label = sub_label or sub_city.replace("_", " ").title()
+        local = row["office_id"] not in _MAIN_OFFICES
+        phones = real_phones(row.get("office_phones"))
         office = {
             "name": (row.get("office_name") or "").replace("{sub_city}", sub_label),
             "parentInstitution": row.get("office_parent") or "",
@@ -184,9 +211,12 @@ def get_document_with_office(doc_id: str, sub_city: str) -> dict | None:
             "landmark": row.get("office_landmark"),
             "latitude": row.get("office_lat"),
             "longitude": row.get("office_lng"),
-            "phones": row.get("office_phones") or [],
+            "phones": phones,
             "workingHours": row.get("office_hours") or "Mon–Fri 08:30–17:00 (EAT)",
         }
+        note = _office_note(row.get("id"), sub_label, bool(phones)) if local else None
+        if note:
+            office["note"] = note
 
     return {
         "id": row.get("id"),
@@ -204,6 +234,21 @@ def get_document_with_office(doc_id: str, sub_city: str) -> dict | None:
         "stale": row.get("stale"),
         "office": office,
     }
+
+
+def get_prerequisites_many(doc_ids: list[str]) -> dict[str, list[str]]:
+    """Direct prerequisites of several documents in one query."""
+    found: dict[str, list[str]] = {d: [] for d in doc_ids}
+    for r in _query_rows(
+        """
+        MATCH (pre:Document)-[:REQUIRES]->(d:Document)
+        WHERE d.id IN $ids
+        RETURN d.id AS id, collect(pre.id) AS pres
+        """,
+        {"ids": list(doc_ids)},
+    ):
+        found[r["id"]] = r["pres"]
+    return found
 
 
 def get_prerequisites(doc_id: str) -> list[str]:
@@ -234,12 +279,13 @@ def build_roadmap_from_graph(
     sub_label = _sub_city_label(sub_city)
     steps: list[dict] = []
 
+    prereqs_by_doc = get_prerequisites_many(doc_ids)
     for order, doc_id in enumerate(doc_ids, start=1):
-        detail = get_document_with_office(doc_id, sub_city)
+        detail = get_document_with_office(doc_id, sub_city, sub_label)
         if not detail:
             continue
 
-        prereqs = get_prerequisites(doc_id)
+        prereqs = prereqs_by_doc.get(doc_id, [])
         if doc_id in held:
             status = "completed"
         else:
@@ -326,6 +372,10 @@ def _sub_city_label(sub_city: str) -> str:
 
 
 def list_offices(sub_city: str | None = None) -> list[dict]:
+    return [{**o, "phones": real_phones(o.get("phones"))} for o in _list_offices(sub_city)]
+
+
+def _list_offices(sub_city: str | None) -> list[dict]:
     if sub_city:
         return _query_rows(
             """

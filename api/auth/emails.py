@@ -183,4 +183,6 @@ def reset_password(token: str, new: str, client: ClientInfo) -> None:
         raise AuthError("This reset link is invalid or has expired. Request a new one.", 400)
     user_store.set_password(row["user_id"], security.hash_password(new))
     revoke_all_sessions(row["user_id"], "password_reset")
-    record_event("password_reset", user_id=row["user_id"], client=client)
+    owner = user_store.get_user(row["user_id"])
+    # With the email on the event, the reset also clears a sign-in lockout for that address
+    record_event("password_reset", user_id=row["user_id"], email=owner["email"] if owner else None, client=client)

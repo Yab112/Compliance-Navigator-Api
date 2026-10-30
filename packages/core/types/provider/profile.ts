@@ -17,6 +17,8 @@ export type ProviderService = {
   institution?: string | null;
   fee_text?: string | null;
   processing_time_text?: string | null;
+  /** Readable line, e.g. "At ICS: official fee 21,000 ETB, about 5 days" */
+  summary?: string | null;
 };
 
 export type TeamMember = {

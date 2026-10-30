@@ -29,6 +29,9 @@ def org_data_for_steps(document_ids: list[str], sub_city: str | None) -> dict[st
     best: dict[str, tuple[int, str]] = {}
     for sid, snap in live.items():
         branches = _service_branches(snap)
+        # A service offered only at branches in other sub-cities is not where this person goes
+        if here and branches and all(b.get("sub_city") and _norm_place(b["sub_city"]) != here for b in branches):
+            continue
         local = any(_norm_place(b.get("sub_city")) == here for b in branches) if here else False
         rank = (2 if local else 0) + (1 if branches else 0)
         for out in snap.get("outputs") or []:

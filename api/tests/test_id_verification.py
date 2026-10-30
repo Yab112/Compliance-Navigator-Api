@@ -36,10 +36,23 @@ def test_wrong_otp_and_state_reuse(client, make_user):
     state = start_state(client, user)
     body = {"state": state, "id_number": random_fin(), "full_name": "Abebe Kebede", "otp": "000000"}
     bad = client.post(f"{API}/guday/fayda/sandbox/complete", json=body, headers=user["headers"])
-    assert bad.status_code == 400 and "111111" in bad.json()["detail"]
-    # A failed attempt burns the state
+    assert bad.status_code == 400 and "111111" in bad.json()["detail"] and "2 tries left" in bad.json()["detail"]
+    # A wrong code can be corrected on the same verification
+    fixed = client.post(f"{API}/guday/fayda/sandbox/complete", json={**body, "otp": "111111"}, headers=user["headers"])
+    assert fixed.status_code == 200, fixed.text
+    # A finished verification can't be used again
     again = client.post(f"{API}/guday/fayda/sandbox/complete", json={**body, "otp": "111111"}, headers=user["headers"])
-    assert again.status_code == 409
+    assert again.status_code == 409 and "start" in again.json()["detail"]
+
+    # Three wrong codes burn the state, and the right code after that is refused
+    burn = start_state(client, user)
+    tries = [client.post(f"{API}/guday/fayda/sandbox/complete", json={**body, "state": burn},
+                         headers=user["headers"]) for _ in range(3)]
+    assert [t.status_code for t in tries] == [400, 400, 409]
+    assert "1 try left" in tries[1].json()["detail"] and "start" in tries[2].json()["detail"]
+    late = client.post(f"{API}/guday/fayda/sandbox/complete", json={**body, "state": burn, "otp": "111111"},
+                       headers=user["headers"])
+    assert late.status_code == 409
 
     # Another user's state is rejected
     other = make_user()

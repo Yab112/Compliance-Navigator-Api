@@ -125,18 +125,21 @@ export function StepDetail({ step }: { step: RoadmapStep }) {
           <p>
             <strong>Hours:</strong> {office.workingHours}
           </p>
-          <p>
-            <strong>Phone:</strong>{" "}
-            {office.phones.map((p) => (
-              <a
-                key={p}
-                href={`tel:${p.replace(/\s/g, "")}`}
-                className="text-primary mr-2 underline"
-              >
-                {p}
-              </a>
-            ))}
-          </p>
+          {office.phones.length > 0 && (
+            <p>
+              <strong>Phone:</strong>{" "}
+              {office.phones.map((p) => (
+                <a
+                  key={p}
+                  href={`tel:${p.replace(/\s/g, "")}`}
+                  className="text-primary mr-2 underline"
+                >
+                  {p}
+                </a>
+              ))}
+            </p>
+          )}
+          {office.note && <p className="text-muted-foreground leading-relaxed">{office.note}</p>}
           <a
             href={mapsUrl}
             target="_blank"
@@ -158,10 +161,9 @@ export function StepDetail({ step }: { step: RoadmapStep }) {
               sizes="400px"
             />
           </div>
-          <p className="text-muted-foreground">
-            Stock reference, replace with verified photos per branch when
-            available.
-          </p>
+          {!office.referenceImageUrl && (
+            <p className="text-muted-foreground">General photo, not this office.</p>
+          )}
         </div>
       </div>
 

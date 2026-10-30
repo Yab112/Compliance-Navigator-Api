@@ -14,13 +14,13 @@ import { AdminPage } from "@/modules/components/admin-page";
 import { EventLog } from "@cn/ui/guday/event-log";
 import {
   AgentStatusBadge,
-  ErrorState,
   IdVerifiedBadge,
   InfoRow,
   LoadingState,
   formatDate,
   languageLabel,
 } from "@cn/ui/guday/shared";
+import { ErrorState } from "@/modules/shared/states";
 import { HireStatusBadge, ScoreBreakdown, SpecialtyChips, Stars } from "@cn/ui/marketplace/trust";
 import { TYPE_META, areaLabel, formatFee } from "@cn/ui/marketplace/constants";
 import type { AdminProvider, ProviderAdminAction, Review } from "@cn/core/types/provider";
@@ -226,7 +226,7 @@ function IdentityPanel({ p }: { p: AdminProvider }) {
       <p className="text-primary text-xs font-medium">
         Verified {formatDate(id.verified_at)} through {id.method === "fayda_sandbox" ? "the Fayda sandbox (test system, not a real ID)" : "Fayda"}
       </p>
-      <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+      <dl className="mt-3 grid gap-3 sm:grid-cols-2 [&>div]:min-w-0">
         <InfoRow label="Name on the ID">{id.verified_name}</InfoRow>
         <InfoRow label="ID number">{id.id_last4 ? `•••• ${id.id_last4}` : "-"}{id.id_type ? ` (${id.id_type})` : ""}</InfoRow>
         <InfoRow label="Birth date">{id.birthdate}</InfoRow>
@@ -245,7 +245,7 @@ export function AdminProviderDetail({ id }: { id: string }) {
   const { data, isLoading, isError, error, refetch } = useAdminProvider(id);
   const p = data?.payload.provider;
   if (isLoading) return <AdminPage title="Provider"><LoadingState /></AdminPage>;
-  if (isError || !p) return <AdminPage title="Provider"><ErrorState message={error?.message ?? "Not found"} onRetry={() => refetch()} /></AdminPage>;
+  if (isError || !p) return <AdminPage title="Provider"><ErrorState error={error} message={getErrorMessage(error, "Not found")} onRetry={() => refetch()} /></AdminPage>;
 
   return (
     <AdminPage
@@ -258,12 +258,12 @@ export function AdminProviderDetail({ id }: { id: string }) {
         </>
       }
     >
-      <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-4">
           <Panel title="Summary">
-            <div className="flex gap-4">
+            <div className="flex min-w-0 gap-4">
               <ProviderAvatar name={p.display_name} photoUrl={p.photo_url} entity={p.entity_type} verified={p.status === "approved" ? verifiedLevel(p) : null} size="lg" />
-              <div className="space-y-2 text-xs">
+              <div className="min-w-0 flex-1 space-y-2 text-xs break-words">
                 <div className="flex flex-wrap gap-2">
                   <AgentStatusBadge status={p.status} />
                   <IdVerifiedBadge verified={p.id_verified} method={p.id_verification_method} />
@@ -278,7 +278,7 @@ export function AdminProviderDetail({ id }: { id: string }) {
                 The name on the profile ({p.display_name}) differs from the Fayda name ({p.verified_name}). Check before approving.
               </p>
             )}
-            <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+            <dl className="mt-4 grid gap-3 sm:grid-cols-3 [&>div]:min-w-0">
               <InfoRow label="Phone">{p.phone}</InfoRow>
               <InfoRow label="Email">{p.email}</InfoRow>
               <InfoRow label="TIN">{p.tin}</InfoRow>
@@ -306,7 +306,7 @@ export function AdminProviderDetail({ id }: { id: string }) {
           <ReadinessPanel p={p} />
           <PendingChangePanel p={p} />
           <VettingPanel p={p} />
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
             <IdentityPanel p={p} />
             {p.license_document_url && (
               <Panel title="Trade licence copy (older sign-up)"><PrivateDocument fileKey={p.license_document_url} label="Licence copy" /></Panel>

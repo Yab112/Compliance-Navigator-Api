@@ -20,13 +20,26 @@ from assistant.texts import chip, t
 # ---------------------------------------------------------------- questions about a service
 
 
-def _answer(intent: str, rec: dict, state: dict) -> dict:
+# A question that asks both, e.g. "how much does it cost and how long does it take?"
+ASKS_FEE = re.compile(r"\b(cost|costs|fee|fees|price|pay|how much(?! time))\b|ክፍያ|ስንት ብር|ያስከፍላል", re.I)
+ASKS_TIME = re.compile(r"\b(how long|time|days|take|takes|duration|wait)\b|ጊዜ|ይፈጃል|ቀን", re.I)
+
+
+def _time_text(rec: dict, state: dict) -> str:
+    raw = rec["raw"]
+    time = raw.get("processing_time_text") if rec["source"] in ("mesob", "org") else (
+        f"about {raw['avg_processing_days']} days" if raw.get("avg_processing_days") else None)
+    title = _title(rec, state["lang"])
+    return t("time", state["lang"], title=title, time=time) if time else t("time_unknown", state["lang"], title=title)
+
+
+def _answer(intent: str, rec: dict, state: dict, question: str = "") -> dict:
     lang = state["lang"]
     title = _title(rec, lang)
     raw = rec["raw"]
     src = rec["source"]
     cards: list[dict] = []
-    if intent == "ask_fee":
+    if intent == "ask_fee" or (intent == "ask_time" and ASKS_FEE.search(question or "")):
         fee = raw.get("fee_text") if src == "mesob" else _org_fee_text(raw, state.get("applicant")) if src == "org" else (
             _fmt_money(raw.get("fee_etb")) if raw.get("fee_etb") is not None else None)
         text = t("fee", lang, title=title, fee=fee) if fee else t("fee_unknown", lang, title=title)
@@ -34,6 +47,8 @@ def _answer(intent: str, rec: dict, state: dict) -> dict:
             text += " " + ("Payment: " if lang == "en" else "የክፍያ መንገድ፦ ") + ", ".join(raw["payment_methods"]) + "."
         if src == "path" and state.get("roadmap_id"):
             text += " " + ("Fees for the other steps are on each step of your path." if lang == "en" else "የሌሎቹ ደረጃዎች ክፍያ በመንገድዎ ላይ ይገኛል።")
+        if ASKS_TIME.search(question or "") and ASKS_FEE.search(question or ""):
+            text += " " + _time_text(rec, state)
     elif intent == "ask_documents":
         if src == "org":
             from services import org_service
@@ -47,9 +62,7 @@ def _answer(intent: str, rec: dict, state: dict) -> dict:
         if docs:
             cards.append({"kind": "checklist", "title": title, "items": [{"label": d, "done": False} for d in docs]})
     elif intent == "ask_time":
-        time = raw.get("processing_time_text") if src in ("mesob", "org") else (
-            f"about {raw['avg_processing_days']} days" if raw.get("avg_processing_days") else None)
-        text = t("time", lang, title=title, time=time) if time else t("time_unknown", lang, title=title)
+        text = _time_text(rec, state)
     elif intent == "ask_location":
         items = _org_branches(rec, state) if src == "org" else _mesob_centers(state.get("sub_city")) if src == "mesob" else []
         if src == "path" and raw.get("issuing_authority"):

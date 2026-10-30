@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import time
 
 from services import notifications, payment_service, platform_settings
 from services.db import execute, fetch_one
@@ -16,8 +18,38 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------- provider payout account
 
 
-def banks() -> list[dict]:
-    return payment_service.gateway().banks()
+BANKS_TTL = 12 * 3600  # seconds; banks rarely change
+_banks_cache: dict[str, tuple[float, list[dict]]] = {}  # gateway name -> (fetched at, list)
+_banks_lock = threading.Lock()
+
+
+def banks(*, refresh: bool = False) -> list[dict]:
+    """The gateway's bank list, kept for a while. If the gateway fails, the last good list is served."""
+    gw = payment_service.gateway()
+    cached = _banks_cache.get(gw.name)
+    if cached and not refresh and time.monotonic() - cached[0] < BANKS_TTL:
+        return cached[1]
+    # Someone is already refreshing an old list: serve that one instead of waiting on the gateway too
+    if cached and not _banks_lock.acquire(blocking=False):
+        return cached[1]
+    if not cached:
+        _banks_lock.acquire()
+    try:
+        cached = _banks_cache.get(gw.name)
+        if cached and not refresh and time.monotonic() - cached[0] < BANKS_TTL:
+            return cached[1]  # another request refreshed it while this one waited
+        try:
+            items = gw.banks()
+        except PaymentError:
+            if cached:
+                log.warning("Bank list unavailable from %s; serving the last good list", gw.name)
+                return cached[1]
+            raise
+        if items:
+            _banks_cache[gw.name] = (time.monotonic(), items)
+        return items
+    finally:
+        _banks_lock.release()
 
 
 def _waiting_payouts(provider_id: str) -> int:
@@ -61,7 +93,10 @@ def set_payout(user_id: str, *, bank_code: str, account_number: str, account_nam
     account_name = re.sub(r"\s+", " ", account_name).strip()
     if len(account_name) < 2:
         raise PaymentError("Enter the account holder's name exactly as the bank has it")
-    bank = next((b for b in payment_service.gateway().banks() if b["code"] == str(bank_code)), None)
+    # The cached list is enough; only a code it doesn't know asks the gateway again
+    bank = next((b for b in banks() if b["code"] == str(bank_code)), None)
+    if not bank:
+        bank = next((b for b in banks(refresh=True) if b["code"] == str(bank_code)), None)
     if not bank:
         raise PaymentError("Choose your bank from the list")
     # Money already asked for goes to the account it was asked for; changing it now would confuse that

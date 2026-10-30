@@ -7,6 +7,7 @@ import { Button } from "@cn/ui/button";
 import { Label } from "@cn/ui/label";
 import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { broadcastAuth, endSession, postAuth } from "@cn/core/lib/auth-session";
+import { AxiosError } from "axios";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { AuthCard, FormError } from "@cn/ui/auth/auth-card";
 import { PasswordInput, passwordIsValid } from "@cn/ui/auth/password-input";
@@ -49,7 +50,10 @@ export function ResetPassword() {
               broadcastAuth({ type: "signed-out" });
               router.replace("/login?reset=1");
             } catch (err) {
-              setError(getErrorMessage(err));
+              // A cut-off or made-up token fails validation (422): say the link is bad, not "token: ..."
+              const badToken = err instanceof AxiosError && err.response?.status === 422 &&
+                JSON.stringify(err.response.data).includes('"token"');
+              setError(badToken ? "This reset link is invalid or has expired. Ask for a new one." : getErrorMessage(err));
             } finally {
               setPending(false);
             }
