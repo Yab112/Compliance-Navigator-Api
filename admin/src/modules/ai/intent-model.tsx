@@ -50,7 +50,7 @@ const TURNS_PAGE_SIZE = 20;
 const pct = (v?: number) => (v == null ? "-" : `${(v * 100).toFixed(1)}%`);
 
 function TurnRow({ turn, intents }: { turn: Turn; intents: string[] }) {
-  const { run, isPending } = useAdminMutation<unknown, { intent: string }>();
+  const { run, isPending } = useAdminMutation<unknown, { intent: string }>([["assistant"]]);
   const [intent, setIntent] = useState(turn.labelled_intent ?? turn.intent ?? "");
   const [saved, setSaved] = useState(!!turn.labelled_intent);
   const [error, setError] = useState<string | null>(null);
@@ -120,8 +120,8 @@ export function IntentModelSection() {
     ["assistant", "turns", threshold, includeLabelled, page, size],
     `${p.assistantTurns}?${turnParams}`,
   );
-  const retrain = useAdminMutation<{ started: boolean }, undefined>();
-  const activate = useAdminMutation<{ active: string }, undefined>();
+  const retrain = useAdminMutation<{ started: boolean }, undefined>([["assistant"]]);
+  const activate = useAdminMutation<{ active: string }, undefined>([["assistant"], ["ai-status"]]);
   const [message, setMessage] = useState<string | null>(null);
   const m = info.payload?.metrics;
   const running = info.payload?.lastRun?.state === "running";

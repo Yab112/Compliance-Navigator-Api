@@ -132,7 +132,7 @@ export const useCannedReplies = (opts: { ticketId?: string; queue?: string; q?: 
 };
 
 export const useCannedReplyAdmin = () => {
-  const { run, isPending } = useAdminMutation<CannedReply, CannedReplyInput | undefined>();
+  const { run, isPending } = useAdminMutation<CannedReply, CannedReplyInput | undefined>([["support"]]);
   return {
     create: (body: CannedReplyInput) => run(a.supportReplies, MTD.POST, body),
     update: (id: string, body: CannedReplyInput) => run(a.supportReply(id), MTD.PUT, body),
@@ -145,7 +145,7 @@ export const useSupportTicket = (id: string) =>
   useAdminQuery<AdminTicketDetail>(["support", "ticket", id], a.supportTicket(id), { refetchInterval: 20 * 1000 });
 
 export const useSupportDesk = () => {
-  const { run, isPending } = useAdminMutation<TicketThread, unknown>();
+  const { run, isPending } = useAdminMutation<TicketThread, unknown>([["support"]]);
   return {
     reply: (id: string, body: string, internal: boolean, opts: { resolve?: boolean; cannedReplyId?: string | null } = {}) =>
       run(a.supportMessages(id), MTD.POST, {
