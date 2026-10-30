@@ -204,7 +204,7 @@ def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str
             log.error("Payout %s transfer error (%s): %s", payout_id, "uncertain" if exc.uncertain else "refused", exc)
             if not exc.uncertain:
                 # A clear refusal (a 4xx answer): Chapa did not take the transfer, so nothing left our account
-                why = f"Chapa refused the transfer: {str(exc)[:200]}"
+                why = f"Chapa refused the transfer: {str(exc)[:200].rstrip('.')}"
                 if _mark_failed(payout, why):
                     _tell_provider(payout, f"Payout of {payout['amount']:,.2f} ETB failed",
                                    "The money is back in your balance. Check your bank details and ask again.")

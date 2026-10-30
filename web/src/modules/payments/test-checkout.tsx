@@ -34,12 +34,15 @@ export function TestCheckoutPage({ txRef }: { txRef: string }) {
   };
 
   return (
-    <PageShell title="Test checkout · የሙከራ ክፍያ" description="Simulated payment gateway for trying the hire payment flow." maxWidth="md">
+    <PageShell title="Test checkout · የሙከራ ክፍያ" description="For trying the hire payment flow with test payments only." maxWidth="md">
       {gate === "loading" || isLoading ? (
         <LoadingState />
       ) : isError ? (
-        // A real (Chapa) payment is refused here with a message saying so
-        <ErrorState message={getErrorMessage(error, "Could not load this checkout")} onRetry={() => refetch()} />
+        // A real (Chapa) payment is refused here for good, so there is nothing to retry
+        <ErrorState
+          message={getErrorMessage(error, "Could not load this checkout")}
+          onRetry={/real payment/i.test(getErrorMessage(error, "")) ? undefined : () => refetch()}
+        />
       ) : checkout ? (
         <>
           <div className="bg-gov-yellow/40 text-gov-ink border-gov-yellow mb-5 rounded-md border p-4 text-sm">

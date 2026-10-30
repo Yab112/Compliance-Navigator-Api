@@ -321,6 +321,12 @@ function PayoutRow({ p, onNotice }: { p: AdminPayout; onNotice: OnNotice }) {
           {p.check_note ?? "The transfer got an error. The money stays held until Chapa confirms what happened."}
         </p>
       )}
+      {p.status === "failed" && p.check_note && (
+        <p className="text-muted-foreground mt-3 text-xs" role="note">
+          <span className="text-foreground font-semibold">Why it failed: </span>
+          {p.check_note}
+        </p>
+      )}
       {p.status === "approved" && !failing && (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button size="sm" variant="outline" loading={isPending} onClick={refresh}>Check with Chapa</Button>

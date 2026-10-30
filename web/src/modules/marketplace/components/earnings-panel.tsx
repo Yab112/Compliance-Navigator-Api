@@ -172,7 +172,7 @@ function PayoutHistory({ payouts, pager }: { payouts: Payout[]; pager: PageContr
       {!payouts.length ? (
         <p className="text-muted-foreground text-sm">No withdrawals yet.</p>
       ) : (
-        <div className="max-w-full overflow-x-auto">
+        <div className="relative max-w-full overflow-x-auto">
           <table className="w-full min-w-[560px] text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>
@@ -281,7 +281,7 @@ function Ledger({ entries, payouts, pager }: { entries: LedgerEntry[]; payouts: 
       {!entries.length ? (
         <p className="text-muted-foreground text-sm">No earnings yet. You earn when a client pays for delivered work.</p>
       ) : (
-        <div className="max-w-full overflow-x-auto">
+        <div className="relative max-w-full overflow-x-auto">
           <table className="w-full min-w-[560px] text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>

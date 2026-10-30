@@ -73,7 +73,7 @@ export function ServiceImportPanel({ orgId }: { orgId: string }) {
               </>
             ) : (
               <>
-                <strong>{report.created}</strong> services added as drafts. Open each one to finish the details, then submit it for review.
+                <strong>{report.created}</strong> {report.created === 1 ? "service" : "services"} added as drafts. Open each one to finish the details, then submit it for review.
               </>
             )}
           </p>
