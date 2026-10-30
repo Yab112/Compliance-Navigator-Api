@@ -226,7 +226,7 @@ export const useAuthEvents = (userId?: string, page = 0, size = AUTH_EVENTS_PAGE
 };
 
 export const useUserSecurityActions = () => {
-  const { run, isPending } = useAdminMutation<{ signedOut?: number; link?: string; expiresInMinutes?: number }, undefined>();
+  const { run, isPending } = useAdminMutation<{ signedOut?: number; link?: string | null; emailed?: boolean; expiresInMinutes?: number }, undefined>();
   return {
     revokeSessions: (id: string) => run(p.userRevokeSessions(id), MTD.POST),
     issueResetLink: (id: string) => run(p.userResetLink(id), MTD.POST),

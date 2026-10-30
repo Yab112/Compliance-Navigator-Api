@@ -38,6 +38,7 @@ from services import provider_service as svc
 from services.provider_service import MarketplaceError
 from services.storage_service import (
     ALLOWED_UPLOAD_TYPES,
+    MAX_UPLOAD_BYTES,
     IMAGE_TYPES,
     VETTING_MAX_BYTES,
     delete_public_file,
@@ -96,7 +97,7 @@ async def _store(file: UploadFile | None, *, public: bool) -> str | None:
     if not file or not file.filename:
         return None
     try:
-        return save_agent_file(await file.read(), file.filename, file.content_type, public=public)
+        return save_agent_file(await file.read(MAX_UPLOAD_BYTES + 1), file.filename, file.content_type, public=public)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

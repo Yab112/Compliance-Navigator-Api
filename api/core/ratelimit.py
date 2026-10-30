@@ -47,6 +47,8 @@ RULES: dict[str, tuple[Rule, ...]] = {
     "review_create": (Rule(10, HOUR), Rule(30, DAY)),
     # Each webhook call makes an outbound check with Chapa
     "chapa_webhook": (Rule(5, MINUTE),),
+    # Anyone can make one, and each is saved
+    "roadmap": (Rule(20, HOUR), Rule(100, DAY)),
 }
 
 # Tests switch this off so hundreds of calls from one "IP" are not refused

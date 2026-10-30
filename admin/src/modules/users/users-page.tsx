@@ -32,6 +32,7 @@ function UserRow({ user, isSelf }: { user: AdminUser; isSelf: boolean }) {
   const security = useUserSecurityActions();
   const [error, setError] = useState<string | null>(null);
   const [resetLink, setResetLink] = useState<string | null>(null);
+  const [resetEmailed, setResetEmailed] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const run = async (action: () => Promise<unknown>) => {
@@ -58,6 +59,9 @@ function UserRow({ user, isSelf }: { user: AdminUser; isSelf: boolean }) {
         <p className="font-medium">{user.fullname || "-"}{isSelf && <span className="text-muted-foreground"> (you)</span>}</p>
         <p className="text-muted-foreground text-[11px]">{user.email}</p>
         {error && <p className="text-destructive text-[11px]">{error}</p>}
+        {resetEmailed && (
+          <p className="text-muted-foreground mt-1 text-[11px]">A reset link (valid 1 hour) was emailed to this user.</p>
+        )}
         {resetLink && (
           <div className="bg-secondary mt-2 max-w-sm rounded p-2 text-[11px]">
             <p className="font-medium">Reset link (valid 1 hour, single use): give it to the user privately:</p>
@@ -116,6 +120,7 @@ function UserRow({ user, isSelf }: { user: AdminUser; isSelf: boolean }) {
                     const res = await security.issueResetLink(user.id);
                     setCopied(false);
                     setResetLink(res.link ?? null);
+                    setResetEmailed(!!res.emailed);
                   })
                 }
               >

@@ -18,7 +18,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # .dockerignore keeps .env, logs, uploads and tests out of the image
 COPY --chown=app:app . .
-RUN mkdir -p uploads logs .cache && chown -R app:app uploads logs .cache models_store
+# models_store is not in git: it is filled from a local copy at build time or kept on the models volume
+RUN mkdir -p uploads logs .cache models_store && chown -R app:app uploads logs .cache models_store
 
 USER app
 

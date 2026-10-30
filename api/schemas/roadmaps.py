@@ -2,10 +2,10 @@ from pydantic import BaseModel, Field
 
 
 class RoadmapCreateRequest(BaseModel):
-    goal: str = Field(..., examples=["passport"])
-    subCity: str = Field(..., examples=["bole"])
-    industry: str | None = None
-    documentsHeld: list[str] = Field(default_factory=list)
+    goal: str = Field(..., max_length=120, examples=["passport"])
+    subCity: str = Field(..., max_length=80, examples=["bole"])
+    industry: str | None = Field(None, max_length=120)
+    documentsHeld: list[str] = Field(default_factory=list, max_length=50)
 
 
 class StepCompleteRequest(BaseModel):

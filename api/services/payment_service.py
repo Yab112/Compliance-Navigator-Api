@@ -51,10 +51,12 @@ class PaymentError(Exception):
     caller must not assume the money stayed where it was.
     """
 
-    def __init__(self, message: str, status_code: int = 400, *, uncertain: bool = False):
+    def __init__(self, message: str, status_code: int = 400, *, uncertain: bool = False,
+                 gateway_status: int | None = None):
         super().__init__(message)
         self.status_code = status_code
         self.uncertain = uncertain
+        self.gateway_status = gateway_status  # the HTTP status the gateway itself answered with
 
 
 def mode() -> str:
@@ -114,7 +116,8 @@ def _record(data, reference: str) -> dict:
     if isinstance(data, list):
         rows = [r for r in data if isinstance(r, dict)]
         mine = [r for r in rows if reference in (r.get("reference"), r.get("tx_ref"), r.get("ref_id"))]
-        return (mine or rows or [{}])[0]
+        # Never fall back to another record: its status says nothing about our transfer or refund
+        return mine[0] if mine else {}
     return data if isinstance(data, dict) else {}
 
 
@@ -146,7 +149,8 @@ class ChapaGateway:
                 message = "; ".join(f"{k}: {', '.join(v) if isinstance(v, list) else v}" for k, v in message.items())
             log.warning("Chapa %s %s -> %s %s", method, path, r.status_code, message)
             # A 5xx says nothing about whether the request was carried out; a 4xx is a clear refusal
-            raise PaymentError(f"Payment service: {message or 'request failed'}", 502, uncertain=r.status_code >= 500)
+            raise PaymentError(f"Payment service: {message or 'request failed'}", 502, uncertain=r.status_code >= 500,
+                               gateway_status=r.status_code)
         return body
 
     def banks(self) -> list[dict]:
@@ -167,10 +171,14 @@ class ChapaGateway:
         try:
             body = self._call("GET", f"/transfers/verify/{reference}")
         except PaymentError as exc:
-            return "approved" if exc.uncertain else "missing"
+            # Only a clear "not found" means Chapa has no such transfer; a rejected key, a bad request or a
+            # rate limit says nothing about whether the money went out
+            not_found = exc.gateway_status == 404 or "not found" in str(exc).lower()
+            return "missing" if not_found and not exc.uncertain else "approved"
         data = _record(body.get("data"), reference)
         status = str(data.get("status", "")).lower()
-        if not status and "test mode" in str(body.get("message", "")).lower():
+        test_key = (settings.chapa_secret_key or "").startswith("CHASECK_TEST")
+        if not status and test_key and "test mode" in str(body.get("message", "")).lower():
             # Chapa's test mode accepts transfers but never settles them and returns an empty record, so a
             # test payout would wait forever. Test keys can't move real money; treat it as delivered.
             log.info("Chapa test mode transfer %s has no status; recording it as paid", reference)
@@ -1451,6 +1459,9 @@ def refund_action(refund_id: str, *, action: str, note: str | None, transfer_ref
     elif action == "confirm":
         if refund["status"] not in ("manual_pending", "needs_check"):
             raise PaymentError("Only a refund waiting to be sent or checked can be confirmed", 409)
+        if refund["status"] == "manual_pending" and actor == refund.get("requested_by"):
+            raise PaymentError("The person who asked for this refund can't also confirm it was sent. "
+                               "Ask another staff member.", 403)
         ref = (transfer_reference or "").strip()
         if refund["status"] == "manual_pending" and len(ref) < 3:
             raise PaymentError("Enter the bank transfer reference")
@@ -1469,6 +1480,15 @@ def refund_action(refund_id: str, *, action: str, note: str | None, transfer_ref
             raise PaymentError("Only a refund waiting to be sent or checked can be marked failed", 409)
         if len(note) < 10:
             raise PaymentError("Write what you checked (at least 10 characters)")
+        if refund["status"] == "needs_check" and refund["gateway"] == "chapa":
+            # Chapa may already have sent this money; failing it re-opens the refund and could pay twice
+            if refund["gateway_ref"]:
+                if gateway_named("chapa").verify_refund(refund["gateway_ref"]) != "failed":
+                    raise PaymentError("Chapa doesn't show this refund as failed, so it can't be marked failed. "
+                                       "Check again later or confirm it.", 409)
+            elif actor in (refund.get("requested_by"), refund.get("approved_by")):
+                raise PaymentError("Chapa gave no reference for this refund. Someone other than the people who "
+                                   "asked for and approved it must check the Chapa dashboard and mark it failed.", 403)
         with connection() as conn, conn.transaction():
             row = _refund_row(refund_id, conn)
             if row["status"] not in ("manual_pending", "needs_check"):

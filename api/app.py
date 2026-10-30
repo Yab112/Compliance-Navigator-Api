@@ -21,7 +21,7 @@ setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.environment == "production" and (
+    if settings.is_production and (
         settings.secret_key.startswith("change-me") or len(settings.secret_key) < 32
     ):
         raise RuntimeError("Set a strong SECRET_KEY (32+ random characters) before running in production")
@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
 
 
 # The interactive API docs are for developers only; production does not publish them
-_docs_off = settings.environment == "production"
+_docs_off = settings.is_production
 
 app = FastAPI(
     lifespan=lifespan,

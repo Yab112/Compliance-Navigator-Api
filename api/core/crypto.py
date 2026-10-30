@@ -8,18 +8,21 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import os
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from config.config import settings
 
 
-def _fernet() -> Fernet:
-    key = os.environ.get("PAYOUT_ENCRYPTION_KEY")
-    if not key:
-        key = base64.urlsafe_b64encode(hashlib.sha256(f"payout:{settings.secret_key}".encode()).digest()).decode()
-    return Fernet(key)
+def _fernet() -> MultiFernet:
+    """
+    PAYOUT_ENCRYPTION_KEY may list several keys, newest first: new values use the first, and older ones can
+    still be read, so keys can be rotated. Without it (development only; production refuses to start) the key
+    comes from SECRET_KEY, which is also how values saved before the setting existed are read.
+    """
+    keys = [k.strip() for k in (settings.payout_encryption_key or "").split(",") if k.strip()]
+    keys.append(base64.urlsafe_b64encode(hashlib.sha256(f"payout:{settings.secret_key}".encode()).digest()).decode())
+    return MultiFernet([Fernet(k) for k in keys])
 
 
 def encrypt(value: str) -> str:
