@@ -21,13 +21,18 @@ export const useFetchData = <T>(
 ): UseQueryResult<T> => {
   const axiosAuth = useAxiosAuth();
   const path = url.startsWith("/") ? url : `/${url}`;
+  // Every other TanStack option (retry, select, gcTime, refetchInterval…) is passed straight through
+  const { onSuccess, ...queryOptions } = options ?? {};
 
   return useQuery<T>({
+    placeholderData: keepPreviousData,
+    ...queryOptions,
+    staleTime: queryOptions.staleTime ?? 5 * 60 * 1000,
     queryKey,
     queryFn: async () => {
       try {
         const response = await axiosAuth.get<T>(path);
-        options?.onSuccess?.(response.data);
+        onSuccess?.(response.data);
         return response.data;
       } catch (error) {
         if (error instanceof AxiosError) {
@@ -44,13 +49,5 @@ export const useFetchData = <T>(
         throw error;
       }
     },
-    ...(options?.refetchInterval && {
-      refetchInterval: options.refetchInterval,
-    }),
-    staleTime: options?.staleTime ?? 5 * 60 * 1000,
-    enabled: options?.enabled ?? true,
-    placeholderData: keepPreviousData,
-    refetchOnMount: options?.refetchOnMount,
-    refetchOnWindowFocus: options?.refetchOnWindowFocus,
   });
 };
