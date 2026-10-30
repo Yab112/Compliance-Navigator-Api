@@ -35,53 +35,56 @@ export function TestCheckoutPage({ txRef }: { txRef: string }) {
 
   return (
     <PageShell title="Test checkout · የሙከራ ክፍያ" description="Simulated payment gateway for trying the hire payment flow." maxWidth="md">
-      <div className="bg-gov-yellow/40 text-gov-ink border-gov-yellow mb-5 rounded-md border p-4 text-sm">
-        <p className="font-semibold">This is a TEST checkout.</p>
-        <p className="mt-1">No money moves. Online payments are running in test mode, so nothing is charged and nobody gets paid.</p>
-      </div>
       {gate === "loading" || isLoading ? (
         <LoadingState />
       ) : isError ? (
-        <ErrorState message={error?.message ?? "Could not load this checkout"} onRetry={() => refetch()} />
+        // A real (Chapa) payment is refused here with a message saying so
+        <ErrorState message={getErrorMessage(error, "Could not load this checkout")} onRetry={() => refetch()} />
       ) : checkout ? (
-        <section className="border-border bg-card rounded-xl border p-5">
-          <dl className="space-y-3 text-sm">
-            <div>
-              <dt className="text-muted-foreground text-xs">Amount · መጠን</dt>
-              <dd className="text-gov-ink text-3xl font-bold tabular-nums">
-                {formatBirr(checkout.amount)} {checkout.currency || "ETB"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground text-xs">Job · ሥራ</dt>
-              <dd className="font-medium">{checkout.title}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground text-xs">Provider · አገልግሎት ሰጪ</dt>
-              <dd className="font-medium">{checkout.provider_name}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground text-xs">Reference</dt>
-              <dd className="font-mono text-xs">{checkout.tx_ref}</dd>
-            </div>
-          </dl>
-          {checkout.status !== "pending" ? (
-            <div className="mt-5 text-sm">
-              <p>This payment is already {checkout.status === "success" ? "paid" : checkout.status}.</p>
-              <Link href={back} className="text-primary mt-2 inline-block font-medium hover:underline">Back to my hires</Link>
-            </div>
-          ) : (
-            <div className="mt-5 flex flex-wrap items-center gap-4">
-              <Button size="lg" loading={isPending && choice === "success"} disabled={isPending} onClick={() => finish("success")}>
-                Pay {formatBirr(checkout.amount)} {checkout.currency || "ETB"} (test)
-              </Button>
-              <Button variant="link" className="px-0" loading={isPending && choice === "failed"} disabled={isPending} onClick={() => finish("failed")}>
-                Make it fail
-              </Button>
-            </div>
-          )}
-          {actionError && <p className="text-destructive mt-3 text-xs">{actionError}</p>}
-        </section>
+        <>
+          <div className="bg-gov-yellow/40 text-gov-ink border-gov-yellow mb-5 rounded-md border p-4 text-sm">
+            <p className="font-semibold">This is a TEST checkout.</p>
+            <p className="mt-1">No money moves. Online payments are running in test mode, so nothing is charged and nobody gets paid.</p>
+          </div>
+          <section className="border-border bg-card rounded-xl border p-5">
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-muted-foreground text-xs">Amount · መጠን</dt>
+                <dd className="text-gov-ink text-3xl font-bold tabular-nums">
+                  {formatBirr(checkout.amount)} {checkout.currency || "ETB"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs">Job · ሥራ</dt>
+                <dd className="font-medium">{checkout.title}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs">Provider · አገልግሎት ሰጪ</dt>
+                <dd className="font-medium">{checkout.provider_name}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs">Reference</dt>
+                <dd className="font-mono text-xs">{checkout.tx_ref}</dd>
+              </div>
+            </dl>
+            {checkout.status !== "pending" ? (
+              <div className="mt-5 text-sm">
+                <p>This payment is already {checkout.status === "success" ? "paid" : checkout.status}.</p>
+                <Link href={back} className="text-primary mt-2 inline-block font-medium hover:underline">Back to my hires</Link>
+              </div>
+            ) : (
+              <div className="mt-5 flex flex-wrap items-center gap-4">
+                <Button size="lg" loading={isPending && choice === "success"} disabled={isPending} onClick={() => finish("success")}>
+                  Pay {formatBirr(checkout.amount)} {checkout.currency || "ETB"} (test)
+                </Button>
+                <Button variant="link" className="px-0" loading={isPending && choice === "failed"} disabled={isPending} onClick={() => finish("failed")}>
+                  Make it fail
+                </Button>
+              </div>
+            )}
+            {actionError && <p className="text-destructive mt-3 text-xs">{actionError}</p>}
+          </section>
+        </>
       ) : null}
     </PageShell>
   );

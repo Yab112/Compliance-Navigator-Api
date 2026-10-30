@@ -69,14 +69,14 @@ export function DocumentsTable({ onEdit, initialStatus = "" }: { onEdit: (docId:
       {docs.isLoading ? (
         <LoadingState />
       ) : docs.error ? (
-        <ErrorState message={getErrorMessage(docs.error)} onRetry={() => docs.refetch()} />
+        <ErrorState error={docs.error} message={getErrorMessage(docs.error)} onRetry={() => docs.refetch()} />
       ) : !items.length ? (
         <EmptyState
           title={q || status ? "No documents match" : "No documents in the graph"}
           description={q || status ? "Try other words or another status." : "Run “Compliance dependency graph” under Data sources."}
         />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-xs">
             <caption className="sr-only">Documents in the knowledge graph</caption>
             <thead className="text-muted-foreground text-[11px]">

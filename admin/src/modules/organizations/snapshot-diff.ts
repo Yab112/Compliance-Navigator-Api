@@ -4,6 +4,8 @@
  * the internal ids is shown, including links, with full URLs.
  */
 
+import { APPLIES_TO_LABEL, AUDIENCE_LABEL, FEE_CATEGORY_LABEL, PROXY_LABEL } from "@cn/core/types/organization-labels";
+
 export type Lookups = { branches: Record<string, string>; services: Record<string, string> };
 type Snapshot = Record<string, unknown>;
 
@@ -59,6 +61,19 @@ export const FIELD_LABELS: Record<string, string> = {
   contact_email: "Contact email",
 };
 
+/** Human labels for coded values, by the key they sit under (top level or inside a list item). */
+const VALUE_LABELS: Record<string, Record<string, string>> = {
+  audience: AUDIENCE_LABEL,
+  delivery: { in_person: "In person", online: "Online", both: "In person or online" },
+  proxy_allowed: PROXY_LABEL,
+  category: FEE_CATEGORY_LABEL,
+  speed: { regular: "Regular", urgent: "Urgent" },
+  applies_to: APPLIES_TO_LABEL,
+  original_or_copy: { original: "Original", copy: "Copy", both: "Original and copy" },
+  required: { always: "Always", conditional: "Only in some cases" },
+  kind: { document: "Document", prerequisite_service: "Another service first" },
+};
+
 const humanize = (key: string) => FIELD_LABELS[key] ?? key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
 const isEmpty = (v: unknown) => v == null || v === "" || (Array.isArray(v) && v.length === 0);
@@ -68,7 +83,7 @@ function scalar(key: string, value: unknown, ctx: Lookups): string {
   const text = String(value);
   if (key === "branch_id" || key === "branch_ids") return ctx.branches[text] ? `${ctx.branches[text]} (${text.slice(0, 8)})` : `Unknown branch ${text}`;
   if (key === "issuing_service_id" || key === "renewal_service_id") return ctx.services[text] ? `${ctx.services[text]} [${text.slice(0, 8)}]` : `Service ${text}`;
-  return text;
+  return VALUE_LABELS[key]?.[text] ?? text;
 }
 
 function inline(key: string, value: unknown, ctx: Lookups): string {

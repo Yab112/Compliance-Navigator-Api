@@ -8,7 +8,6 @@ import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import type { MyProvider } from "@cn/core/types/provider";
 import { ProviderForm, cleanForm, providerToForm } from "@/modules/marketplace/components/provider-form";
-import { PayoutCard } from "@/modules/marketplace/components/payout-card";
 import { Card } from "@/modules/marketplace/components/my-provider/shared";
 
 const CHANGE_LABELS: Record<string, string> = {
@@ -26,7 +25,6 @@ export function EditProfile({ p }: { p: MyProvider }) {
   const [saved, setSaved] = useState(false);
   return (
     <div className="space-y-4">
-      <PayoutCard />
       {p.pending_change && (
         <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
           Waiting for staff: your change to {Object.keys(p.pending_change.changes).map((k) => CHANGE_LABELS[k] ?? k).join(", ")}. Your profile shows

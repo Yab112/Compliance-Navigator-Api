@@ -165,8 +165,13 @@ def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str
         row = fetch_one("update payouts set status = 'rejected', note = %s, decided_by = %s, decided_at = now() "
                         "where id = %s and status = 'requested' returning id", (note, actor, payout_id))
         if not row:
-            raise PaymentError("Only a payout that is still waiting can be refused. An approved one may already be on "
-                               "its way: use Check with Chapa, or Mark failed once Chapa confirms it failed.", 409)
+            now = (fetch_one("select status from payouts where id = %s", (payout_id,)) or {}).get("status")
+            raise PaymentError({
+                "paid": "This payout was already paid, so it can't be refused.",
+                "rejected": "This payout was already refused.",
+                "failed": "This payout already failed, so the money is back in the provider's balance.",
+            }.get(now, "Only a payout that is still waiting can be refused. This one was approved and may already "
+                       "be on its way: use Check with Chapa, or Mark failed once Chapa confirms it failed."), 409)
         _tell_provider(payout, f"Payout of {payout['amount']:,.2f} ETB was not approved", note)
     elif decision == "approve":
         if payout["status"] != "requested":
@@ -196,9 +201,16 @@ def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str
                                  bank_code=payout["bank_code"], amount=_money(payout["amount"]),
                                  reference=payout["reference"])
         except PaymentError as exc:
+            log.error("Payout %s transfer error (%s): %s", payout_id, "uncertain" if exc.uncertain else "refused", exc)
+            if not exc.uncertain:
+                # A clear refusal (a 4xx answer): Chapa did not take the transfer, so nothing left our account
+                why = f"Chapa refused the transfer: {str(exc)[:200]}"
+                if _mark_failed(payout, why):
+                    _tell_provider(payout, f"Payout of {payout['amount']:,.2f} ETB failed",
+                                   "The money is back in your balance. Check your bank details and ask again.")
+                raise PaymentError(f"{why}. The money is back in the provider's balance.", 409) from exc
             # The money may have left even though we got an error (a timeout after Chapa accepted it). Keep it
             # held as approved and check with Chapa before anyone releases it.
-            log.error("Payout %s transfer error (%s): %s", payout_id, "uncertain" if exc.uncertain else "refused", exc)
             execute("update payouts set needs_check = true, check_note = %s where id = %s",
                     (f"The transfer request got an error: {str(exc)[:200]}. The money stays held. Use Check "
                      f"with Chapa; release it only when Chapa says it failed."[:500], payout_id))

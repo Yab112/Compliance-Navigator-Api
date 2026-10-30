@@ -110,23 +110,47 @@ def compute(stats: dict) -> dict:
     }
 
 
-def tips(breakdown: dict, provider: dict) -> list[str]:
-    """Concrete next steps shown to the provider on their own dashboard."""
+def _doc_tip(status: str | None, what: str, points: int) -> str | None:
+    """What to do about one vetting document, from its status on the Documents tab."""
+    if status == "pending":
+        return f"Staff are checking your {what}. It adds {points} points once approved."
+    if status == "rejected":
+        return f"Your {what} was not accepted. Upload a new copy on the Documents tab (+{points})."
+    if status == "expired":
+        return f"Your {what} has expired. Upload a new one on the Documents tab (+{points})."
+    if status == "below_minimum":
+        return f"Upload a higher {what} on the Documents tab (+{points})."
+    if status in ("verified", "expiring"):
+        return None
+    return f"Upload your {what} on the Documents tab (+{points})."
+
+
+def tips(breakdown: dict, provider: dict, doc_status: dict[str, str] | None = None) -> list[str]:
+    """Concrete next steps shown to the provider on their own dashboard. doc_status maps a vetting
+    document kind to its checklist status, so a tip never asks for something already uploaded."""
     out = []
+    doc_status = doc_status or {}
     by_key = {p["key"]: p for p in breakdown["parts"]}
     if by_key["verification"]["points"] < 25:
         company = provider["entity_type"] == "company"
         done = (by_key["verification"].get("detail") or "").lower()
         if not (provider.get("national_id_verified") or provider.get("id_verified")):
             out.append("Verify your identity with Fayda (+8).")
+        doc_tips = []
         if "police clearance" not in done:
-            out.append("Upload a police clearance certificate on the Vetting tab (+5).")
+            doc_tips.append(_doc_tip(doc_status.get("police_clearance"), "police clearance", 5))
         if not company and "education" not in done:
-            out.append("Upload your education certificate on the Vetting tab (+3).")
+            doc_tips.append(_doc_tip(doc_status.get("education"), "education certificate", 3))
+        out.extend(t for t in doc_tips if t)
         if not provider.get("tin"):
             out.append("Add your TIN" + (" and trade licence" if company else "") + f" (+{6 if company else 3}).")
-        if provider.get("external_license_status") != "verified":
-            out.append("Add your sector licence number so staff can verify it (+4).")
+        licence = provider.get("external_license_status")
+        if licence == "pending":
+            out.append("Staff are checking your sector licence. It adds 4 points once verified.")
+        elif licence == "rejected":
+            out.append("Your sector licence could not be verified. Correct the number on the Edit profile tab (+4).")
+        elif licence != "verified":
+            out.append("Add your sector licence number on the Edit profile tab so staff can verify it (+4).")
     if breakdown["is_new"]:
         out.append("Complete your first jobs and ask clients to leave a review. Ratings are half of the score.")
     if by_key["reliability"]["points"] < 12:

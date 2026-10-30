@@ -104,13 +104,15 @@ def _recent_failures(column: str, value: str | None) -> int:
     if not value:
         return 0
     expr = "lower(actor_email) = lower(%s)" if column == "email" else "ip = %s"
+    # A sign-in resets the counter; for an address, so does a completed password reset or invite
+    resets = "('auth.login', 'auth.password_reset', 'auth.invite_accepted')" if column == "email" else "('auth.login')"
     return fetch_one(
         f"""
         select count(*) as c from staff_audit_log
         where action = 'auth.login_failed' and {expr}
           and created_at > now() - make_interval(mins => %s)
           and created_at > coalesce((
-            select max(created_at) from staff_audit_log where action = 'auth.login' and {expr}
+            select max(created_at) from staff_audit_log where action in {resets} and {expr}
           ), '-infinity')
         """,
         (value, LOCKOUT_MINUTES, value),

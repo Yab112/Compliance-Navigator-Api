@@ -219,7 +219,7 @@ export function AIPage() {
       {isLoading ? (
         <LoadingState />
       ) : error || !s ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">

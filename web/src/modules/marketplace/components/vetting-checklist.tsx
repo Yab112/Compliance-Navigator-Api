@@ -170,10 +170,11 @@ function UploadForm({ item, vetting, onDone }: { item: VettingItem; vetting: Vet
 function ReferencesForm({ refs, onDone }: { refs: VettingReference[]; onDone: () => void }) {
   const { run, isPending } = useMarketAction<{ references: { name: string; phone: string; relationship: string }[] }>();
   const blank = { name: "", phone: "", relationship: "" };
-  const [rows, setRows] = useState(
-    refs.length ? refs.map((r) => ({ name: r.name, phone: r.phone, relationship: r.relationship })) : [blank, blank],
-  );
+  // Always room for two: staff need two references, even when one is already saved
+  const saved = refs.map((r) => ({ name: r.name, phone: r.phone, relationship: r.relationship }));
+  const [rows, setRows] = useState([...saved, ...Array(Math.max(0, 2 - saved.length)).fill(blank)]);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   return (
     <form
       className="bg-secondary/40 mt-3 space-y-3 rounded-md p-3"
@@ -184,9 +185,12 @@ function ReferencesForm({ refs, onDone }: { refs: VettingReference[]; onDone: ()
           return setError("Each reference needs a name, an Ethiopian mobile number (09… or 07…) and how they know you.");
         }
         setError(null);
+        setNote(null);
         try {
           await run(apiPaths.providers.myReferences, MTD.PUT, { references: filled.map((r) => ({ name: r.name.trim(), phone: r.phone.trim(), relationship: r.relationship.trim() })) });
-          onDone();
+          // Keep the form open until both are in, so the second one is not forgotten
+          if (filled.length < 2) setNote("Saved. Add a second reference too: we need two.");
+          else onDone();
         } catch (err) {
           setError(getErrorMessage(err, "Could not save the references"));
         }
@@ -211,9 +215,10 @@ function ReferencesForm({ refs, onDone }: { refs: VettingReference[]; onDone: ()
         <button type="button" className="text-primary text-xs underline" onClick={() => setRows([...rows, blank])}>Add another</button>
       )}
       {error && <p className="text-destructive text-xs" role="alert">{error}</p>}
+      {note && <p className="text-primary text-xs" role="status">{note}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="sm" loading={isPending} disabled={isPending}>Save references</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone} disabled={isPending}>Cancel</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone} disabled={isPending}>{note ? "Close" : "Cancel"}</Button>
       </div>
     </form>
   );
@@ -417,7 +422,8 @@ function ItemRow({ item, vetting }: { item: VettingItem; vetting: Vetting }) {
         </>
       )}
       {item.type === "guarantor" && <GuarantorBlock item={item} vetting={vetting} />}
-      {saved && <p className="text-primary mt-2 text-xs" role="status">{saved}</p>}
+      {/* Once the list reloads, the item's own message says the same thing */}
+      {saved && saved !== item.message && <p className="text-primary mt-2 text-xs" role="status">{saved}</p>}
     </li>
   );
 }

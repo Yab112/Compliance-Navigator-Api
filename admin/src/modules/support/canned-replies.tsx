@@ -238,7 +238,7 @@ export function CannedReplies() {
       {isLoading ? (
         <LoadingState label="Loading saved replies…" />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : !payload?.items.length ? (
         <EmptyState title="No saved replies yet" description="Add the answers your team writes again and again." />
       ) : (

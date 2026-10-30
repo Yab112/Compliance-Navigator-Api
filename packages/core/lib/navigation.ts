@@ -113,6 +113,15 @@ export function recordVisit(url: string) {
   } catch {}
 }
 
+/** Drop a page from "Back" history: a form that sends the person on once done and can't be reopened. */
+export function forgetVisits(pathname: string) {
+  try {
+    const stack = readStack().filter((u) => u.split("?")[0] !== pathname);
+    sessionStorage.setItem(STACK_KEY, JSON.stringify(stack));
+    window.dispatchEvent(new Event(NAV_EVENT));
+  } catch {}
+}
+
 /** For useSyncExternalStore: one string that changes whenever history or labels change. */
 export function navSnapshot(): string {
   try {

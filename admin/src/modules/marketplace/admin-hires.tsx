@@ -22,7 +22,8 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
 import { useCan } from "@/modules/access/api";
-import { EmptyState, ErrorState, LoadingState, NativeSelect, formatDate, formatDateTime, useDebounced } from "@cn/ui/guday/shared";
+import { EmptyState, LoadingState, NativeSelect, formatDate, formatDateTime, useDebounced } from "@cn/ui/guday/shared";
+import { ErrorState } from "@/modules/shared/states";
 import { PriceLine } from "@cn/ui/marketplace/payment-badge";
 import { HireStatusBadge, Stars } from "@cn/ui/marketplace/trust";
 import { HIRE_STATUS } from "@cn/ui/marketplace/constants";
@@ -137,7 +138,7 @@ export function AdminHires() {
       {isLoading ? (
         <LoadingState />
       ) : isError ? (
-        <ErrorState message={error?.message ?? "Could not load hires"} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error, "Could not load hires")} onRetry={() => refetch()} />
       ) : !items.length ? (
         <EmptyState title="Nothing here" />
       ) : (
@@ -276,7 +277,7 @@ function ReviewChanges({
       {isLoading ? (
         <LoadingState />
       ) : isError ? (
-        <ErrorState message={error?.message ?? "Could not load change requests"} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error, "Could not load change requests")} onRetry={() => refetch()} />
       ) : !items.length ? (
         <EmptyState title={status === "pending" ? "No change requests waiting" : `No ${status} change requests`} />
       ) : (
@@ -423,7 +424,7 @@ export function AdminReviews() {
       ) : isLoading ? (
         <LoadingState />
       ) : isError ? (
-        <ErrorState message={error?.message ?? "Could not load reviews"} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error, "Could not load reviews")} onRetry={() => refetch()} />
       ) : !items.length ? (
         <EmptyState title="No reviews" />
       ) : (

@@ -16,6 +16,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { getErrorMessage } from "@cn/core/lib/errors";
+import { forgetVisits } from "@cn/core/lib/navigation";
 import { cn } from "@cn/core/lib/utils";
 import { ErrorState, Field, LoadingState } from "@cn/ui/guday/shared";
 import { useAuthGate } from "@/modules/guday/components/use-auth-gate";
@@ -113,11 +114,19 @@ export function JoinMarketplace() {
   const vetting = requirements.data?.payload.vetting;
   // ID copies are handled by the national ID fields below when Fayda is off
   const docItems = (vetting?.items ?? []).filter((i) => i.type === "document" && i.kind !== "id_copy");
-  // The guarantor (ተያዥ) is added after joining, from the Vetting tab
+  // The guarantor (ተያዥ) is added after joining, from the Documents tab
   const guarantorItem = (vetting?.items ?? []).find((i) => i.type === "guarantor");
   const existing = mine.data?.payload.provider;
+  // Once someone is a provider this page only redirects, so it must not be what the dashboard's "Back" offers
+  const toDashboard = (url: string) => {
+    forgetVisits("/providers/join");
+    router.replace(url);
+  };
   useEffect(() => {
-    if (existing) router.replace("/me/provider");
+    if (existing) {
+      forgetVisits("/providers/join");
+      router.replace("/me/provider");
+    }
   }, [existing, router]);
 
   // Keep the choice in the URL so the Fayda round trip comes back to the same step
@@ -297,7 +306,7 @@ export function JoinMarketplace() {
                             {!guarantorItem.required && <span className="text-muted-foreground font-normal"> (optional)</span>}
                           </p>
                           {guarantorItem.help && <p className="text-muted-foreground mt-1">{guarantorItem.help}</p>}
-                          <p className="mt-2">After joining, on the Vetting tab you will add:</p>
+                          <p className="mt-2">After joining, on the Documents tab you will add:</p>
                           <ul className="mt-1 list-disc space-y-0.5 pl-5">
                             <li>your guarantor&apos;s name, phone, address, occupation and ID number</li>
                             {guarantorItem.documents?.map((d) => (
@@ -372,9 +381,9 @@ export function JoinMarketplace() {
                         failed.push(item.label);
                       }
                     }
-                    router.push(failed.length ? "/me/provider?joined=1&tab=vetting" : "/me/provider?joined=1");
+                    toDashboard(failed.length ? "/me/provider?joined=1&tab=vetting" : "/me/provider?joined=1");
                   } catch (err) {
-                    if (joined) router.push("/me/provider?joined=1&tab=vetting");
+                    if (joined) toDashboard("/me/provider?joined=1&tab=vetting");
                     else setServerError(getErrorMessage(err, "Could not submit your profile"));
                   } finally {
                     setSubmitting(false);

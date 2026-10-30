@@ -224,11 +224,13 @@ export function LoadingState({ label = "Loading…" }: { label?: string }) {
 }
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  // "Service not found" and the like are answers, not failures: trying again would give the same 404
+  const canRetry = onRetry && !/not found/i.test(message);
   return (
-    <div className="border-destructive/30 bg-destructive/5 text-destructive border p-4 text-xs">
-      {message}
-      {onRetry && (
-        <button type="button" onClick={onRetry} className="ml-2 underline">
+    <div role="alert" className="border-destructive/30 bg-destructive/5 text-destructive flex flex-wrap items-center gap-x-3 gap-y-1 border p-4 text-xs">
+      <span>{message}</span>
+      {canRetry && (
+        <button type="button" onClick={onRetry} className="underline">
           Try again
         </button>
       )}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from services.db import connection, fetch_all, fetch_one
 from services import platform_settings
-from .helpers import _log
+from .helpers import OrgError, _log
 
 
 # ---------------------------------------------------------------- freshness
@@ -12,6 +12,11 @@ from .helpers import _log
 
 def confirm_services(org_id: str, service_ids: list[str] | None, actor: str) -> int:
     """'Still accurate': restart the 90-day clock for live services (all of them when ids is None)."""
+    org = fetch_one("select status from organizations where id = %s", (org_id,))
+    if not org:
+        raise OrgError("Organization not found", 404)
+    if org["status"] == "suspended":
+        raise OrgError("A suspended organization can't confirm services. Contact the platform team.", 409)
     rows = fetch_all(
         """
         update org_services set last_confirmed_at = now(), last_confirmed_by = %s

@@ -344,7 +344,8 @@ function CustomerBox({ ticketId }: { ticketId: string }) {
                 <Link href={`/support/${o.id}`} className="text-primary min-w-0 truncate hover:underline">
                   <span className="font-mono">{o.ref}</span> {o.subject}
                 </Link>
-                <TicketStatusBadge status={o.status} label={o.status_label} />
+                {/* Without a label the badge uses the staff wording ("Waiting on customer"), not the customer's */}
+                <TicketStatusBadge status={o.status} />
               </li>
             ))}
           </ul>
@@ -369,7 +370,7 @@ export function SupportTicketDetail({ id }: { id: string }) {
   if (error || !payload) {
     return (
       <AdminPage title="Support request">
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       </AdminPage>
     );
   }
@@ -386,7 +387,7 @@ export function SupportTicketDetail({ id }: { id: string }) {
       <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
         <div className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <TicketStatusBadge status={t.status} label={t.status_label} />
+            <TicketStatusBadge status={t.status} />
             {t.next_response_due_at && <SlaBadge due={t.next_response_due_at} overdue={t.overdue} done={done} />}
             {t.waiting_on === "us" && <span className="text-primary font-semibold">● Customer waiting for us {timeAgo(t.waiting_since)}</span>}
             {t.waiting_on === "customer" && <span className="text-muted-foreground">Waiting for the customer since {timeAgo(t.waiting_since)}</span>}

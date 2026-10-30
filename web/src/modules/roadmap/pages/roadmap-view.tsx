@@ -21,6 +21,11 @@ import { useRoadmapStore } from "@/store/roadmap-store";
 import { useUserStore } from "@/store";
 import { PageNav } from "@cn/ui/layout/page-nav";
 
+const CATEGORY_LABELS: Record<string, string> = {
+  business: "Business · ንግድ",
+  personal: "Personal · የግል",
+};
+
 export function RoadmapView() {
   const router = useRouter();
   const roadmap = useRoadmapStore((s) => s.current);
@@ -78,7 +83,7 @@ export function RoadmapView() {
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <Badge variant="secondary" className="mb-2">
-                {roadmap.request.category}
+                {CATEGORY_LABELS[roadmap.request.category] ?? roadmap.request.category}
               </Badge>
               <h1 className="text-2xl font-semibold tracking-tight">
                 Path to: {roadmap.request.goalLabel}

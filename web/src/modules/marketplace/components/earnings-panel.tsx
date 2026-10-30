@@ -138,7 +138,7 @@ function Withdraw({ e }: { e: Earnings }) {
                 aria-invalid={!!value && !!problem}
               />
             </Field>
-            <Button type="submit" disabled={!!problem} loading={isPending}>
+            <Button type="submit" disabled={!!problem} loading={isPending} className="h-auto max-w-full py-2 whitespace-normal">
               Withdraw to {target}
             </Button>
           </div>
@@ -172,7 +172,7 @@ function PayoutHistory({ payouts, pager }: { payouts: Payout[]; pager: PageContr
       {!payouts.length ? (
         <p className="text-muted-foreground text-sm">No withdrawals yet.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="max-w-full overflow-x-auto">
           <table className="w-full min-w-[560px] text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>
@@ -281,7 +281,7 @@ function Ledger({ entries, payouts, pager }: { entries: LedgerEntry[]; payouts: 
       {!entries.length ? (
         <p className="text-muted-foreground text-sm">No earnings yet. You earn when a client pays for delivered work.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="max-w-full overflow-x-auto">
           <table className="w-full min-w-[560px] text-left text-xs">
             <thead className="text-muted-foreground text-[11px]">
               <tr>
@@ -377,8 +377,8 @@ function HistoryTabs({ e }: { e: Earnings }) {
   };
 
   return (
-    <section className="border-border bg-card flex flex-col gap-4 rounded-xl border p-4 md:flex-row md:gap-6 md:p-5">
-      <div role="tablist" aria-label="Money history" aria-orientation="vertical" className="flex gap-1 md:w-48 md:shrink-0 md:flex-col">
+    <section className="border-border bg-card flex min-w-0 flex-col gap-4 rounded-xl border p-4 md:flex-row md:gap-6 md:p-5">
+      <div role="tablist" aria-label="Money history" aria-orientation="vertical" className="flex min-w-0 gap-1 md:w-48 md:shrink-0 md:flex-col">
         {tabs.map((t) => {
           const active = t.key === tab;
           return (
@@ -408,7 +408,7 @@ function HistoryTabs({ e }: { e: Earnings }) {
         id={`${base}-panel-${tab}`}
         aria-labelledby={`${base}-tab-${tab}`}
         tabIndex={0}
-        className="min-w-0 flex-1 md:border-l md:pl-6"
+        className="w-full min-w-0 flex-1 md:w-auto md:border-l md:pl-6"
       >
         {current.isLoading ? (
           <LoadingState />
@@ -432,7 +432,7 @@ export function EarningsPanel() {
   if (isError) return <ErrorState message={error?.message ?? "Could not load your earnings"} onRetry={() => refetch()} />;
   if (!e) return <EmptyState title="No earnings yet" />;
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <Summary e={e} />
       <Withdraw e={e} />
       <HistoryTabs e={e} />

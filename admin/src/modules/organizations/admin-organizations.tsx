@@ -26,6 +26,7 @@ import { useDebounced } from "@cn/ui/guday/shared";
 import { OrgLogo, OrgStatusChip, OrgTypeLabel, ServiceStatusChip } from "@cn/ui/organizations/shared";
 import type { CatalogInstitution } from "@cn/core/types/catalog";
 import type { AdminOrganization } from "@cn/core/types/organizations";
+import { useCan } from "@/modules/access/api";
 import { useUrlParams } from "./use-url-param";
 
 const TABS = [
@@ -106,7 +107,7 @@ export function AdminOrganizations() {
       {isLoading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState message={getErrorMessage(error)} error={error} onRetry={() => refetch()} />
       ) : !payload?.items.length ? (
         <EmptyState title="No organizations here" />
       ) : (
@@ -218,6 +219,9 @@ function emailDomainDiffers(org: AdminOrganization) {
 export function AdminOrganizationDetail({ id }: { id: string }) {
   const { payload, isLoading, error, refetch } = useAdminOrganization(id);
   const { review, isPending } = useReviewOrganization();
+  // Viewing needs organizations.view; verifying, rejecting and suspending need organizations.review
+  const { can, loaded: permsLoaded } = useCan();
+  const canReview = can("organizations.review");
   const institutions = useAdminQuery<{ institutions: CatalogInstitution[] }>(["catalog-institutions"], apiPaths.catalog.institutions);
   const [note, setNote] = useState("");
   const [institution, setInstitution] = useState<string | null>(null);
@@ -231,7 +235,7 @@ export function AdminOrganizationDetail({ id }: { id: string }) {
   if (error || !org) {
     return (
       <AdminPage title="Organization">
-        <ErrorState message={getErrorMessage(error, "Not found")} onRetry={() => refetch()} />
+        <ErrorState message={getErrorMessage(error, "Not found")} error={error} onRetry={() => refetch()} />
       </AdminPage>
     );
   }
@@ -364,61 +368,71 @@ export function AdminOrganizationDetail({ id }: { id: string }) {
         <aside className="ring-foreground/10 bg-card h-fit space-y-3 p-4 ring-1">
           <h2 className="font-semibold">Decision</h2>
           {org.verification_note && <p className="text-muted-foreground text-xs">Last note: {org.verification_note}</p>}
-          <div className="space-y-1">
-            <label htmlFor={instId} className="text-muted-foreground text-[11px]">
-              Matching MESOB institution (optional)
-            </label>
-            <NativeSelect id={instId} className="w-full" value={chosenInstitution} onChange={(e) => setInstitution(e.target.value)}>
-              <option value="">Not matched</option>
-              {(institutions.payload?.institutions ?? []).map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                  {i.short_name ? ` (${i.short_name})` : ""}
-                </option>
-              ))}
-            </NativeSelect>
-            <p className="text-muted-foreground text-[11px]">Saved with your next decision.</p>
-          </div>
-          <div className="space-y-1">
-            <label htmlFor={noteId} className="text-muted-foreground text-[11px]">
-              Note to the organization (required to reject or suspend)
-            </label>
-            <Textarea id={noteId} rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-          {confirmAction ? (
-            <div role="alertdialog" aria-label={`Confirm ${confirmAction.label.toLowerCase()}`} className="space-y-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
-              <p>{confirmAction.confirm}</p>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="destructive" disabled={isPending || !note.trim()} onClick={() => void run(confirmAction)}>
-                  Yes, {confirmAction.label.toLowerCase()}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setConfirming(null)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
+          {!canReview ? (
+            permsLoaded && (
+              <p className="text-muted-foreground text-xs">
+                You can see this organization but not verify, reject or suspend it. That needs the &quot;Review organizations&quot; permission.
+              </p>
+            )
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {actions.map((a) => (
-                <Button
-                  key={a.action}
-                  variant={a.needsNote ? "outline" : "default"}
-                  disabled={isPending || (a.needsNote && !note.trim()) || (a.needsLetter && !hasLetter)}
-                  onClick={() => (a.confirm ? setConfirming(a.action) : void run(a))}
-                >
-                  {a.label}
-                </Button>
-              ))}
-            </div>
-          )}
-          {!hasLetter && actions.some((a) => a.needsLetter) && (
-            <p className="text-xs text-amber-800">Verifying needs an authorization letter. Reject with a note asking for one.</p>
-          )}
-          <p className="text-muted-foreground text-[11px]">The organization&apos;s team gets a notification with your decision and note.</p>
-          {err && (
-            <p role="alert" className="text-destructive text-xs">
-              {err}
-            </p>
+            <>
+              <div className="space-y-1">
+                <label htmlFor={instId} className="text-muted-foreground text-[11px]">
+                  Matching MESOB institution (optional)
+                </label>
+                <NativeSelect id={instId} className="w-full" value={chosenInstitution} onChange={(e) => setInstitution(e.target.value)}>
+                  <option value="">Not matched</option>
+                  {(institutions.payload?.institutions ?? []).map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                      {i.short_name ? ` (${i.short_name})` : ""}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <p className="text-muted-foreground text-[11px]">Saved with your next decision.</p>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor={noteId} className="text-muted-foreground text-[11px]">
+                  Note to the organization (required to reject or suspend)
+                </label>
+                <Textarea id={noteId} rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+              </div>
+              {confirmAction ? (
+                <div role="alertdialog" aria-label={`Confirm ${confirmAction.label.toLowerCase()}`} className="space-y-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+                  <p>{confirmAction.confirm}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="destructive" disabled={isPending || !note.trim()} onClick={() => void run(confirmAction)}>
+                      Yes, {confirmAction.label.toLowerCase()}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setConfirming(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {actions.map((a) => (
+                    <Button
+                      key={a.action}
+                      variant={a.needsNote ? "outline" : "default"}
+                      disabled={isPending || (a.needsNote && !note.trim()) || (a.needsLetter && !hasLetter)}
+                      onClick={() => (a.confirm ? setConfirming(a.action) : void run(a))}
+                    >
+                      {a.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              {!hasLetter && actions.some((a) => a.needsLetter) && (
+                <p className="text-xs text-amber-800">Verifying needs an authorization letter. Reject with a note asking for one.</p>
+              )}
+              <p className="text-muted-foreground text-[11px]">The organization&apos;s team gets a notification with your decision and note.</p>
+              {err && (
+                <p role="alert" className="text-destructive text-xs">
+                  {err}
+                </p>
+              )}
+            </>
           )}
         </aside>
       </div>

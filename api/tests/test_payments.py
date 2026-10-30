@@ -228,3 +228,140 @@ def test_names_match_allows_middle_names_and_company_accounts():
     assert names_match("Abay Clearing and Forwarding PLC", "Abebe Kebede", "Abay Clearing & Forwarding PLC")
     assert not names_match("Nardos Teshome", "Meron Tadesse")
     assert not names_match("Meron Bekele", "Meron Tadesse")
+
+
+def test_test_checkout_page_refuses_a_real_payment(client, make_user):
+    from services.db import execute
+
+    admin, agent, customer = make_user("admin"), make_user(), make_user()
+    provider = _approved(client, admin, agent)
+    hire = _hire(client, customer, provider)
+    _job(client, agent, hire["id"], "accept", price=400)
+    _deliver(client, agent, hire["id"])
+    tx = client.post(f"{API}/hires/{hire['id']}/pay", headers=customer["headers"]).json()["payload"]["tx_ref"]
+    assert client.get(f"{API}/payments/{tx}/checkout", headers=customer["headers"]).status_code == 200
+    execute("update payments set gateway = 'chapa' where tx_ref = %s", (tx,))
+    r = client.get(f"{API}/payments/{tx}/checkout", headers=customer["headers"])
+    assert r.status_code == 409 and "not a test checkout" in r.json()["detail"]
+
+
+def test_new_checkout_asks_the_gateway_about_one_old_checkout_only(client, make_user, monkeypatch):
+    from services import payment_service
+    from services.db import execute
+
+    admin, agent, customer = make_user("admin"), make_user(), make_user()
+    provider = _approved(client, admin, agent)
+    hire = _hire(client, customer, provider)
+    _job(client, agent, hire["id"], "accept", price=400)
+    _deliver(client, agent, hire["id"])
+    pay = lambda: client.post(f"{API}/hires/{hire['id']}/pay", headers=customer["headers"]).json()["payload"]  # noqa: E731
+    first = pay()["tx_ref"]
+    execute("update payments set created_at = now() - interval '3 days' where tx_ref = %s", (first,))
+    second = pay()["tx_ref"]
+    execute("update payments set created_at = now() - interval '2 days' where tx_ref = %s", (second,))
+    asked, real_confirm = [], payment_service.confirm
+    monkeypatch.setattr(payment_service, "confirm", lambda tx: asked.append(tx) or real_confirm(tx))
+    third = pay()["tx_ref"]
+    assert third not in (first, second) and asked == [second]  # only the latest old checkout, not every one
+    # If that latest old one was paid after all, no new checkout opens
+    execute("update payments set created_at = now() - interval '1 day' where tx_ref = %s", (third,))
+    execute("""update payments set raw = '{"simulated_outcome": "success"}'::jsonb where tx_ref = %s""", (third,))
+    r = client.post(f"{API}/hires/{hire['id']}/pay", headers=customer["headers"])
+    assert r.status_code == 409 and "already paid" in r.json()["detail"]
+
+
+def test_bank_list_is_cached_and_survives_a_gateway_outage(client, make_user, monkeypatch):
+    from services import payment_service
+    from services.payment_service import PaymentError, payout_account
+
+    class Banks:
+        name = "fake-banks"
+
+        def __init__(self):
+            self.calls, self.fail = 0, False
+
+        def banks(self):
+            self.calls += 1
+            if self.fail:
+                raise PaymentError("down", 502, uncertain=True)
+            return [{"code": "7", "name": "Fake Bank"}]
+
+    gw = Banks()
+    monkeypatch.setattr(payment_service, "gateway", lambda: gw)
+    try:
+        assert payment_service.banks() == [{"code": "7", "name": "Fake Bank"}]
+        assert payment_service.banks() and gw.calls == 1  # served from the cache
+        gw.fail = True
+        assert payment_service.banks(refresh=True) == [{"code": "7", "name": "Fake Bank"}]  # last good list
+        payout_account._banks_cache.pop("fake-banks")
+        try:
+            payment_service.banks()
+            raise AssertionError("expected the outage to show when nothing was cached")
+        except PaymentError:
+            pass
+    finally:
+        payout_account._banks_cache.pop("fake-banks", None)
+
+
+def test_chapa_timeouts_are_short_and_uncertain(monkeypatch):
+    import httpx
+
+    from config.config import settings
+    from services.payment_service import ChapaGateway, PaymentError, gateways
+
+    monkeypatch.setattr(settings, "chapa_secret_key", "CHASECK_TEST-unit")
+    seen = {}
+
+    def slow(method, url, **kw):
+        seen["timeout"] = kw["timeout"]
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(gateways.httpx, "request", slow)
+    try:
+        ChapaGateway().banks()
+        raise AssertionError("expected a timeout error")
+    except PaymentError as exc:
+        assert exc.uncertain and exc.status_code == 502
+    assert seen["timeout"].connect == 5.0 and seen["timeout"].read == 15.0
+
+
+def test_chapa_checkout_leaves_out_an_email_it_refuses(monkeypatch):
+    from decimal import Decimal
+
+    from config.config import settings
+    from services.payment_service import ChapaGateway, gateways
+
+    monkeypatch.setattr(settings, "chapa_secret_key", "CHASECK_TEST-unit")
+    monkeypatch.setattr(gateways, "_rejected_email_domains", set())
+    sent = []
+
+    class Answer:
+        status_code, headers = 200, {"content-type": "application/json"}
+
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    def fake(method, url, json=None, **kw):
+        sent.append(dict(json))
+        if json.get("email", "").endswith("@refused.et"):
+            return type("Bad", (Answer,), {"status_code": 400})({"status": "failed", "message": {"email": ["invalid"]}})
+        return Answer({"status": "success", "data": {"checkout_url": "https://checkout.example/x"}})
+
+    monkeypatch.setattr(gateways.httpx, "request", fake)
+    args = dict(tx_ref="cn-unit", amount=Decimal("10.00"), first_name="A", last_name="B", phone=None,
+                return_url="r", callback_url="c", title="t", reason="r")
+    gw = ChapaGateway()
+    gw.initialize(email="client@example.com", **args)
+    assert len(sent) == 1 and "email" not in sent[0]  # a reserved test domain is never sent
+    sent.clear()
+    gw.initialize(email="real@gmail.com", **args)
+    assert len(sent) == 1 and sent[0]["email"] == "real@gmail.com"  # real addresses unchanged
+    sent.clear()
+    gw.initialize(email="one@refused.et", **args)
+    assert len(sent) == 2 and "email" not in sent[1]
+    sent.clear()
+    gw.initialize(email="two@refused.et", **args)
+    assert len(sent) == 1 and "email" not in sent[0]  # the refusal is remembered

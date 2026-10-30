@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from config.config import settings
 from services import payment_service, platform_settings
-from services.db import Jsonb, connection, execute, fetch_all, fetch_one
+from services.db import Jsonb, connection, execute, fetch_one
 
 from .earnings import _test_money
 from .gateways import PaymentError, _money, mode
@@ -70,11 +70,14 @@ def start(engagement_id: str, *, user) -> dict:
         raise PaymentError("This job has no price yet", 409)
 
     reuse = platform_settings.get_int("checkout_reuse_minutes")
-    # Older unfinished checkouts may have been paid after all: settle them before opening a new one
-    for old in fetch_all("select tx_ref from payments where engagement_id = %s and status = 'pending' "
-                         "and created_at <= now() - make_interval(mins => %s)", (engagement_id, reuse)):
-        if payment_service.confirm(old["tx_ref"])["status"] == "success":
-            raise PaymentError("This job is already paid", 409)
+    # The latest older unfinished checkout may have been paid after all: settle it before opening a new one.
+    # Only that one is asked about, so a slow gateway can't make this wait once per old checkout; older ones
+    # are still settled by the webhook or a staff check, and a late payment on them is flagged for a refund.
+    old = fetch_one("select tx_ref from payments where engagement_id = %s and status = 'pending' "
+                    "and created_at <= now() - make_interval(mins => %s) order by created_at desc limit 1",
+                    (engagement_id, reuse))
+    if old and payment_service.confirm(old["tx_ref"])["status"] == "success":
+        raise PaymentError("This job is already paid", 409)
 
     prov = fetch_one("select vat_registered, vat_number from providers where id = %s", (eng["provider_id"],)) or {}
     b = breakdown(eng["agreed_price"], bool(prov.get("vat_registered")))
@@ -251,6 +254,9 @@ def checkout_view(tx_ref: str, *, user) -> dict:
     payment = payment_service.get(tx_ref)
     if not payment or payment["payer_user_id"] != user.id:
         raise PaymentError("Payment not found", 404)
+    if payment["gateway"] != "simulated":
+        # A real payment never goes through the test page
+        raise PaymentError("This is a real payment, not a test checkout. Pay it on the Chapa page instead.", 409)
     eng = provider_service.get_engagement(payment["engagement_id"])
     return {**{k: payment[k] for k in ("tx_ref", "amount", "currency", "status", "gateway")},
             "title": eng["title"], "provider_name": eng["provider_name"]}

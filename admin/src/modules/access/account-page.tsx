@@ -12,7 +12,7 @@ import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { AdminPage } from "@/modules/components/admin-page";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
 import { useMyAccountMutations, useMyActivity, useMySessions, useStaffMe } from "./api";
-import { AuditTable, Notice, When } from "./shared";
+import { AuditTable, describeUserAgent, Notice, When } from "./shared";
 
 const SMALL_PAGE = 10;
 
@@ -75,7 +75,7 @@ function MySessions() {
   const [message, setMessage] = useState<string | null>(null);
 
   if (isLoading) return <LoadingState />;
-  if (error) return <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />;
+  if (error) return <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />;
   return (
     <>
       {!payload?.items.length ? (
@@ -86,7 +86,7 @@ function MySessions() {
             <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
               <div className="min-w-0">
                 <p className="truncate font-medium">
-                  {s.user_agent ?? "Unknown browser"}
+                  <span title={s.user_agent ?? undefined}>{describeUserAgent(s.user_agent)}</span>
                   {s.current && <span className="text-primary"> (this browser)</span>}
                 </p>
                 <p className="text-muted-foreground">
@@ -138,7 +138,7 @@ function MyActivity() {
   const [size, setSize] = useUrlPageSize(SMALL_PAGE, "activity_page");
   const { payload, isLoading, error, refetch } = useMyActivity(page, size);
   if (isLoading) return <LoadingState />;
-  if (error) return <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />;
+  if (error) return <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />;
   return (
     <>
       {!payload?.items.length ? <EmptyState title="Nothing yet" /> : <AuditTable items={payload.items} showActor={false} />}

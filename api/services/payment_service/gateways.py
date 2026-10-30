@@ -85,6 +85,18 @@ class SimulatedGateway:
                 "reference": f"SIM-{tx_ref[-8:].upper()}", "method": "test", "fee": None, "raw": {"simulated": True}}
 
 
+# Connect fails fast when Chapa is down; a slow answer still gets a fair wait. A timeout stays "uncertain".
+CHAPA_TIMEOUT = httpx.Timeout(15.0, connect=5.0)
+
+# Domains Chapa refuses as an email (reserved test domains, and any it refused before in this process)
+_RESERVED_EMAIL = re.compile(r"(^|\.)(example\.(com|net|org)|example|test|invalid|localhost)$")
+_rejected_email_domains: set[str] = set()
+
+
+def _email_domain(email: str) -> str:
+    return email.rsplit("@", 1)[-1].strip().lower()
+
+
 def _record(data, reference: str) -> dict:
     """Chapa returns one record, or (for transfers) a list of them; pick the one for our reference."""
     if isinstance(data, list):
@@ -107,7 +119,8 @@ class ChapaGateway:
     def _call(self, method: str, path: str, json: dict | None = None, data: dict | None = None) -> dict:
         headers = self.headers if data is None else {"Authorization": self.headers["Authorization"]}
         try:
-            r = httpx.request(method, f"{self.base}{path}", headers=headers, json=json, data=data, timeout=20)
+            r = httpx.request(method, f"{self.base}{path}", headers=headers, json=json, data=data,
+                              timeout=CHAPA_TIMEOUT)
         except httpx.HTTPError as exc:
             # A timeout can come after Chapa already accepted the request
             log.warning("Chapa unreachable: %s", exc)
@@ -187,7 +200,8 @@ class ChapaGateway:
             "customization": {"title": title[:16], "description": reason[:50]},
             "meta": {"payment_reason": reason[:100]},
         }
-        if email:
+        # The email is optional: leave out one Chapa is known to refuse instead of asking twice
+        if email and not (_RESERVED_EMAIL.search(_email_domain(email)) or _email_domain(email) in _rejected_email_domains):
             payload["email"] = email
         if phone and re.fullmatch(r"0[79]\d{8}", phone):
             payload["phone_number"] = phone
@@ -197,7 +211,7 @@ class ChapaGateway:
             # Chapa rejects some valid addresses (e.g. @example.com); the email is optional, so pay without it
             if "email" not in str(exc).lower() or "email" not in payload:
                 raise
-            payload.pop("email")
+            _rejected_email_domains.add(_email_domain(payload.pop("email")))
             body = self._call("POST", "/transaction/initialize", payload)
         url = (body.get("data") or {}).get("checkout_url")
         if not url:

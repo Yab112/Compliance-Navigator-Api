@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useBanks, useMyPayout, usePaymentsConfig, useSavePayout } from "@cn/core/api/payments";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
@@ -8,6 +8,9 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
 import { Field, NativeSelect } from "@cn/ui/guday/shared";
 import type { PayoutAccount } from "@cn/core/types/payments";
+
+/** How long the bank list may load before we offer a retry instead of waiting forever. */
+const BANKS_SLOW_MS = 10_000;
 
 function PayoutForm({ current, onDone, onCancel }: {
   current?: PayoutAccount;
@@ -20,6 +23,19 @@ function PayoutForm({ current, onDone, onCancel }: {
   const [number, setNumber] = useState("");
   const [name, setName] = useState(current?.account_name ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [banksSlow, setBanksSlow] = useState(false);
+  const [banksTry, setBanksTry] = useState(0);
+  useEffect(() => {
+    if (!banks.isLoading) return;
+    const t = window.setTimeout(() => setBanksSlow(true), BANKS_SLOW_MS);
+    return () => window.clearTimeout(t);
+  }, [banks.isLoading, banksTry]);
+  const retryBanks = () => {
+    setBanksSlow(false);
+    setBanksTry((n) => n + 1);
+    void banks.refetch();
+  };
+  const banksFailed = banks.isError || (banksSlow && banks.isLoading);
   const items = banks.data?.payload.items ?? [];
   const valid = !!bank && /^\d{6,20}$/.test(number.replace(/\s+/g, "")) && name.trim().length >= 2;
   const verified = current?.verified_name;
@@ -46,12 +62,18 @@ function PayoutForm({ current, onDone, onCancel }: {
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Bank · ባንክ" htmlFor="payout-bank" required className="sm:col-span-2">
-          <NativeSelect id="payout-bank" value={bank} onChange={(e) => setBank(e.target.value)} disabled={banks.isLoading}>
-            <option value="">{banks.isLoading ? "Loading banks…" : banks.isError ? "Could not load banks" : "Choose your bank"}</option>
+          <NativeSelect id="payout-bank" value={bank} onChange={(e) => setBank(e.target.value)} disabled={banks.isLoading || !items.length}>
+            <option value="">{banksFailed ? "Could not load banks" : banks.isLoading ? "Loading banks…" : "Choose your bank"}</option>
             {items.map((b) => (
               <option key={b.code} value={b.code}>{b.name}</option>
             ))}
           </NativeSelect>
+          {banksFailed && (
+            <p className="text-destructive mt-1 flex flex-wrap items-center gap-2 text-xs" role="alert">
+              {banks.isError ? getErrorMessage(banks.error, "Could not load the list of banks.") : "The list of banks is taking too long to load."}
+              <Button type="button" size="sm" variant="outline" loading={banks.isFetching && !banksSlow} onClick={retryBanks}>Try again</Button>
+            </p>
+          )}
         </Field>
         <Field label="Account number · የሂሳብ ቁጥር" htmlFor="payout-number" required>
           <Input id="payout-number" inputMode="numeric" autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value)} />

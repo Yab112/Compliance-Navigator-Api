@@ -66,10 +66,10 @@ def _money(value: str | None, field: str, errors: list[str]) -> float | None:
     try:
         amount = float(re.sub(r"(?i)\s*(etb|birr)$", "", v))
     except ValueError:
-        errors.append(f"{field}: '{value}' is not a number")
+        errors.append(f"The {field} column should be a number, like 302, but it has '{value}'")
         return None
     if amount < 0:
-        errors.append(f"{field} can't be negative")
+        errors.append(f"The {field} column can't be a negative amount")
     return amount
 
 
@@ -87,6 +87,42 @@ def _document(text: str, used: set[str]) -> dict:
         "key": key, "kind": "document", "name": name, "required": "always", "original_or_copy": kind,
         "copies": copies, "notarized": "notarized" in flags, "translated": "translated" in flags,
     }
+
+
+# Service fields whose template column has a different name
+_FIELD_COLUMN = {
+    "fee_schedule": "fee_etb", "is_free": "fee_etb", "requirements": "required_documents",
+    "branch_ids": "branches", "outputs": "output_document",
+}
+
+
+def _plain_error(error: dict, row: dict) -> str:
+    """A validation error as a sentence that names the spreadsheet column, not the field path."""
+    field = str(error["loc"][0]) if error.get("loc") else ""
+    column = _FIELD_COLUMN.get(field, field)
+    value = (row.get(column) or "").strip()
+    has = f" It has '{value}'." if value else ""
+    ctx = error.get("ctx") or {}
+    kind = error.get("type", "")
+    if kind in ("literal_error", "enum"):
+        allowed = str(ctx.get("expected", "")).replace("'", "")
+        return f"The {column} column can only be {allowed}.{has}"
+    if kind == "string_too_short":
+        return f"The {column} column is too short: write at least {ctx.get('min_length')} characters.{has}"
+    if kind in ("string_too_long", "too_long"):
+        limit = ctx.get("max_length")
+        unit = "characters" if kind == "string_too_long" else "items"
+        return f"The {column} column is too long: at most {limit} {unit}."
+    if kind == "string_pattern_mismatch" and "phone" in column:
+        return f"The {column} column should be a phone number, like 0116 000 000.{has}"
+    if kind == "string_pattern_mismatch":
+        return f"The {column} column isn't in the expected format.{has}"
+    if kind.startswith(("url_", "value_error")) and "url" in column:
+        return f"The {column} column should be a full web link starting with https://.{has}"
+    if kind in ("greater_than_equal", "greater_than", "less_than_equal", "less_than"):
+        return f"The {column} column is out of range.{has}"
+    msg = str(error.get("msg", "is not valid")).removeprefix("Value error, ")
+    return f"The {column} column has a problem: {msg[:1].lower()}{msg[1:]}.{has}".replace("..", ".")
 
 
 def _row_to_service(row: dict, branches: dict[str, str]) -> tuple[dict | None, list[str], list[str]]:
@@ -115,7 +151,7 @@ def _row_to_service(row: dict, branches: dict[str, str]) -> tuple[dict | None, l
         try:
             minutes = int(float(get("processing_minutes")))
         except ValueError:
-            errors.append(f"processing_minutes: '{get('processing_minutes')}' is not a number")
+            errors.append(f"The processing_minutes column should be a number, like 15, but it has '{get('processing_minutes')}'")
 
     branch_ids = []
     for name in _split(get("branches")):
@@ -132,7 +168,8 @@ def _row_to_service(row: dict, branches: dict[str, str]) -> tuple[dict | None, l
         try:
             validity = int(get("output_validity_months"))
         except ValueError:
-            errors.append("output_validity_months must be a whole number")
+            errors.append(f"The output_validity_months column should be a whole number of months, like 12, "
+                          f"but it has '{get('output_validity_months')}'")
 
     delivery = get("delivery").lower() or "in_person"
     proxy = get("proxy_allowed").lower() or None
@@ -166,9 +203,9 @@ def _row_to_service(row: dict, branches: dict[str, str]) -> tuple[dict | None, l
         "common_rejection_reasons": _split(get("common_rejection_reasons")),
     }
     if not body["summary"]:
-        errors.append("summary is required")
+        errors.append("The summary column is empty. Write one or two sentences about the service")
     if not body["processing_time_text"] and minutes is None:
-        errors.append("processing_time_text is required")
+        errors.append("The processing_time_text column is empty. Say how long the service takes, like 'About 15 minutes'")
     if not fee_text and not errors:
         warnings.append("No fee given; add one or write free")
     if not requirements and not body["no_documents_required"]:
@@ -179,6 +216,6 @@ def _row_to_service(row: dict, branches: dict[str, str]) -> tuple[dict | None, l
         parsed = ServiceIn(**body).model_dump()
     except ValidationError as exc:
         for e in exc.errors():
-            errors.append(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}")
+            errors.append(_plain_error(e, row))
         return None, errors, warnings
     return (None if errors else parsed), errors, warnings

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { postAuth } from "@cn/core/lib/auth-session";
+import { AxiosError } from "axios";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { useUserStore } from "@cn/core/store/user-store";
 import type { User } from "@cn/core/types/user-types";
@@ -29,7 +30,12 @@ export function VerifyEmail() {
         if (current && current.id === user.id) setUser({ ...current, emailVerified: true });
         setState({ kind: "done" });
       })
-      .catch((err) => setState({ kind: "failed", message: getErrorMessage(err, "This link is invalid or has expired.") }));
+      .catch((err) => {
+        // A cut-off or made-up token fails validation (422): that is still just a bad link
+        const invalid = err instanceof AxiosError && err.response?.status === 422;
+        const fallback = "This link is invalid or has expired.";
+        setState({ kind: "failed", message: invalid ? fallback : getErrorMessage(err, fallback) });
+      });
   }, [token]);
 
   return (

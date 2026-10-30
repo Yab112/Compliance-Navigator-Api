@@ -11,6 +11,8 @@ import { formatDay, humanize, timeAgo } from "@cn/core/lib/format";
 import { StatTile } from "@/modules/shared/stat-tile";
 import { ErrorState, EmptyState, LoadingState } from "@/modules/shared/states";
 import { StatusBadge } from "@/modules/shared/status-badge";
+import { useCan } from "@/modules/access/api";
+import { NAV_PERMISSIONS } from "@/modules/access/nav-permissions";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import type { AIStatus, GraphCounts } from "@cn/core/types/admin";
 
@@ -29,13 +31,20 @@ function isOk<T extends object>(v: T | { error: string }): v is T {
 
 export function OverviewPage() {
   const { payload: o, isLoading, error, refetch } = useAdminOverview();
-  const support = useSupportSummary().payload?.totals;
+  const { can, loaded } = useCan();
+  // Only fetch and link what this staff member may open; the server refuses the rest
+  const canSupport = can("support.view");
+  const support = useSupportSummary(loaded && canSupport).payload?.totals;
+  const link = (href: string) => {
+    const perm = NAV_PERMISSIONS[href.split("?")[0]];
+    return !perm || can(perm) ? href : undefined;
+  };
 
   if (isLoading) return <AdminPage title="Overview"><LoadingState /></AdminPage>;
   if (error || !o) {
     return (
       <AdminPage title="Overview">
-        <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       </AdminPage>
     );
   }
@@ -55,63 +64,65 @@ export function OverviewPage() {
       description="Live state of the Compliance Navigator platform: citizens' roadmaps, licensed Guday Geday agents, the MESOB catalog, the knowledge graph and the AI assistant."
     >
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <StatTile
-          label="Support desk"
-          value={support ? support.new + support.open + support.waiting_customer : "-"}
-          hint={
-            support
-              ? `${support.overdue} overdue · ${support.unassigned} unassigned`
-              : "Requests people sent to a person"
-          }
-          href="/support"
-          tone={support && (support.overdue || support.new) ? "attention" : "default"}
-        />
-        <StatTile label="Registered users" value={o.users.total} hint={`+${o.users.new_30d} in the last 30 days`} href="/users" />
+        {canSupport && (
+          <StatTile
+            label="Support desk"
+            value={support ? support.new + support.open + support.waiting_customer : "-"}
+            hint={
+              support
+                ? `${support.overdue} overdue · ${support.unassigned} unassigned`
+                : "Requests people sent to a person"
+            }
+            href={link("/support")}
+            tone={support && (support.overdue || support.new) ? "attention" : "default"}
+          />
+        )}
+        <StatTile label="Registered users" value={o.users.total} hint={`+${o.users.new_30d} in the last 30 days`} href={link("/users")} />
         <StatTile label="Roadmaps (30 days)" value={o.roadmaps.last_30d} hint={`${o.roadmaps.total.toLocaleString("en")} all time`} />
-        <StatTile label="Approved providers" value={agents.approved ?? 0} hint={`${agents.suspended ?? 0} suspended`} href="/marketplace?status=approved" />
+        <StatTile label="Approved providers" value={agents.approved ?? 0} hint={`${agents.suspended ?? 0} suspended`} href={link("/marketplace?status=approved")} />
         <StatTile
           label="Pending agent applications"
           value={pending}
           hint={pending ? "Waiting for review" : "Queue is clear"}
-          href="/marketplace"
+          href={link("/marketplace")}
           tone={pending ? "attention" : "default"}
         />
-        <StatTile label="Open hires" value={openCases} hint={`${cases.completed ?? 0} completed`} href="/marketplace/hires" />
+        <StatTile label="Open hires" value={openCases} hint={`${cases.completed ?? 0} completed`} href={link("/marketplace/hires")} />
         <StatTile
           label="Open feedback flags"
           value={o.openFlags}
           hint="Users reporting wrong information"
-          href="/feedback"
+          href={link("/feedback")}
           tone={o.openFlags ? "attention" : "default"}
         />
         <StatTile
           label="Organizations"
           value={orgs?.organizations ?? "-"}
           hint={orgs ? `${orgs.verified} verified · ${orgs.live_services} live services` : "Unavailable"}
-          href="/organizations?status=all"
+          href={link("/organizations?status=all")}
           tone={orgs?.pending_orgs ? "attention" : "default"}
         />
         <StatTile
           label="Service submissions"
           value={orgs?.pending_submissions ?? 0}
           hint={orgs?.pending_submissions ? "Waiting for review" : "Queue is clear"}
-          href="/submissions"
+          href={link("/submissions")}
           tone={orgs?.pending_submissions ? "attention" : "default"}
         />
-        <StatTile label="MESOB services" value={o.catalog.services} hint={`${o.catalog.institutions} institutions · ${o.catalog.centers} centers`} href="/catalog" />
-        <StatTile label="Graph nodes" value={graph?.totalNodes ?? "-"} hint={graph ? `${graph.totalRelationships.toLocaleString("en")} relationships` : "Neo4j unavailable"} href="/graph" />
+        <StatTile label="MESOB services" value={o.catalog.services} hint={`${o.catalog.institutions} institutions · ${o.catalog.centers} centers`} href={link("/catalog")} />
+        <StatTile label="Graph nodes" value={graph?.totalNodes ?? "-"} hint={graph ? `${graph.totalRelationships.toLocaleString("en")} relationships` : "Neo4j unavailable"} href={link("/graph")} />
         <StatTile
           label="Stale documents"
           value={graph?.staleDocuments ?? "-"}
           hint="Not verified in 30 days"
-          href="/graph"
+          href={link("/graph")}
           tone={graph?.staleDocuments ? "attention" : "default"}
         />
         <StatTile
           label="AI assistant"
           value={ai ? humanize(ai.provider) : "-"}
           hint={ai ? `${(ai.knowledgeBase.total ?? 0).toLocaleString("en")} knowledge chunks` : "Status unavailable"}
-          href="/ai"
+          href={link("/ai")}
         />
       </div>
 
@@ -209,9 +220,11 @@ export function OverviewPage() {
                 </li>
               ))}
             </ul>
-            <Link href="/data-sources" className="text-primary mt-3 inline-block text-xs underline">
-              Manage data sources
-            </Link>
+            {link("/data-sources") && (
+              <Link href="/data-sources" className="text-primary mt-3 inline-block text-xs underline">
+                Manage data sources
+              </Link>
+            )}
           </CardContent>
         </Card>
       </div>

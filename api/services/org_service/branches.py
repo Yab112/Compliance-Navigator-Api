@@ -79,7 +79,8 @@ def update_branch(org_id: str, branch_id: str, b: dict) -> list[dict]:
 
 
 def delete_branch(org_id: str, branch_id: str) -> list[dict]:
-    execute("delete from organization_branches where id = %s and org_id = %s", (branch_id, org_id))
+    if not fetch_one("delete from organization_branches where id = %s and org_id = %s returning id", (branch_id, org_id)):
+        raise OrgError("Branch not found", 404)
     execute("update org_services set branch_ids = array_remove(branch_ids, %s::uuid) where org_id = %s",
             (branch_id, org_id))
     execute(

@@ -51,10 +51,58 @@ def _short_name(service: dict) -> str:
     return (inst.get("short_name") or service.get("institution_short_name") or "").upper()
 
 
+# Kept in capitals when an all-caps catalog name is put in sentence case
+_ACRONYMS = {"EOID", "ID", "TIN", "VAT", "USD", "ETB", "NID", "ICS", "DARS", "MOTRI", "MOR", "CBE", "EIC", "PPPA"}
+
+
+def display_name(name: str) -> str:
+    """Some catalog names arrive in all caps ("RENEWAL PASSPORT"); show them in sentence case.
+
+    Display only: the snapshot and the matching rules keep the original text.
+    """
+    letters = [c for c in name if c.isalpha()]
+    if not letters or not all(c.isupper() for c in letters if c.isascii()):
+        return name
+    lowered = re.sub(r"[A-Za-z]+", lambda m: m.group(0) if m.group(0) in _ACRONYMS else m.group(0).lower(), name)
+    return lowered[:1].upper() + lowered[1:]
+
+
+_DAY_TIER = re.compile(r"^\s*(?:for\s+)?(\d+)\s*days?\s+(?:[a-z]+\s+)?service\s+(.+)$", re.I)
+
+
+def _fee_label(fee: str) -> str:
+    plain = re.fullmatch(r"(\d+)\s*(ETB|Birr)", fee.strip(), re.I)
+    return f"{int(plain.group(1)):,} ETB" if plain else fee.strip()
+
+
+def service_summary(service: dict, institution: str | None = None) -> str:
+    """One readable line for a catalog service: "At ICS: official fee 21,000 ETB, about 5 days"."""
+    fee = (service.get("fee_text") or "").strip()
+    if fee.lower() in ("-", "none", "n/a"):
+        fee = ""
+    days = None
+    tier = _DAY_TIER.match(fee)
+    if tier:  # ICS lists the delivery speed inside the fee: "5 days service 21000 ETB"
+        days, fee = tier.group(1), tier.group(2)
+    parts = []
+    if fee:
+        parts.append(f"official fee {_fee_label(fee)}")
+    if days:
+        parts.append(f"about {days} days")
+    elif service.get("processing_time_text"):
+        parts.append(f"processing time {service['processing_time_text'].strip().lower()}")
+    line = ", ".join(parts)
+    if institution:
+        return f"At {institution}: {line}" if line else f"At {institution}"
+    return line[:1].upper() + line[1:]
+
+
 def _with_institution(service: dict) -> dict:
     inst = _institutions_by_id().get(service["institution_id"], {})
     return {
         **service,
+        "name": display_name(service["name"]),
+        "summary": service_summary(service, inst.get("short_name") or service.get("institution_short_name")),
         "institution": {
             "id": inst.get("id", service["institution_id"]),
             "name": inst.get("name") or service.get("institution_name"),

@@ -276,7 +276,8 @@ def last_rejected_change(provider_id: str) -> dict | None:
 def _services(service_ids: list[str]) -> list[dict]:
     return [
         {"id": s["id"], "name": s["name"], "institution": s["institution"]["short_name"],
-         "fee_text": s.get("fee_text"), "processing_time_text": s.get("processing_time_text")}
+         "fee_text": s.get("fee_text"), "processing_time_text": s.get("processing_time_text"),
+         "summary": s["summary"]}
         for s in catalog_service.services_by_ids(service_ids or [])
     ]
 
@@ -292,12 +293,13 @@ def owner_view(user_id: str) -> dict | None:
     provider["services"] = _services(provider["service_ids"])
     provider["team"] = team(provider["id"], include_pending=True)
     provider["agency"] = agency_of(provider["id"], include_pending=True)
+    provider["vetting"] = vetting.checklist(provider)
+    doc_status = {i["kind"]: i["status"] for i in provider["vetting"]["items"] if i.get("type") == "document"}
     provider["tips"] = trust_score.tips(
         {"parts": provider["score_breakdown"] or [], "is_new": provider["rating_count"] < trust_score.NEW_UNTIL_REVIEWS},
-        provider,
+        provider, doc_status,
     ) if provider["score_breakdown"] else []
     provider["completeness"] = completeness(provider)
-    provider["vetting"] = vetting.checklist(provider)
     provider["readiness"] = _readiness_view(provider)
     provider["pending_change"] = pending_change(provider["id"])
     provider["rejected_change"] = None if provider["pending_change"] else last_rejected_change(provider["id"])

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useCatalogCenters, useCatalogService } from "@/api/catalog";
+import { apiAssetUrl } from "@cn/core/lib/api";
 import { ReportIssue } from "@/components/feedback/report-issue";
 import { Badge } from "@cn/ui/badge";
 import { Button } from "@cn/ui/button";
@@ -31,6 +32,7 @@ export function ServiceDetail({ id }: { id: string }) {
 
   const { service, agents, agentCount } = data.payload;
   const inst = service.institution;
+  const logo = apiAssetUrl(inst.logo_url);
   const centerList = centers.data?.payload.centers ?? [];
 
   return (
@@ -38,9 +40,9 @@ export function ServiceDetail({ id }: { id: string }) {
       <PageNav label={service.name} />
 
       <header className="mt-4 mb-8 flex gap-4">
-        {inst.logo_url && (
+        {logo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={inst.logo_url} alt="" className="border-border size-14 shrink-0 border object-contain p-1" />
+          <img src={logo} alt="" className="border-border size-14 shrink-0 border object-contain p-1" />
         )}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{service.name}</h1>

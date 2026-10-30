@@ -11,7 +11,8 @@ import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
 import { StatTile } from "@/modules/shared/stat-tile";
-import { EmptyState, ErrorState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
+import { EmptyState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
+import { ErrorState } from "@/modules/shared/states";
 import { PayoutStatusBadge, bankLine } from "@cn/ui/marketplace/payout-status";
 import type { AdminPayout, PaymentsMode, PayoutCheck, PayoutStatus } from "@cn/core/types/payments";
 
@@ -47,16 +48,40 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+/** A message about one payout that stays on the page after the list refreshes (the row may move to another tab). */
+type Notice = { tone: "error" | "info"; text: string };
+type OnNotice = (n: Notice) => void;
+
+function NoticeBox({ notice, onDismiss, className }: { notice: Notice; onDismiss?: () => void; className?: string }) {
+  return (
+    <div
+      role={notice.tone === "error" ? "alert" : "status"}
+      className={cn(
+        "flex items-start gap-3 rounded-md border px-3 py-2 text-sm",
+        notice.tone === "error" ? "border-destructive/40 bg-destructive/5 text-destructive" : "border-primary/30 bg-secondary/60 text-gov-ink",
+        className,
+      )}
+    >
+      <span className="min-w-0 flex-1">{notice.text}</span>
+      {onDismiss && (
+        <button type="button" className="shrink-0 text-xs underline" onClick={onDismiss}>
+          Dismiss
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Who gets the money, whether the account is theirs, and which client payments it comes from. */
-function PayoutReviewPanel({ p, onClose }: { p: AdminPayout; onClose: () => void }) {
+function PayoutReviewPanel({ p, onClose, onNotice }: { p: AdminPayout; onClose: () => void; onNotice: OnNotice }) {
   const { payload: r, isLoading, isError, error, refetch } = useAdminPayoutReview(p.id);
   const { decide, isPending } = useDecidePayout();
   const [mode, setMode] = useState<"idle" | "approve" | "reject">("idle");
   const [note, setNote] = useState("");
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Notice | null>(null);
 
   if (isLoading) return <LoadingState />;
-  if (isError || !r) return <ErrorState message={error?.message ?? "Could not load this payout"} onRetry={() => refetch()} />;
+  if (isError || !r) return <ErrorState message={error?.message ?? "Could not load this payout"} error={error} onRetry={() => refetch()} />;
 
   const blocks = r.checks.filter((c) => c.level === "block");
   const hard = r.checks.some((c) => c.level === "hard");
@@ -67,13 +92,16 @@ function PayoutReviewPanel({ p, onClose }: { p: AdminPayout; onClose: () => void
     try {
       const result = await decide(p.id, note.trim() ? { decision, note: note.trim() } : { decision });
       if (!result) {
-        // At or above the second-approval limit: stored in Access, Approvals instead of paid
-        setFailure("This amount needs a second person: the approval was sent to Approvals. Another staff member must approve it there.");
+        // At or above the second-approval limit: stored in Access, Approvals instead of paid. Not an error.
+        setFailure({ tone: "info", text: "This amount needs a second person: the approval was sent to Approvals. Another staff member must approve it there." });
         return;
       }
       onClose();
     } catch (err) {
-      setFailure(getErrorMessage(err, "Could not update this payout"));
+      const text = getErrorMessage(err, "Could not update this payout");
+      setFailure({ tone: "error", text });
+      // The list refreshes after a failed send and this row may move to another tab, so the page keeps the message
+      onNotice({ tone: "error", text: `${decision === "approve" ? "Send money" : "Reject"} failed for ${p.provider_name}, ${formatETB(p.amount)}: ${text}` });
     }
   };
   const pv = r.provider;
@@ -211,12 +239,12 @@ function PayoutReviewPanel({ p, onClose }: { p: AdminPayout; onClose: () => void
           </div>
         </form>
       )}
-      {failure && <p className="text-destructive text-xs" role="alert">{failure}</p>}
+      {failure && <NoticeBox notice={failure} />}
     </div>
   );
 }
 
-function PayoutRow({ p }: { p: AdminPayout }) {
+function PayoutRow({ p, onNotice }: { p: AdminPayout; onNotice: OnNotice }) {
   const { decide, isPending } = useDecidePayout();
   const [reviewing, setReviewing] = useState(false);
   const [failing, setFailing] = useState(false);
@@ -286,7 +314,7 @@ function PayoutRow({ p }: { p: AdminPayout }) {
           <Button size="sm" onClick={() => setReviewing(true)}>Review and decide</Button>
         </div>
       )}
-      {reviewing && <PayoutReviewPanel p={p} onClose={() => setReviewing(false)} />}
+      {reviewing && <PayoutReviewPanel p={p} onClose={() => setReviewing(false)} onNotice={onNotice} />}
       {p.status === "approved" && p.needs_check && (
         <p className="border-gov-yellow/60 bg-gov-yellow/10 mt-3 rounded-md border px-3 py-2 text-xs" role="note">
           <span className="font-semibold">Needs checking: </span>
@@ -341,6 +369,7 @@ export function AdminPayouts() {
   const { payload, isLoading, isError, error, refetch } = useAdminPayouts(filter.value, page, size);
   const totals = payload?.totals;
   const items = payload?.items ?? [];
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   return (
     <AdminPage
@@ -371,6 +400,8 @@ export function AdminPayouts() {
         <StatTile label="Owed to providers" value={totals ? formatETB(totals.owed_to_providers) : "…"} hint="Earned and not yet paid out" />
       </div>
 
+      {notice && <NoticeBox notice={notice} onDismiss={() => setNotice(null)} className="mb-3" />}
+
       <div role="group" aria-label="Filter by status" className="mb-3 flex flex-wrap gap-2 text-xs">
         {FILTERS.map((f) => (
           <button
@@ -388,13 +419,13 @@ export function AdminPayouts() {
       {isLoading ? (
         <LoadingState />
       ) : isError ? (
-        <ErrorState message={error?.message ?? "Could not load payouts"} onRetry={() => refetch()} />
+        <ErrorState message={error?.message ?? "Could not load payouts"} error={error} onRetry={() => refetch()} />
       ) : !items.length ? (
         <EmptyState title={filter.empty} />
       ) : (
         <ul className="space-y-3">
           {items.map((p) => (
-            <PayoutRow key={p.id} p={p} />
+            <PayoutRow key={p.id} p={p} onNotice={setNotice} />
           ))}
         </ul>
       )}

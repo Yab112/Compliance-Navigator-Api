@@ -34,6 +34,8 @@ type ServiceFormProps = {
   services?: OrgServiceListItem[];
   /** Called after the first save creates the service */
   onCreated?: (id: string) => void;
+  /** Called after every save with the saved name, so the page title can follow it */
+  onSaved?: (name: string) => void;
   onSubmitted?: () => void;
   /** Where "Back" goes from the first section (the dashboard or the wizard list) */
   onExit: () => void;
@@ -44,7 +46,7 @@ type ServiceFormProps = {
  * Everything a path step shows about one service, in sections people move through with
  * Back and Next. Unsaved edits stay in the form while moving between sections.
  */
-export function ServiceForm({ orgId, org, serviceId, loaded, services = [], onCreated, onSubmitted, onExit, exitLabel }: ServiceFormProps) {
+export function ServiceForm({ orgId, org, serviceId, loaded, services = [], onCreated, onSaved, onSubmitted, onExit, exitLabel }: ServiceFormProps) {
   const saveService = useSaveService(orgId);
   const action = useOrgAction();
   const [form, setForm] = useState<ServiceInput>(() => (loaded ? fromWorking(loaded) : EMPTY_SERVICE));
@@ -75,6 +77,7 @@ export function ServiceForm({ orgId, org, serviceId, loaded, services = [], onCr
       setForm(fromWorking(saved));
       setStatus(saved.status);
       setIsLive(saved.is_live);
+      onSaved?.(saved.name);
       if (!id) {
         setId(saved.id);
         onCreated?.(saved.id);

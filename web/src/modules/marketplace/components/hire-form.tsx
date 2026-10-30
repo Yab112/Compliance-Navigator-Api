@@ -7,6 +7,7 @@ import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Textarea } from "@cn/ui/textarea";
 import { getErrorMessage } from "@cn/core/lib/errors";
+import { AxiosError } from "axios";
 import { Field, PHONE_RE } from "@cn/ui/guday/shared";
 import { useUserStore } from "@/store";
 import type { Hire } from "@cn/core/types/provider";
@@ -25,6 +26,18 @@ type HireFormProps = {
   submitLabel?: string;
   onCreated?: (hire: Hire) => void;
 };
+
+/** Plain wording for the hire_create rate limit (10 an hour, 30 a day, see core/ratelimit.py). */
+function hireLimitMessage(err: AxiosError): string {
+  const raw = Number(err.response?.headers?.["retry-after"]);
+  const wait = Number.isFinite(raw) && raw > 0 ? raw : 3600;
+  const minutes = Math.max(1, Math.ceil(wait / 60));
+  if (minutes > 60) {
+    const hours = Math.ceil(minutes / 60);
+    return `You can send up to 30 requests a day. Try again in ${hours} ${hours === 1 ? "hour" : "hours"}.`;
+  }
+  return `You can send up to 10 requests an hour. Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+}
 
 /** Request form for hiring a provider. Sign-in is required so the client can track and review. */
 /**
@@ -117,7 +130,9 @@ function HireFormFields({
       setCreated(res.hire);
       onCreated?.(res.hire);
     } catch (err) {
-      setSubmitError(getErrorMessage(err, "Could not send your request"));
+      setSubmitError(
+        err instanceof AxiosError && err.response?.status === 429 ? hireLimitMessage(err) : getErrorMessage(err, "Could not send your request"),
+      );
     }
   };
 
@@ -126,7 +141,7 @@ function HireFormFields({
       <Field label="What do you need?" htmlFor="hire-title" required={!serviceId} error={errors.title}>
         <Input
           id="hire-title"
-          placeholder="For example: Find a 2-bedroom to rent in Bole"
+          placeholder="For example: Renew my trade license"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
@@ -147,7 +162,7 @@ function HireFormFields({
         <Textarea id="hire-details" rows={3} value={details} onChange={(e) => setDetails(e.target.value)} />
       </Field>
       <Field label="Budget (optional)" htmlFor="hire-budget">
-        <Input id="hire-budget" placeholder="For example: up to 15,000 ETB rent" value={budget} onChange={(e) => setBudget(e.target.value)} />
+        <Input id="hire-budget" placeholder="For example: up to 2,000 ETB" value={budget} onChange={(e) => setBudget(e.target.value)} />
       </Field>
       {submitError && <p className="text-destructive text-sm">{submitError}</p>}
       <Button size="lg" className="h-auto min-h-11 w-full py-2 text-base whitespace-normal sm:w-auto" loading={isCreating} onClick={submit}>

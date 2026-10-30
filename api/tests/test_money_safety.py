@@ -111,10 +111,26 @@ def test_an_approved_payout_cannot_be_refused_and_released(client, make_user, fa
                                       headers=job["admin"]["headers"])
     assert decide({"decision": "approve"}).json()["payload"]["payout"]["status"] == "approved"
     refused = decide({"decision": "reject", "note": "changed my mind"})
-    assert refused.status_code == 409
+    assert refused.status_code == 409 and "may already be on its way" in refused.json()["detail"]
     assert _earnings(client, job["agent"])["available"] == 385.0  # still held
+    # Once it is paid, the refusal says so instead of guessing it is still on its way
+    execute("update payouts set status = 'paid', paid_at = now() where id = %s", (payout["id"],))
+    refused = decide({"decision": "reject", "note": "changed my mind"})
+    assert refused.status_code == 409 and refused.json()["detail"] == "This payout was already paid, so it can't be refused."
     assert client.post(f"{API}/admin/marketplace/payouts/not-a-uuid", json={"decision": "refresh"},
                        headers=job["admin"]["headers"]).status_code == 422
+
+
+def test_a_transfer_chapa_refuses_fails_and_releases_the_money(client, make_user, fake_gateway):
+    job = _paid_job(client, make_user)
+    _payout_account(client, job["agent"])
+    payout = _request_payout(client, job["agent"], 500)
+    fake_gateway(error=PaymentError("Payment service: Bank code must be a numeric", 502, gateway_status=400))
+    r = client.post(f"{API}/admin/marketplace/payouts/{payout['id']}", json={"decision": "approve"},
+                    headers=job["admin"]["headers"])
+    assert r.status_code == 409 and "back in the provider's balance" in r.json()["detail"]
+    assert fetch_one("select status from payouts where id = %s", (payout["id"],))["status"] == "failed"
+    assert _earnings(client, job["agent"])["available"] == 885.0  # nothing left, nothing held
 
 
 def test_a_transfer_error_keeps_the_money_held_until_chapa_confirms(client, make_user, fake_gateway):
@@ -145,7 +161,8 @@ def test_mark_failed_when_chapa_never_received_the_transfer(client, make_user, f
     job = _paid_job(client, make_user)
     _payout_account(client, job["agent"])
     payout = _request_payout(client, job["agent"], 500)
-    gw = fake_gateway(error=PaymentError("Payment service: invalid account", 502))
+    # A timeout: Chapa may or may not have it, so the money stays held until someone checks
+    gw = fake_gateway(error=PaymentError("timed out", 502, uncertain=True))
     decide = lambda body: client.post(f"{API}/admin/marketplace/payouts/{payout['id']}", json=body,  # noqa: E731
                                       headers=job["admin"]["headers"])
     assert decide({"decision": "approve"}).status_code == 502
@@ -413,6 +430,7 @@ def test_manual_refund_waits_for_staff_to_send_and_confirm(client, make_user):
     checker = make_user("admin")
     decided = approve_pending(client, _refund(client, job, body), checker)
     assert "5555" not in str(decided["payload"])  # the account number is stored encrypted, even in the approval
+    assert "_enc" not in str(decided["payload"])  # and the encrypted value never leaves the server
     refund = decided["result"]
     assert refund["status"] == "manual_pending"
     assert _earnings(client, job["agent"])["balance"] == 0  # we owe the client from now on

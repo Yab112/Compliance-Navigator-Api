@@ -125,6 +125,20 @@ def test_staff_lockout(client, make_staff):
     assert r.status_code == 429
 
 
+def test_staff_password_reset_clears_the_lockout(client, make_staff):
+    from auth import staff_service
+
+    staff = make_staff("viewer")
+    for _ in range(6):
+        client.post(f"{API}/staff/auth/login", json={"email": staff["email"], "password": "wrong-pass-1"})
+    link = staff_service.issue_link(staff_service.get_staff_by_email(staff["email"]), "reset", "test")
+    r = client.post(f"{API}/staff/auth/reset-password",
+                    json={"token": link.split("token=")[1], "new_password": "after-reset-14"})
+    assert r.status_code == 200, r.text
+    r = client.post(f"{API}/staff/auth/login", json={"email": staff["email"], "password": "after-reset-14"})
+    assert r.status_code == 200, r.text
+
+
 def test_admin_emails_no_longer_grants_anything(client, make_user, monkeypatch):
     email = f"test-{uuid.uuid4().hex[:10]}@example.com"
     monkeypatch.setenv("ADMIN_EMAILS", email)

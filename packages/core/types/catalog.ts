@@ -21,6 +21,8 @@ export type CatalogService = {
   processing_time_text?: string | null;
   processing_minutes?: number | null;
   fee_text?: string | null;
+  /** Readable line, e.g. "At ICS: official fee 21,000 ETB, about 5 days" */
+  summary?: string;
   fee_etb_min?: number | null;
   fee_etb_max?: number | null;
   fee_has_usd: boolean;

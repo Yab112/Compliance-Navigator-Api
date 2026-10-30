@@ -269,7 +269,7 @@ export function DocumentEditor({ docId, onClose }: { docId: string; onClose: () 
         {doc.isLoading ? (
           <LoadingState />
         ) : doc.error || !d ? (
-          <ErrorState message={getErrorMessage(doc.error, "Document not found")} onRetry={() => doc.refetch()} />
+          <ErrorState error={doc.error} message={getErrorMessage(doc.error, "Document not found")} onRetry={() => doc.refetch()} />
         ) : (
           <EditorForm key={d.id} doc={d} onClose={onClose} />
         )}

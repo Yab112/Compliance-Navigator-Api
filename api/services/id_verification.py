@@ -35,6 +35,8 @@ log = logging.getLogger(__name__)
 
 STATE_TTL = timedelta(minutes=10)
 SANDBOX_OTP = "111111"
+# Wrong one-time codes allowed on one verification before it is burned and the person starts again
+OTP_ATTEMPTS = 3
 ACR_VALUES = "mosip:idp:acr:generated-code mosip:idp:acr:biometrics mosip:idp:acr:linked-wallet"
 USERINFO_CLAIMS = ("name", "birthdate", "gender", "phone_number", "picture", "address", "individual_id")
 
@@ -197,7 +199,7 @@ def _take_pending(conn, user_id: str, state: str, expected_mode: str) -> dict:
     if not row or str(row["user_id"]) != user_id or row["mode"] != expected_mode:
         raise VerificationError("This verification link is not valid", 400)
     if row["status"] != "pending":
-        raise VerificationError("This verification was already used. Start again", 409)
+        raise VerificationError("This verification has ended. Go back and start the ID check again", 409)
     if row["expires_at"] < datetime.now(timezone.utc):
         conn.execute("update id_verifications set status = 'failed', error = 'expired' where id = %s", (row["id"],))
         raise VerificationError("The verification expired. Start again", 410)
@@ -254,8 +256,17 @@ def complete_sandbox(user_id: str, *, state: str, id_number: str, full_name: str
     def work(conn):
         row = _take_pending(conn, user_id, state, "sandbox")
         if otp != SANDBOX_OTP:
-            conn.execute("update id_verifications set status = 'failed', error = 'otp' where id = %s", (row["id"],))
-            failure.append(VerificationError("Wrong one-time code (test mode code is 111111)"))
+            # While pending, error counts wrong codes ("otp:2"); the last allowed miss burns the state
+            tries = int(m.group(1)) + 1 if (m := re.fullmatch(r"otp:(\d+)", row["error"] or "")) else 1
+            if tries >= OTP_ATTEMPTS:
+                conn.execute("update id_verifications set status = 'failed', error = 'otp' where id = %s", (row["id"],))
+                failure.append(VerificationError(
+                    f"Wrong one-time code {OTP_ATTEMPTS} times. Go back and start the ID check again", 409))
+            else:
+                conn.execute("update id_verifications set error = %s where id = %s", (f"otp:{tries}", row["id"]))
+                left = OTP_ATTEMPTS - tries
+                failure.append(VerificationError(
+                    f"Wrong one-time code (test mode code is 111111). {left} {'try' if left == 1 else 'tries'} left"))
             return
         _finish(conn, row, method="fayda_sandbox", id_type="FIN" if len(digits) == 12 else "FCN",
                 number=digits, name=full_name.strip(), birthdate=birthdate, gender=gender)

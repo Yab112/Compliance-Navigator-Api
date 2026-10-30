@@ -5,7 +5,7 @@ import pytest
 from conftest import API
 
 from services import org_service
-from services.db import execute
+from services.db import execute, fetch_one
 from services.graph_service import _query_rows
 
 
@@ -92,6 +92,30 @@ def test_non_member_cannot_edit(client, make_user):
     assert client.patch(f"{API}/org/{org['id']}", json={"description": "Updated"}, headers=stranger["headers"]).status_code == 200
     assert client.post(f"{API}/org/{org['id']}/members", json={"email": "x@example.com"},
                        headers=stranger["headers"]).status_code == 403
+
+
+def test_profile_save_keeps_a_verified_org_live_and_editors_cant_change_identity(client, make_user):
+    owner, editor = make_user(), make_user()
+    org = _register(client, owner)
+    _verify(client, make_user("admin"), org["id"])
+    client.post(f"{API}/org/{org['id']}/members", json={"email": editor["email"]}, headers=owner["headers"])
+    invite = client.get(f"{API}/organizations/mine", headers=editor["headers"]).json()["payload"]["invites"][0]
+    client.post(f"{API}/organizations/invites/{invite['id']}/accept", headers=editor["headers"])
+    status = lambda: fetch_one("select status from organizations where id = %s", (org["id"],))["status"]  # noqa: E731
+
+    # The profile form sends name and type every time; unchanged values must not send it back to review
+    same = {"name": org["name"], "org_type": org["org_type"], "phone": "0911223344"}
+    assert client.patch(f"{API}/org/{org['id']}", json=same, headers=editor["headers"]).status_code == 200
+    assert status() == "verified"
+    # Only an owner can rename it or change who speaks for it
+    assert client.patch(f"{API}/org/{org['id']}", json={**same, "name": "Renamed by editor"},
+                        headers=editor["headers"]).status_code == 403
+    assert client.patch(f"{API}/org/{org['id']}", json={"official_email": "other@example.gov.et"},
+                        headers=editor["headers"]).status_code == 403
+    assert status() == "verified"
+    assert client.patch(f"{API}/org/{org['id']}", json={**same, "name": org["name"] + " Office"},
+                        headers=owner["headers"]).status_code == 200
+    assert status() == "pending"
 
 
 def test_publish_requires_verified_org_and_syncs_graph(client, make_user, graph_cleanup):
@@ -269,6 +293,12 @@ def test_registration_draft_resume_and_submit(client, make_user):
         {"day": "mon", "open": "08:30", "close": "17:30", "lunch_start": "12:30", "lunch_end": "13:30"},
         {"day": "tue", "open": "08:30", "close": "17:30", "lunch_start": "12:30", "lunch_end": "13:30"},
         {"day": "sat", "open": "08:30", "close": "12:30"}]}, headers=user["headers"])
+    # Staff can't verify without the authorization letter, so it is needed before sending
+    check = client.get(f"{API}/org/{oid}/registration-check", headers=user["headers"]).json()["payload"]
+    assert any("authorization letter" in p for p in check["problems"])
+    blocked = client.post(f"{API}/org/{oid}/submit-registration", json={}, headers=user["headers"])
+    assert blocked.status_code == 400 and "authorization letter" in blocked.json()["detail"]
+    execute("update organizations set authorization_letter_key = 'private/test-letter.pdf' where id = %s", (oid,))
     check = client.get(f"{API}/org/{oid}/registration-check", headers=user["headers"]).json()["payload"]
     assert check["problems"] == []
     done = client.post(f"{API}/org/{oid}/submit-registration", json={}, headers=user["headers"])
@@ -296,13 +326,28 @@ def test_csv_import_reports_rows(client, make_user):
             branches=branch["name"], proxy_allowed="with_poa"),
         row(name="Marriage certificate", summary="Registers a marriage", fee_etb="abc", processing_time_text="1 day",
             branches="Nowhere branch"),
+        row(summary="A row someone forgot to name", fee_etb="10", processing_time_text="1 day"),
+        row(name="Divorce certificate", summary="Registers a divorce", fee_etb="10", processing_time_text="1 day",
+            delivery="by post"),
+        row(),
     ])
     files = {"file": ("services.csv", csv_text.encode(), "text/csv")}
     dry = client.post(f"{API}/org/{org['id']}/services/import", files=files, data={"dry_run": "true"},
                       headers=user["headers"]).json()["payload"]
-    assert dry["ready"] == 1 and dry["errors"] == 1 and dry["created"] == 0
+    assert dry["ready"] == 1 and dry["errors"] == 3 and dry["created"] == 0
+    assert len(dry["rows"]) == 4  # the blank last row is ignored
     bad = next(r for r in dry["rows"] if r["name"] == "Marriage certificate")
-    assert any("fee_etb" in e for e in bad["errors"]) and any("Nowhere branch" in e for e in bad["errors"])
+    assert "The fee_etb column should be a number, like 302, but it has 'abc'" in bad["errors"]
+    assert any("Nowhere branch" in e for e in bad["errors"])
+    # A row without a name is reported, not skipped
+    unnamed = next(r for r in dry["rows"] if r["name"] == "")
+    assert unnamed["status"] == "error" and "name column is empty" in unnamed["errors"][0]
+    # Validation errors read as sentences naming the column
+    post = next(r for r in dry["rows"] if r["name"] == "Divorce certificate")
+    assert post["errors"] == ["The delivery column can only be in_person, online or both. It has 'by post'."]
+    other = client.post(f"{API}/org/{org['id']}/services/import", data={"dry_run": "true"}, headers=user["headers"],
+                        files={"file": ("services.pdf", b"%PDF", "application/pdf")})
+    assert other.status_code == 400 and "CSV" in other.json()["detail"]
 
     real = client.post(f"{API}/org/{org['id']}/services/import", files=files, data={"dry_run": "false"},
                        headers=user["headers"]).json()["payload"]
@@ -383,6 +428,23 @@ def test_freshness_confirmation(client, make_user, graph_cleanup):
     public = client.get(f"{API}/organizations/{org['slug']}/services/water-meter").json()["payload"]["service"]
     assert not public["confirmation_due"] and public["confirmed_days_ago"] == 0
     assert client.post(f"{API}/org/{org['id']}/services/confirm-all", headers=user["headers"]).json()["payload"]["confirmed"] >= 1
+
+    # A suspended organization can't vouch for its services
+    r = client.post(f"{API}/admin/organizations/{org['id']}/review", json={"action": "suspend", "note": "Test"},
+                    headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    for url in (f"{API}/org/{org['id']}/services/{sid}/confirm", f"{API}/org/{org['id']}/services/confirm-all"):
+        r = client.post(url, headers=user["headers"])
+        assert r.status_code == 409 and "suspended" in r.json()["detail"]
+
+
+def test_branch_of_another_org_cannot_be_deleted(client, make_user):
+    a, b = make_user(), make_user()
+    org_a, org_b = _register(client, a), _register(client, b)
+    theirs = client.get(f"{API}/org/{org_b['id']}", headers=b["headers"]).json()["payload"]["organization"]["branches"][0]
+    r = client.delete(f"{API}/org/{org_a['id']}/branches/{theirs['id']}", headers=a["headers"])
+    assert r.status_code == 404
+    assert fetch_one("select 1 from organization_branches where id = %s", (theirs["id"],))
 
 
 def test_wrong_info_report_reaches_the_organization(client, make_user, graph_cleanup):

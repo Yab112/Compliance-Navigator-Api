@@ -9,7 +9,7 @@ import { cn } from "@cn/core/lib/utils";
 
 const POLL_LIMIT_MS = 30 * 1000;
 
-/** Banner after the gateway sends the client back with ?payment=<tx_ref>. Polls every 3 s for up to 30 s while pending. */
+/** Banner after the gateway sends the client back with ?payment=<tx_ref>. Polls (3 s, 5 s, then 10 s apart, one check at a time) for up to 30 s while pending. */
 export function PaymentReturnBanner() {
   const params = useSearchParams();
   const router = useRouter();

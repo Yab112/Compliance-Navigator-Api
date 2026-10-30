@@ -84,8 +84,8 @@ function ticketQuery(filters: TicketFilters): string {
   return qs.toString();
 }
 
-export const useSupportSummary = () =>
-  useAdminQuery<SupportSummary>(["support", "summary"], a.supportSummary, { refetchInterval: 60 * 1000 });
+export const useSupportSummary = (enabled = true) =>
+  useAdminQuery<SupportSummary>(["support", "summary"], a.supportSummary, { refetchInterval: 60 * 1000, enabled });
 
 export const useSupportTickets = (filters: TicketFilters) =>
   useAdminQuery<{ total: number; items: SupportTicket[] }>(

@@ -13,7 +13,7 @@ from .trust import recompute
 def leave_review(engagement_id: str, *, user_id: str, data: dict) -> dict:
     eng = provider_service.get_engagement(engagement_id)
     if not eng or eng["client_user_id"] != user_id:
-        raise MarketplaceError("Only the client who hired this provider can review the job", 403)
+        raise MarketplaceError("Request not found", 404)
     if eng["status"] != "completed" or not eng.get("client_confirmed_at"):
         raise MarketplaceError("You can review once the job is closed: confirm the work is done first", 409)
     if not eng["provider_id"]:

@@ -129,13 +129,13 @@ export function useCan() {
   return { can: (perm: string) => perms.has(perm), loaded: !!payload, me: payload };
 }
 
-export const usePermissionCatalogue = () =>
-  useAdminQuery<{ areas: PermissionArea[]; risk_levels: Risk[] }>(["access", "permissions"], accessPaths.permissions);
+export const usePermissionCatalogue = (enabled = true) =>
+  useAdminQuery<{ areas: PermissionArea[]; risk_levels: Risk[] }>(["access", "permissions"], accessPaths.permissions, { enabled });
 
 // ---------------------------------------------------------------- roles
 
-export const useRoles = (page = 0, pageSize = 50) =>
-  useAdminQuery<Paged<Role>>(["access", "roles", page, pageSize], `${accessPaths.roles}?${qs({ limit: pageSize, offset: page * pageSize })}`);
+export const useRoles = (page = 0, pageSize = 50, enabled = true) =>
+  useAdminQuery<Paged<Role>>(["access", "roles", page, pageSize], `${accessPaths.roles}?${qs({ limit: pageSize, offset: page * pageSize })}`, { enabled });
 
 export const useRole = (id: string | null) =>
   useAdminQuery<{ role: Role }>(["access", "role", id], accessPaths.role(id ?? ""), { enabled: !!id });

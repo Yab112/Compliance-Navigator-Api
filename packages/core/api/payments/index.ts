@@ -149,14 +149,25 @@ export const usePayHire = () => {
   return { payHire, isPending };
 };
 
-/** Re-verifies with the gateway on every call. With `poll`, refetches every 3 s while the payment is pending. */
+/** Waits between checks of a pending payment: 3 s, then 5 s, then every 10 s. */
+const PAYMENT_POLL_MS = [3000, 5000, 10000];
+
+/**
+ * Re-verifies with the gateway on every call. With `poll`, checks again while the payment is pending,
+ * one check at a time: the next wait starts only once the previous check has answered, and it grows.
+ */
 export const usePayment = (txRef: string | null, poll = false) =>
   useFetchData<APIResponse<{ payment: Payment }>>(["payments", "payment", txRef], pay.payment(txRef ?? ""), {
     enabled: !!txRef,
     staleTime: 0,
     retry: false,
     refetchInterval: poll
-      ? (query) => (!query.state.data || query.state.data.payload.payment.status === "pending" ? 3000 : false)
+      ? (query) => {
+          if (query.state.fetchStatus === "fetching") return false; // restarted when this check answers
+          if (query.state.data && query.state.data.payload.payment.status !== "pending") return false;
+          const done = query.state.dataUpdateCount;
+          return PAYMENT_POLL_MS[Math.min(Math.max(done - 1, 0), PAYMENT_POLL_MS.length - 1)];
+        }
       : false,
     refetchOnWindowFocus: false,
   });

@@ -76,7 +76,7 @@ export function SourceForm({ editId, onDone }: { editId: string | null; onDone: 
   const existing = useCustomDataSource(editId);
   if (editId && existing.isLoading) return <LoadingState />;
   if (editId && existing.error) {
-    return <ErrorState message={getErrorMessage(existing.error)} onRetry={() => existing.refetch()} />;
+    return <ErrorState error={existing.error} message={getErrorMessage(existing.error)} onRetry={() => existing.refetch()} />;
   }
   const initial = editId && existing.payload ? fromSource(existing.payload.source) : EMPTY;
   return <SourceFormBody key={editId ?? "new"} editId={editId} initial={initial} onDone={onDone} />;

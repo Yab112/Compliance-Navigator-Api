@@ -234,9 +234,13 @@ function HireAgent({ goal, goalLabel, subCity, heldLabels, returnTo, onShowSteps
         <p className="text-muted-foreground text-xs">MESOB service</p>
         <p className="font-medium">{service.name}</p>
         <p className="text-muted-foreground text-xs">
-          {service.institution?.short_name ?? service.institution_short_name}
-          {service.fee_text ? ` · official fee ${service.fee_text}` : ""}
-          {service.processing_time_text ? ` · ${service.processing_time_text}` : ""}
+          {service.summary ?? (
+            <>
+              {service.institution?.short_name ?? service.institution_short_name}
+              {service.fee_text ? ` · official fee ${service.fee_text}` : ""}
+              {service.processing_time_text ? ` · ${service.processing_time_text}` : ""}
+            </>
+          )}
         </p>
       </div>
 

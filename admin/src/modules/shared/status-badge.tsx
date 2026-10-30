@@ -24,15 +24,21 @@ const STATUS_TONE: Record<string, Tone> = {
   dismissed: "neutral",
 };
 
+/** "never_run" to "Never run": one capital, like the rest of the interface. */
+export const sentence = (text: string) => {
+  const t = text.replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
 /** Status always carries an icon + label, never color alone. */
 export function StatusBadge({ status, tone, className }: { status: string; tone?: Tone; className?: string }) {
   const t = tone ?? STATUS_TONE[status] ?? "neutral";
   return (
-    <Badge variant="secondary" className={cn("gap-1 capitalize", TONE_CLASS[t], className)}>
+    <Badge variant="secondary" className={cn("gap-1", TONE_CLASS[t], className)}>
       <span aria-hidden className="text-[8px]">
         {ICON[t]}
       </span>
-      {status.replace(/_/g, " ")}
+      {sentence(status)}
     </Badge>
   );
 }

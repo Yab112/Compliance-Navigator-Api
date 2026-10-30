@@ -138,6 +138,20 @@ def test_lockout_after_repeated_failures(client, make_user):
     assert r.status_code == 429
 
 
+def test_a_password_reset_clears_the_lockout(client, make_user):
+    from auth import service as auth_service
+    from services import user_store
+
+    user = make_user()
+    for _ in range(6):
+        client.post(f"{API}/auth/login", json={"email": user["email"], "password": "nope-nope-1"})
+    link = auth_service.create_reset_link(user_store.get_user(user["id"]), created_by="test")
+    token = link.split("token=")[1]
+    assert client.post(f"{API}/auth/reset-password", json={"token": token, "new_password": "after-reset-7"}).status_code == 200
+    r = client.post(f"{API}/auth/login", json={"email": user["email"], "password": "after-reset-7"})
+    assert r.status_code == 200, r.text
+
+
 def test_change_password_signs_out_other_sessions(make_user):
     user = make_user()
     with _fresh_client() as a, _fresh_client() as b:

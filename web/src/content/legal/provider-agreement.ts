@@ -4,8 +4,8 @@ import type { LegalDoc } from "./types";
 export const providerAgreement: LegalDoc = {
   key: "provider_agreement",
   slug: "provider-agreement",
-  title: "Guday Geday Provider Agreement",
-  titleAm: "የጉዳይ ገዳይ አገልግሎት ሰጪ ስምምነት",
+  title: "Provider Agreement for Guday Geday agents and agencies",
+  titleAm: "የጉዳይ ገዳይ እና ኤጀንሲ አገልግሎት ሰጪ ስምምነት",
   version: "1.0",
   effective: "2026-10-29",
   summary:

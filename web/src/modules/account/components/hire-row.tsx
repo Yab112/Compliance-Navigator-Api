@@ -21,7 +21,7 @@ import { HirePayment } from "@/modules/account/components/hire-payment";
 
 export function HireRow({ hire }: { hire: Hire }) {
   const { run, isPending } = useMarketAction<{ reason?: string }>();
-  const [panel, setPanel] = useState<"review" | "dispute" | "change" | null>(null);
+  const [panel, setPanel] = useState<"review" | "dispute" | "change" | "cancel" | null>(null);
   const [reason, setReason] = useState("");
   const paymentsOn = usePaymentsConfig().data?.payload.enabled ?? false;
   const stage = hireStage(hire);
@@ -102,7 +102,7 @@ export function HireRow({ hire }: { hire: Hire }) {
         {/* Before paying you can walk away; after paying, problems go to our team (refunds included) */}
         {/* Until delivery you can walk away; after delivery you pay, or report a problem */}
         {["matching", "requested", "agree_price", "accepted", "in_progress"].includes(stage) && (
-          <Button size="sm" variant="outline" loading={isPending} onClick={() => act(apiPaths.hires.cancel(hire.id))}>Cancel request</Button>
+          panel !== "cancel" && <Button size="sm" variant="outline" onClick={() => setPanel("cancel")}>Cancel request</Button>
         )}
         {stage === "delivered" && !paymentsOn && (
           <Button size="sm" loading={isPending} onClick={() => act(apiPaths.hires.complete(hire.id))}>Confirm it&apos;s done</Button>
@@ -116,6 +116,25 @@ export function HireRow({ hire }: { hire: Hire }) {
       </div>
       {panel === "review" && <ReviewForm hire={hire} onDone={() => setPanel(null)} />}
       {panel === "change" && <ReviewChangeForm hire={hire} onDone={() => setPanel(null)} />}
+      {panel === "cancel" && (
+        <div className="bg-secondary/40 mt-3 space-y-2 rounded-md p-4" role="alert">
+          <p className="text-sm font-semibold">Cancel this request?</p>
+          <p className="text-muted-foreground text-xs">
+            {hire.provider_name && ["accepted", "in_progress"].includes(hire.status)
+              ? `${hire.provider_name} has already accepted this job and may have started on it. Cancelling stops the job and tells them. `
+              : hire.provider_name
+                ? `Cancelling withdraws your request and tells ${hire.provider_name}. `
+                : "Cancelling stops staff from matching you with a provider. "}
+            You can&apos;t undo this. To go ahead later you would send a new request.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="destructive" loading={isPending} onClick={() => act(apiPaths.hires.cancel(hire.id))}>
+              Yes, cancel request
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setPanel(null)}>Keep request</Button>
+          </div>
+        </div>
+      )}
       {panel === "dispute" && (
         <div className="bg-secondary/40 mt-3 space-y-2 rounded-md p-4">
           <p className="text-sm font-semibold">What went wrong?</p>

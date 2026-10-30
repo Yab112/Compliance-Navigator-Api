@@ -15,7 +15,7 @@ export function HireTimeline({ stage, next }: { stage: HireStage; next: string }
   const done = false;
   return (
     <div className="mt-3">
-      <ol className="flex items-center gap-1 overflow-x-auto pb-1 text-[11px] [scrollbar-width:none]" aria-label="Progress">
+      <ol className="flex flex-wrap items-center gap-x-1 gap-y-1.5 text-[11px]" aria-label="Progress">
         {TIMELINE.map((step, i) => {
           const passed = i < at || (done && i === at);
           const current = i === at && !done;

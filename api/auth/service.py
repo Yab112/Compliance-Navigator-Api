@@ -67,15 +67,17 @@ def _recent_failures(column: str, value: str | None) -> int:
     if not value:
         return 0
     expr = "lower(email) = lower(%s)" if column == "email" else "ip = %s"
+    # A successful sign-in resets the counter; for an address, so does a password reset (the owner proved
+    # they hold the mailbox, and the lockout message tells them to reset)
+    resets = "('login_success', 'password_reset')" if column == "email" else "('login_success')"
     row = fetch_one(
         f"""
         select count(*) as c from auth_events
         where event = 'login_failed' and {expr}
           and created_at > now() - make_interval(mins => %s)
-          -- a successful sign-in resets the counter
           and created_at > coalesce((
             select max(created_at) from auth_events
-            where event = 'login_success' and {expr}
+            where event in {resets} and {expr}
           ), '-infinity')
         """,
         (value, LOCKOUT_MINUTES, value),

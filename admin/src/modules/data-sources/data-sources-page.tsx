@@ -304,7 +304,7 @@ export function DataSourcesPage() {
       {sources.isLoading ? (
         <LoadingState />
       ) : sources.error ? (
-        <ErrorState message={getErrorMessage(sources.error)} onRetry={() => sources.refetch()} />
+        <ErrorState error={sources.error} message={getErrorMessage(sources.error)} onRetry={() => sources.refetch()} />
       ) : (
         <>
           <SummaryStrip sources={list} />

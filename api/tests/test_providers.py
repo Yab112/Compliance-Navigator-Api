@@ -171,6 +171,8 @@ def test_join_requires_fayda_and_validates_per_type(client, make_user):
     assert company.status_code == 201, company.text
     p = company.json()["payload"]["provider"]
     assert p["slug"].startswith("test-clearing-plc") and p["external_license_status"] == "pending"
+    # TIN and trade licence typed in, but staff have not checked them yet: no "Registered company" badge
+    assert p["registered_business"] is False
     assert _join(client, user).status_code == 409  # one profile per account
 
 
@@ -211,7 +213,10 @@ def test_hire_lifecycle_and_review_rules(client, make_user):
     assert _job(client, agent, hire["id"], "accept", price=None).status_code == 200
     _deliver_and_close(client, agent, customer, hire["id"])
 
-    assert review(stranger).status_code == 403  # only the hiring client
+    # Only the hiring client; others get the same 404 as a missing hire so ids are not confirmed
+    stranger_review = review(stranger)
+    assert stranger_review.status_code == 404 and stranger_review.json()["detail"] == "Request not found"
+    assert review(customer, {"id": "00000000-0000-0000-0000-000000000000"}).status_code == 404
     assert review(customer).status_code == 201
     assert review(customer).status_code == 409  # once per job
 
@@ -420,6 +425,24 @@ def test_tips_do_not_ask_verified_provider_to_verify(client, make_user):
     me = client.get(f"{API}/providers/me", headers=user["headers"]).json()["payload"]["provider"]
     assert me["id_verified"]
     assert not any("Fayda" in t for t in me["tips"])
+    assert not any("Vetting tab" in t for t in me["tips"])
+
+
+def test_tips_follow_what_is_actually_on_file():
+    from services import trust_score
+
+    parts = [{"key": "verification", "points": 10, "detail": "Fayda ID"}, {"key": "reliability", "points": 20}]
+    provider = {"entity_type": "individual", "national_id_verified": True, "tin": "123",
+                "external_license_status": "pending"}
+    tips = trust_score.tips({"parts": parts, "is_new": False}, provider,
+                            {"police_clearance": "pending", "education": "missing"})
+    assert any("checking your police clearance" in t for t in tips)
+    assert not any("Upload your police clearance" in t for t in tips)
+    assert any("Upload your education certificate on the Documents tab" in t for t in tips)
+    assert any("checking your sector licence" in t for t in tips)
+    done = trust_score.tips({"parts": parts, "is_new": False}, {**provider, "external_license_status": "verified"},
+                            {"police_clearance": "verified", "education": "verified"})
+    assert not any("police" in t or "education" in t or "licence" in t for t in done)
 
 
 # ---------------------------------------------------------------- the steps of a hire and Job Success

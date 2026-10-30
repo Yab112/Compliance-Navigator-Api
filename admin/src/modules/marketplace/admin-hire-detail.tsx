@@ -1,12 +1,14 @@
 "use client";
 
+import { getErrorMessage } from "@cn/core/lib/errors";
 import Link from "next/link";
 import { useAdminHire } from "@cn/core/api/providers";
 import { cn } from "@cn/core/lib/utils";
 import { humanize } from "@cn/core/lib/format";
 import { AdminPage } from "@/modules/components/admin-page";
 import { useCan } from "@/modules/access/api";
-import { EmptyState, ErrorState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
+import { EmptyState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
+import { ErrorState } from "@/modules/shared/states";
 import { PaymentBadge, PriceLine } from "@cn/ui/marketplace/payment-badge";
 import { HireStatusBadge, Stars } from "@cn/ui/marketplace/trust";
 import { HIRE_STATUS, areaLabel } from "@cn/ui/marketplace/constants";
@@ -72,7 +74,7 @@ export function AdminHireDetail({ id }: { id: string }) {
   if (isError || !detail) {
     return (
       <AdminPage title="Hire · ቅጥር">
-        <ErrorState message={error?.message ?? "Could not load this hire"} onRetry={() => refetch()} />
+        <ErrorState error={error} message={getErrorMessage(error, "Could not load this hire")} onRetry={() => refetch()} />
       </AdminPage>
     );
   }

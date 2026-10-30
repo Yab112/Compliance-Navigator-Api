@@ -171,3 +171,17 @@ def test_page_context_answers_without_restating_the_service(client):
     assert payload["reply"]["intent"] == "ask_fee"
     bad = client.post(f"{API}/assistant/turn", json={"message": "hi", "context_service": "drop table"})
     assert bad.status_code == 422
+
+
+def test_cost_and_time_question_answers_both(client):
+    from assistant.dialogue.answers import _answer
+    from assistant.dialogue.data import _service_record
+
+    rec = _service_record("mesob:mesob-728")
+    question = "How much does it cost and how long does it take?"
+    for intent in ("ask_fee", "ask_time"):
+        text = _answer(intent, rec, {"lang": "en"}, question)["text"]
+        assert "21000" in text and "Processing time" in text, text
+    # A single question still gets a single answer
+    assert "Processing time" not in _answer("ask_fee", rec, {"lang": "en"}, "how much does it cost?")["text"]
+    assert "21000" not in _answer("ask_time", rec, {"lang": "en"}, "how much time does it take?")["text"]

@@ -73,6 +73,8 @@ export type OfficeInfo = {
   phones: string[];
   workingHours: string;
   referenceImageUrl?: string;
+  /** How to find the right office when we have no verified local details */
+  note?: string;
 };
 
 export type RoadmapStep = {

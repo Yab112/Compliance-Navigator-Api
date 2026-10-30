@@ -52,7 +52,7 @@ def checklist(provider: dict, *, for_staff: bool = False) -> dict:
         items.append({
             "key": "telegram", "type": "telegram", "label": "Telegram username", "label_am": "የቴሌግራም ስም",
             "required": True, "status": "verified" if has_tg else "missing",
-            "message": None if has_tg else "Add your Telegram username on the Profile tab.",
+            "message": None if has_tg else "Add your Telegram username on the Edit profile tab.",
         })
         refs = references(provider["id"])
         confirmed = sum(1 for r in refs if r["status"] == "confirmed")
