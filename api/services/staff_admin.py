@@ -18,6 +18,7 @@ from psycopg.errors import UniqueViolation
 
 from auth import staff_service
 from auth.service import ClientInfo
+from config.config import settings
 from schemas.staff_user import StaffActor
 from services import access, approvals
 from services.db import connection, fetch_all, fetch_one
@@ -431,12 +432,15 @@ def send_link(actor: StaffActor, staff_id: str, kind: str, client: ClientInfo | 
         raise StaffAdminError("This person already accepted their invitation; send a password reset instead", 409)
     if kind == "reset" and target["status"] != "active":
         raise StaffAdminError("Only active accounts can reset their password", 409)
+    # Whoever can reset an account could take it over, so only for people with no more access than you
+    _check_can_grant(actor, access.staff_roles(staff_id))
     link = staff_service.issue_link(target, kind, actor.email)
     sent = (staff_service.send_invite(target, link, actor.email) if kind == "invite"
             else staff_service.send_reset(target, link))
     staff_service.audit("staff.invite_resent" if kind == "invite" else "staff.reset_link_sent", actor=actor,
                         target=f"staff:{staff_id}", client=client, details={"email_sent": sent})
-    return {"email_sent": sent, "link": None if sent else link,
+    # In production the link only ever goes by email
+    return {"email_sent": sent, "link": None if sent or settings.is_production else link,
             "expires_in_minutes": staff_service.INVITE_TTL_HOURS * 60 if kind == "invite" else staff_service.RESET_TTL_MINUTES}
 
 

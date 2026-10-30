@@ -410,7 +410,8 @@ def test_manual_refund_waits_for_staff_to_send_and_confirm(client, make_user):
     body = {"method": "manual", "reason": "Client paid with a card that Chapa can't refund",
             "client_bank": {"bank_name": "Awash Bank", "account_name": "Test Client", "account_number": "5555 4444 3333"}}
     assert _refund(client, job, {**body, "client_bank": None}).status_code == 400
-    decided = approve_pending(client, _refund(client, job, body), make_user("admin"))
+    checker = make_user("admin")
+    decided = approve_pending(client, _refund(client, job, body), checker)
     assert "5555" not in str(decided["payload"])  # the account number is stored encrypted, even in the approval
     refund = decided["result"]
     assert refund["status"] == "manual_pending"
@@ -419,8 +420,10 @@ def test_manual_refund_waits_for_staff_to_send_and_confirm(client, make_user):
                         headers=job["admin"]["headers"]).json()["payload"]
     assert listed["total"] == 1 and listed["items"][0]["client_account_number"] == "555544443333"
     assert client.get(f"{API}/refunds/{refund['refund_id']}/receipt", headers=job["customer"]["headers"]).status_code == 404
-    act = lambda b: client.post(f"{API}/admin/marketplace/refunds/{refund['refund_id']}", json=b,  # noqa: E731
-                                headers=job["admin"]["headers"])
+    act = lambda b, who=checker: client.post(f"{API}/admin/marketplace/refunds/{refund['refund_id']}",  # noqa: E731
+                                             json=b, headers=who["headers"])
+    # Whoever typed in the client's bank account can't also say the money was sent
+    assert act({"action": "confirm", "transfer_reference": "AWB-1", "note": "sent"}, job["admin"]).status_code == 403
     assert act({"action": "confirm"}).status_code == 400  # needs the bank transfer reference
     r = act({"action": "confirm", "transfer_reference": "AWB-778812", "note": "Sent from our Awash account"})
     assert r.status_code == 200 and r.json()["payload"]["refund"]["status"] == "refunded"
@@ -515,10 +518,31 @@ def test_chapa_transfer_verify_reads_list_and_test_mode_answers(monkeypatch):
         "live-bad": {"message": "Transfer details", "data": {"reference": "live-bad", "status": "failed"}},
         "live-empty": {"message": "Transfer details", "data": [{}]},
         "test-empty": {"message": "Transfer details (Test Mode)", "data": [{}]},
+        # Someone else's transfer must never stand in for ours
+        "not-mine": {"message": "Transfer details", "data": [{"reference": "other", "status": "failed"}]},
     }
-    monkeypatch.setattr(gw, "_call", lambda method, path, *a, **k: answers[path.rsplit("/", 1)[1]], raising=False)
+    errors = {
+        "gone": ps.PaymentError("Payment service: Transfer not found", 502, gateway_status=404),
+        "bad-key": ps.PaymentError("Payment service: Invalid API key", 502, gateway_status=401),
+        "slow": ps.PaymentError("Payment service: busy", 502, uncertain=True, gateway_status=503),
+    }
+
+    def call(method, path, *a, **k):
+        ref = path.rsplit("/", 1)[1]
+        if ref in errors:
+            raise errors[ref]
+        return answers[ref]
+
+    monkeypatch.setattr(gw, "_call", call, raising=False)
+    monkeypatch.setattr(ps.settings, "chapa_secret_key", "CHASECK_TEST-x")
     assert gw.verify_transfer("live-ok") == "paid"
     assert gw.verify_transfer("live-wait") == "approved"
     assert gw.verify_transfer("live-bad") == "failed"
     assert gw.verify_transfer("live-empty") == "approved"  # live and unknown: keep the money held
     assert gw.verify_transfer("test-empty") == "paid"
+    assert gw.verify_transfer("not-mine") == "approved"
+    assert gw.verify_transfer("gone") == "missing"
+    assert gw.verify_transfer("bad-key") == "approved"  # a refused key says nothing about the transfer
+    assert gw.verify_transfer("slow") == "approved"
+    monkeypatch.setattr(ps.settings, "chapa_secret_key", "CHASECK-live")
+    assert gw.verify_transfer("test-empty") == "approved"  # the test-mode shortcut needs a test key

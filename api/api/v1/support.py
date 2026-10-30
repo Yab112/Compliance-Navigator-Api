@@ -74,6 +74,13 @@ def meta():
 
 @router.post("/tickets", status_code=status.HTTP_201_CREATED)
 def create_ticket(body: TicketCreate, request: Request, user: AuthUser | None = Depends(get_optional_user)):
+    if body.conversation_id and user:
+        from assistant import store
+
+        # Only your own assistant conversation can go with your ticket (staff replies are written into it)
+        convo = store.get(str(body.conversation_id), user.id)
+        if not convo or convo["user_id"] not in (None, user.id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
     try:
         ticket = svc.create_ticket(
             subject=body.subject, body=body.body, queue=body.queue, source="contact_form",

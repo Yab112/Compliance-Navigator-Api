@@ -5,12 +5,13 @@ sessions, refresh cookie (cn_staff_refresh, scoped to /api/v1/staff/auth) and to
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
 from auth import staff_service as svc
 from auth.service import AuthError, ClientInfo
 from config.config import settings
+from core import ratelimit
 from core.deps import client_info, get_current_staff
 from schemas.staff_user import StaffActor
 from services import approvals
@@ -106,13 +107,15 @@ def logout_all(response: Response, staff: StaffActor = Depends(get_current_staff
     return _ok({"signedOut": count})
 
 
-@router.post("/auth/forgot-password", status_code=status.HTTP_202_ACCEPTED)
-def forgot_password(body: ForgotPassword, client: ClientInfo = Depends(client_info)):
-    """Always answers the same, so it can't reveal who is on staff."""
+@router.post("/auth/forgot-password", status_code=status.HTTP_202_ACCEPTED,
+             dependencies=[Depends(ratelimit.limit("forgot_password"))])
+def forgot_password(body: ForgotPassword, background: BackgroundTasks, client: ClientInfo = Depends(client_info)):
+    """Always answers the same, and as fast, so it can't reveal who is on staff."""
     staff = svc.get_staff_by_email(body.email)
     svc.audit("auth.password_reset_requested", actor=staff, actor_email=body.email, client=client)
-    if staff and staff["status"] == "active":
-        svc.send_reset(staff, svc.issue_link(staff, "reset", "self"))
+    # A few links an hour per person; more are quietly not sent, so nobody can keep cancelling someone's link
+    if staff and staff["status"] == "active" and not ratelimit.hit("forgot_password_email", f"staff:{staff['id']}"):
+        background.add_task(svc.send_reset, staff, svc.issue_link(staff, "reset", "self"))
     return _ok({"message": "If that email belongs to an active staff account, a reset link has been sent."})
 
 

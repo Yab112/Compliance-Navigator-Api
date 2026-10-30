@@ -77,6 +77,8 @@ services:
     volumes:
       # Uploaded files (including national ID copies) live on a volume, never in the image
       - uploads:/app/uploads
+      # Trained assistant models survive redeploys; an empty volume is seeded from the image
+      - models:/app/models_store
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,9 +110,33 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # Exactly one beat: it starts the scheduled jobs (payout checks every 15 minutes, daily upkeep)
+  beat:
+    build: .
+    command: celery -A worker.celery_app beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    env_file:
+      - .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      REDIS_HOST: redis
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      DATABASE_URL: postgresql://navigator:${POSTGRES_PASSWORD}@postgres:5432/compliance_navigator
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   neo4j_data:
   qdrant_data:
   minio_data:
   uploads:
+  models:

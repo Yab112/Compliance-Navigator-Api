@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from core import ratelimit
 from core.deps import get_current_user, get_optional_user
 from schemas.auth_user import AuthUser
 from schemas.roadmaps import RoadmapCreateRequest, StepCompleteRequest
@@ -15,7 +16,7 @@ from services.roadmap_service import (
 router = APIRouter(prefix="/roadmaps", tags=["Roadmaps"])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(ratelimit.limit("roadmap"))])
 def create_roadmap(
     body: RoadmapCreateRequest,
     user: AuthUser | None = Depends(get_optional_user),

@@ -30,6 +30,8 @@ class Settings(BaseSettings):
 
 
     secret_key: str = os.environ.get("SECRET_KEY", "change-me-in-production")
+    # Fernet key(s) for bank accounts and ID numbers, newest first, comma separated (see core/crypto.py)
+    payout_encryption_key: str | None = os.environ.get("PAYOUT_ENCRYPTION_KEY")
     algorithm: str = "HS256"
 
     # Postgres system of record
@@ -139,6 +141,9 @@ class Settings(BaseSettings):
         key = self.secret_key or ""
         if key.startswith("change-me") or len(key) < 32:
             problems.append("SECRET_KEY must be at least 32 random characters (not the change-me default)")
+        if not self.payout_encryption_key:
+            problems.append("PAYOUT_ENCRYPTION_KEY must be set (a Fernet key) so bank accounts and ID numbers are "
+                            "not encrypted with a key derived from SECRET_KEY")
         if not self.neo4j_password or self.neo4j_password == "darixsamani" or self.neo4j_password.startswith("change-me"):
             problems.append("NEO4J_PASSWORD must be set to a real password")
         if "minioadmin" in (self.minio_access_key, self.minio_secret_key):

@@ -279,7 +279,7 @@ def _production_kwargs(**overrides) -> dict:
         chapa_webhook_secret="whsec", fayda_mode="live", fayda_client_id="id", fayda_authorize_url="https://f/a",
         fayda_token_url="https://f/t", fayda_userinfo_url="https://f/u", fayda_jwks_url="https://f/j",
         fayda_private_key="-----BEGIN KEY-----", fayda_redirect_uri="https://navigator.example/cb",
-        id_hash_pepper="pepper", smtp_host="smtp.example", log_level="INFO", demo_password=None,
+        id_hash_pepper="pepper", payout_encryption_key="fernet-key", smtp_host="smtp.example", log_level="INFO", demo_password=None,
     )
     return {**good, **overrides}
 
