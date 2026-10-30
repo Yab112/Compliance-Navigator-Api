@@ -143,8 +143,10 @@ The API ships as a Docker image (`api/Dockerfile`): it runs as a non-root user, 
 ```bash
 cd api
 cp .env.sample .env            # then fill in every value below
-docker compose up -d --build postgres neo4j redis web
+docker compose up -d --build postgres neo4j redis web worker beat
 ```
+
+Run exactly one `beat`: it starts the scheduled jobs (Chapa payout checks every 15 minutes, daily upkeep). The trained assistant models (`models_store/`, not in git) are copied into the image when the build machine has them and kept on the `models` volume; on a fresh server either build from a machine that has them or retrain from Admin, Assistant.
 
 ### Production checklist
 
@@ -152,6 +154,7 @@ Set these in `api/.env` (or your host's secret store) before the first start:
 
 - [ ] `ENVIRONMENT=production`: hides `/docs` and `/openapi.json`, turns off auto-reload and refuses a weak `SECRET_KEY`.
 - [ ] `SECRET_KEY`: 32 or more random characters (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Never reuse the sample value.
+- [ ] `PAYOUT_ENCRYPTION_KEY`: a Fernet key (`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`) that encrypts bank accounts and guarantor ID numbers. Production refuses to start without it. Keep it with your backups: without it those values can't be read.
 - [ ] `ID_HASH_PEPPER`: its own random value, set once and never changed (it keys the stored national ID hashes).
 - [ ] `POSTGRES_PASSWORD`, `NEO4J_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`: strong, unique passwords. Compose refuses to start without them. Use letters and digits only for `POSTGRES_PASSWORD`, since it is placed inside `DATABASE_URL`.
 - [ ] `AUTH_COOKIE_SECURE=true` (HTTPS only). `AUTH_COOKIE_SAMESITE=none` only if the web site and the API are on different sites.
@@ -161,9 +164,8 @@ Set these in `api/.env` (or your host's secret store) before the first start:
 - [ ] `FAYDA_MODE=live` with the `FAYDA_*` values issued by the National ID Program. Never run the sandbox in production.
 - [ ] SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`) so password reset links go by email and are never written to logs.
 - [ ] `FORWARDED_ALLOW_IPS`: the address of your reverse proxy, so rate limits see real client IPs.
-- [ ] `WEB_CONCURRENCY`: number of API worker processes. Keep it at 1 for now: every process runs the database migrations at start-up, and they do not yet take a lock.
+- [ ] `WEB_CONCURRENCY`: number of API worker processes. Migrations take a database lock, so more than one is safe.
 - [ ] VAT and receipts: `PLATFORM_LEGAL_NAME`, `PLATFORM_TIN`, `PLATFORM_VAT_NUMBER`, `PLATFORM_ADDRESS`.
-- [ ] `ADMIN_EMAILS` empty or limited to real staff addresses.
 
 ### Logs
 

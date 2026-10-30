@@ -38,7 +38,7 @@ from schemas.organizations import (
 )
 from services import org_import, org_service
 from services.org_service import OrgError
-from services.storage_service import save_agent_file
+from services.storage_service import MAX_UPLOAD_BYTES, save_agent_file
 
 router = APIRouter(tags=["Organizations"])
 
@@ -57,7 +57,8 @@ async def _store(file: UploadFile, *, public: bool, pdf_only: bool = False, imag
     if images_only and not (file.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="Upload a JPG, PNG or WEBP image")
     try:
-        return save_agent_file(await file.read(), file.filename or "upload", file.content_type, public=public)
+        content = await file.read(MAX_UPLOAD_BYTES + 1)  # anything longer is refused below
+        return save_agent_file(content, file.filename or "upload", file.content_type, public=public)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -305,7 +306,7 @@ async def import_services(
 ):
     """Check a CSV of services row by row; with dry_run=false, save the valid rows as drafts."""
     _member(org_id, user)
-    raw = await file.read()
+    raw = await file.read(2 * 1024 * 1024 + 1)
     if len(raw) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="The file is larger than 2 MB")
     try:

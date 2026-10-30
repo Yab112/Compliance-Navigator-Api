@@ -277,14 +277,26 @@ def admin_revoke_sessions(user_id: UUID, admin: AuthUser = Depends(require_admin
 
 
 @router.post("/users/{user_id}/reset-link")
-def admin_reset_link(user_id: UUID, admin: AuthUser = Depends(require_admin)):
-    """A one-hour password reset link the admin can hand to the user (no email needed)."""
+def admin_reset_link(user_id: UUID, background: BackgroundTasks, admin: AuthUser = Depends(require_admin)):
+    """
+    A one-hour password reset link. In production it goes only to the user's own email, so no staff member
+    can use it to take over the account; in development it is shown so it can be handed over.
+    """
     user = user_store.get_user(str(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     link = auth_service.create_reset_link(user, created_by=admin.email)
     auth_service.record_event("reset_link_issued", user_id=user["id"], detail=f"by {admin.email}")
-    return _ok({"link": link, "expiresInMinutes": auth_service.RESET_TTL_MINUTES})
+    if auth_service.settings.is_production:
+        background.add_task(auth_service.send_email, auth_service.Email(
+            to=user["email"],
+            subject="Reset your Compliance Navigator password",
+            text=(f"Hello {user['fullname'] or ''},\n\nOur support team sent you a link to choose a new password. "
+                  f"Use it within {auth_service.RESET_TTL_MINUTES} minutes:\n{link}\n\n"
+                  "If you didn't ask our team for this, reply to this email so we can check your account.\n"),
+        ))
+        return _ok({"link": None, "emailed": True, "expiresInMinutes": auth_service.RESET_TTL_MINUTES})
+    return _ok({"link": link, "emailed": False, "expiresInMinutes": auth_service.RESET_TTL_MINUTES})
 
 
 @router.get("/auth/events")

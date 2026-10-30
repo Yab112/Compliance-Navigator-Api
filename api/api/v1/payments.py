@@ -124,6 +124,11 @@ async def chapa_callback(request: Request):
             tx_ref = body.get("trx_ref") or body.get("tx_ref")
         except Exception:
             tx_ref = None
+    from core import ratelimit
+
+    # Anyone can call this, so limit how often it makes us ask Chapa about the same payment
+    if tx_ref and isinstance(tx_ref, str) and ratelimit.hit("chapa_webhook", f"cb:{tx_ref[:100]}") is not None:
+        return _ok({"received": True})
     if tx_ref and payment_service.get(tx_ref):
         try:
             payment_service.confirm(tx_ref)

@@ -29,6 +29,10 @@ export { useAdminMutation, useAdminQuery };
 
 const p = apiPaths.admin;
 
+// Running or editing a data source changes its runs, the graph it feeds and the overview counts
+const DATA_SOURCE_KEYS = [["data-sources"], ["data-source-runs"], ["custom-data-source"], ["graph-stats"], ["overview"]];
+const GRAPH_KEYS = [["graph-document"], ["graph-documents"], ["graph-stats"], ["graph-view"], ["graph-institutions"]];
+
 export const useAdminOverview = () => useAdminQuery<AdminOverview>(["overview"], p.overview);
 
 export const useDataSources = (poll: boolean) =>
@@ -64,13 +68,13 @@ export const useDataSourceRunTotal = (poll: boolean) =>
   }).payload?.total;
 
 export const useRunDataSource = () => {
-  const { run, isPending } = useAdminMutation<{ run: DataSourceRun }, undefined>();
+  const { run, isPending } = useAdminMutation<{ run: DataSourceRun }, undefined>(DATA_SOURCE_KEYS);
   return { runSource: (id: string) => run(p.runDataSource(id), MTD.POST), isPending };
 };
 
 /** Pause stops both "Run now" and the schedule; resume turns them back on. */
 export const usePauseDataSource = () => {
-  const { run, isPending } = useAdminMutation<{ source: string; enabled: boolean }, undefined>();
+  const { run, isPending } = useAdminMutation<{ source: string; enabled: boolean }, undefined>(DATA_SOURCE_KEYS);
   return {
     setPaused: (id: string, paused: boolean) =>
       run(paused ? p.pauseDataSource(id) : p.resumeDataSource(id), MTD.POST),
@@ -79,7 +83,7 @@ export const usePauseDataSource = () => {
 };
 
 export const useMarkRunFailed = () => {
-  const { run, isPending } = useAdminMutation<{ run: DataSourceRun }, undefined>();
+  const { run, isPending } = useAdminMutation<{ run: DataSourceRun }, undefined>(DATA_SOURCE_KEYS);
   return { markFailed: (runId: string) => run(p.markRunFailed(runId), MTD.POST), isPending };
 };
 
@@ -90,7 +94,7 @@ export const useCustomDataSource = (id: string | null) =>
   });
 
 export const useSaveCustomDataSource = () => {
-  const { run, isPending } = useAdminMutation<{ source: CustomDataSource; key?: string }, CustomDataSourceInput>();
+  const { run, isPending } = useAdminMutation<{ source: CustomDataSource; key?: string }, CustomDataSourceInput>(DATA_SOURCE_KEYS);
   return {
     save: (id: string | null, body: CustomDataSourceInput) =>
       id ? run(p.customDataSource(id), MTD.PUT, body) : run(p.customDataSources, MTD.POST, body),
@@ -99,7 +103,7 @@ export const useSaveCustomDataSource = () => {
 };
 
 export const useDeleteCustomDataSource = () => {
-  const { run, isPending } = useAdminMutation<{ deleted: { id: string; name: string; chunks_removed: number } }, undefined>();
+  const { run, isPending } = useAdminMutation<{ deleted: { id: string; name: string; chunks_removed: number } }, undefined>(DATA_SOURCE_KEYS);
   return { remove: (id: string) => run(p.customDataSource(id), MTD.DELETE), isPending };
 };
 
@@ -147,12 +151,12 @@ export type DocumentPatch = Partial<
 > & { mark_verified?: boolean };
 
 export const useUpdateDocument = () => {
-  const { run, isPending } = useAdminMutation<{ document: GraphDocument }, DocumentPatch>();
+  const { run, isPending } = useAdminMutation<{ document: GraphDocument }, DocumentPatch>(GRAPH_KEYS);
   return { updateDocument: (id: string, body: DocumentPatch) => run(p.graphDocument(id), MTD.PATCH, body), isPending };
 };
 
 export const useCypherQuery = () => {
-  const { run, isPending } = useAdminMutation<CypherResult, { query: string }>();
+  const { run, isPending } = useAdminMutation<CypherResult, { query: string }>("none");
   return { runQuery: (query: string) => run(p.graphQuery, MTD.POST, { query }), isPending };
 };
 
@@ -162,17 +166,17 @@ export const useSaveAISettings = () => {
   const { run, isPending } = useAdminMutation<
     { provider: string; ollama_model: string },
     { provider: string; ollama_model?: string }
-  >();
+  >([["ai-status"]]);
   return { saveSettings: (body: { provider: string; ollama_model?: string }) => run(p.aiSettings, MTD.PUT, body), isPending };
 };
 
 export const useAITest = () => {
-  const { run, isPending } = useAdminMutation<AITestResult, { message: string }>();
+  const { run, isPending } = useAdminMutation<AITestResult, { message: string }>("none");
   return { testPrompt: (message: string) => run(p.aiTest, MTD.POST, { message }), isPending };
 };
 
 export const useKnowledgeSearch = () => {
-  const { run, isPending } = useAdminMutation<{ results: KnowledgeHit[] }, { query: string; limit: number }>();
+  const { run, isPending } = useAdminMutation<{ results: KnowledgeHit[] }, { query: string; limit: number }>("none");
   return { search: (query: string) => run(p.aiSearch, MTD.POST, { query, limit: 8 }), isPending };
 };
 
@@ -187,7 +191,7 @@ export const useFeedbackFlags = (filters: FeedbackFilters, page = 0, size = FEED
 };
 
 export const useResolveFlag = () => {
-  const { run, isPending } = useAdminMutation<{ flag: FeedbackFlag }, { status: string; note?: string }>();
+  const { run, isPending } = useAdminMutation<{ flag: FeedbackFlag }, { status: string; note?: string }>([["feedback"], ["overview"]]);
   return {
     resolveFlag: (id: string, status: string, note?: string) => run(p.feedbackItem(id), MTD.PATCH, { status, note }),
     isPending,
@@ -202,7 +206,7 @@ export const useAdminUsers = (q: string, role: string, page: number, pageSize: n
 };
 
 export const useUpdateUser = () => {
-  const { run, isPending } = useAdminMutation<{ user: AdminUser }, { role?: string; is_active?: boolean }>();
+  const { run, isPending } = useAdminMutation<{ user: AdminUser }, { role?: string; is_active?: boolean }>([["users"], ["auth"], ["overview"]]);
   return {
     updateUser: (id: string, body: { role?: string; is_active?: boolean }) => run(p.user(id), MTD.PATCH, body),
     isPending,
@@ -226,7 +230,7 @@ export const useAuthEvents = (userId?: string, page = 0, size = AUTH_EVENTS_PAGE
 };
 
 export const useUserSecurityActions = () => {
-  const { run, isPending } = useAdminMutation<{ signedOut?: number; link?: string; expiresInMinutes?: number }, undefined>();
+  const { run, isPending } = useAdminMutation<{ signedOut?: number; link?: string | null; emailed?: boolean; expiresInMinutes?: number }, undefined>([["users"], ["auth"]]);
   return {
     revokeSessions: (id: string) => run(p.userRevokeSessions(id), MTD.POST),
     issueResetLink: (id: string) => run(p.userResetLink(id), MTD.POST),

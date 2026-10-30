@@ -406,3 +406,23 @@ def test_payout_at_or_above_the_limit_needs_a_second_person(client, make_user, m
                     (json.dumps(saved["value"]),))
         platform_settings.clear_cache()
         execute("delete from approval_requests where target = %s", (f"payout:{payout['id']}",))
+
+
+@pytest.mark.parametrize("content_type", [None, "application/JSON"])
+def test_leaving_out_the_json_content_type_does_not_skip_approval(client, make_staff, content_type):
+    """FastAPI reads these bodies as JSON too, so the approval check must see the same body."""
+    import json
+
+    from services import platform_settings
+
+    admin, _checker = make_staff(), make_staff()
+    before = platform_settings.get("commission_percent")
+    headers = dict(admin["headers"])
+    if content_type:
+        headers["content-type"] = content_type
+    r = client.patch(f"{API}/admin/settings", content=json.dumps({"values": {"commission_percent": before + 1}}),
+                     headers=headers)
+    assert r.status_code == 202, r.text
+    assert r.json()["payload"]["approval"]["status"] == "pending"
+    assert platform_settings.get("commission_percent") == before
+    execute("delete from approval_requests where id = %s", (r.json()["payload"]["approval"]["id"],))

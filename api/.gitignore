@@ -10,5 +10,5 @@ uploads/
 .cache/
 
 # Assistant training run status files
-models_store/assistant/.last_run*
-models_store/train.log
+# Trained models are build/deploy artifacts, not source (see the models volume in docker-compose.yml)
+models_store/

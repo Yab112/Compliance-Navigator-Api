@@ -95,11 +95,11 @@ def retrain(candidates: str = Query("tfidf,e5,labse", pattern=r"^[a-z0-9,]+$"),
     if run and run.get("state") == "running":
         raise HTTPException(status_code=409, detail="A training run is already in progress")
     nlu.STORE.mkdir(parents=True, exist_ok=True)
-    log = open(nlu.STORE / ".last_run.log", "w")
-    subprocess.Popen(
-        [sys.executable, "-m", "scripts.train_assistant", "--candidates", candidates, "--activate"],
-        cwd=API_ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-    )
+    with open(nlu.STORE / ".last_run.log", "w") as run_log:
+        subprocess.Popen(
+            [sys.executable, "-m", "scripts.train_assistant", "--candidates", candidates, "--activate"],
+            cwd=API_ROOT, stdout=run_log, stderr=subprocess.STDOUT, start_new_session=True,
+        )
     (nlu.STORE / ".last_run.json").write_text(json.dumps({"state": "running"}))
     log.info("assistant retrain started by %s (candidates=%s)", admin.email, candidates)
     return _ok({"started": True})

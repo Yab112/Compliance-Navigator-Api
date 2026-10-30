@@ -108,9 +108,13 @@ async def require_admin(
 
     mutation = request.method not in _READS
     body = None
-    if (mutation or policy.body_field) and "json" in request.headers.get("content-type", ""):
+    content_type = request.headers.get("content-type", "").lower()
+    # FastAPI also reads a body with no content type (or "application/JSON") as JSON, so the checks
+    # below must see that same body; otherwise leaving the header out would skip approvals
+    if (mutation or policy.body_field) and ("json" in content_type or not content_type):
         try:
-            body = await request.json()
+            raw = await request.body()
+            body = json.loads(raw) if raw else None
         except (json.JSONDecodeError, UnicodeDecodeError, RuntimeError):
             body = None
     permission = policy.permission
