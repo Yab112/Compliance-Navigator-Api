@@ -153,7 +153,6 @@ export const apiPaths = {
     graphDocuments: "admin/graph/documents",
     graphDocument: (id: string) => `admin/graph/documents/${id}`,
     graphInstitutions: "admin/graph/institutions",
-    graphQuery: "admin/graph/query",
     marketStats: "admin/marketplace/stats",
     marketProviders: "admin/marketplace/providers",
     marketProvider: (id: string) => `admin/marketplace/providers/${id}`,

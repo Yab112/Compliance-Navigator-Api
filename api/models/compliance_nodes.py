@@ -5,10 +5,10 @@ from typing import ClassVar, Optional
 from uuid import uuid4
 
 from pydantic import Field
-from neontology import BaseNode
+from models.graph_model import GraphNode
 
 
-class ServiceNode(BaseNode):
+class ServiceNode(GraphNode):
     __primarylabel__: ClassVar[str] = "Service"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -21,7 +21,7 @@ class ServiceNode(BaseNode):
     sort_order: int = 0
 
 
-class SubCityNode(BaseNode):
+class SubCityNode(GraphNode):
     __primarylabel__: ClassVar[str] = "SubCity"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -31,7 +31,7 @@ class SubCityNode(BaseNode):
     aliases: list[str] = Field(default_factory=list)
 
 
-class SectorNode(BaseNode):
+class SectorNode(GraphNode):
     __primarylabel__: ClassVar[str] = "Sector"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -40,7 +40,7 @@ class SectorNode(BaseNode):
     regulatory_body: str = ""
 
 
-class EntityTypeNode(BaseNode):
+class EntityTypeNode(GraphNode):
     __primarylabel__: ClassVar[str] = "EntityType"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -48,7 +48,7 @@ class EntityTypeNode(BaseNode):
     label: str
 
 
-class InstitutionNode(BaseNode):
+class InstitutionNode(GraphNode):
     __primarylabel__: ClassVar[str] = "Institution"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -63,7 +63,7 @@ class InstitutionNode(BaseNode):
     at_mesob: bool = False
 
 
-class DocumentNode(BaseNode):
+class DocumentNode(GraphNode):
     __primarylabel__: ClassVar[str] = "Document"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -88,7 +88,7 @@ class DocumentNode(BaseNode):
     updated_at: Optional[datetime] = None
 
 
-class OfficeNode(BaseNode):
+class OfficeNode(GraphNode):
     __primarylabel__: ClassVar[str] = "Office"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -105,7 +105,7 @@ class OfficeNode(BaseNode):
     last_verified: Optional[date] = None
 
 
-class GovServiceNode(BaseNode):
+class GovServiceNode(GraphNode):
     """A single government service from a public catalog (e.g. MESOB)."""
 
     __primarylabel__: ClassVar[str] = "GovService"
@@ -129,7 +129,7 @@ class GovServiceNode(BaseNode):
     last_verified: Optional[date] = None
 
 
-class MesobCenterNode(BaseNode):
+class MesobCenterNode(GraphNode):
     __primarylabel__: ClassVar[str] = "MesobCenter"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -141,7 +141,7 @@ class MesobCenterNode(BaseNode):
     map_url: Optional[str] = None
 
 
-class ManualReferenceNode(BaseNode):
+class ManualReferenceNode(GraphNode):
     __primarylabel__: ClassVar[str] = "ManualReference"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -158,7 +158,7 @@ class ManualReferenceNode(BaseNode):
     company_name: Optional[str] = None
 
 
-class CompanyProfileNode(BaseNode):
+class CompanyProfileNode(GraphNode):
     __primarylabel__: ClassVar[str] = "CompanyProfile"
     __primaryproperty__: ClassVar[str] = "id"
 
@@ -168,7 +168,7 @@ class CompanyProfileNode(BaseNode):
     notes: Optional[str] = None
 
 
-class RoadmapNode(BaseNode):
+class RoadmapNode(GraphNode):
     __primarylabel__: ClassVar[str] = "Roadmap"
     __primaryproperty__: ClassVar[str] = "id"
 

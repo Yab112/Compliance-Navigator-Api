@@ -6,7 +6,7 @@ from conftest import API
 
 from services import org_service
 from services.db import execute, fetch_one
-from services.graph_service import _query_rows
+from services import graph_store
 
 
 @pytest.fixture(scope="module")
@@ -132,10 +132,42 @@ def test_publish_requires_verified_org_and_syncs_graph(client, make_user, graph_
     _verify(client, admin, org["id"])
     assert client.post(f"{API}/admin/submissions/{rev}/review", json={"action": "publish"},
                        headers=admin["headers"]).status_code == 200
-    rows = _query_rows("MATCH (s:OrgService {id: $sid})-[:OFFERED_BY]->(o:Organization) RETURN o.id AS org", {"sid": sid})
-    assert rows and rows[0]["org"] == org["id"]
+    orgs = [n["id"] for n in graph_store.neighbors("OrgService", sid, "OFFERED_BY") if n["label"] == "Organization"]
+    assert orgs == [org["id"]]
     page = client.get(f"{API}/organizations/{org['slug']}").json()["payload"]["organization"]
     assert [s["name"] for s in page["services"]] == ["Business permit"]
+
+
+def test_publish_and_graph_sync_roll_back_together(client, make_user, graph_cleanup, monkeypatch):
+    user, admin = make_user(), make_user("admin")
+    org = _register(client, user)
+    _verify(client, admin, org["id"])
+    r = client.post(f"{API}/org/{org['id']}/services", json=_service("Rollback permit"), headers=user["headers"])
+    sid = r.json()["payload"]["service"]["id"]
+    graph_cleanup.append(sid)
+    assert client.post(f"{API}/org/{org['id']}/services/{sid}/submit", headers=user["headers"]).status_code == 200
+    rev = _pending_revision(client, admin, sid)
+
+    real = graph_store.merge_edge
+
+    def failing(type, *args, **kwargs):
+        if type == "OFFERED_BY":
+            raise RuntimeError("graph write failed")
+        return real(type, *args, **kwargs)
+
+    monkeypatch.setattr(graph_store, "merge_edge", failing)
+    with pytest.raises(RuntimeError):
+        client.post(f"{API}/admin/submissions/{rev}/review", json={"action": "publish"}, headers=admin["headers"])
+    # The graph write failed, so the publish did not happen either
+    row = fetch_one("select status, published_snapshot is not null as live from org_services where id = %s", (sid,))
+    assert not row["live"] and row["status"] != "published"
+    assert fetch_one("select status from org_service_revisions where id = %s", (rev,))["status"] == "pending"
+    assert graph_store.get_node("OrgService", sid) is None
+
+    monkeypatch.undo()
+    r = client.post(f"{API}/admin/submissions/{rev}/review", json={"action": "publish"}, headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    assert graph_store.get_node("OrgService", sid)["published"] is True
 
 
 def test_revision_keeps_published_version_until_approved(client, make_user, graph_cleanup):

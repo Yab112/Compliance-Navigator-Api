@@ -1,15 +1,12 @@
-"""Neo4j maintenance for the admin dashboard: MESOB sync, stats, stale checks, editing."""
+"""Graph maintenance for the admin dashboard: MESOB sync, stats, stale checks, editing."""
 
 from __future__ import annotations
 
-import re
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
-from services import catalog_service
-from services.graph_service import _query_rows
-
-BATCH = 200
+from services import catalog_service, graph_store
+from services.db import connection, fetch_all, fetch_one
 
 # Properties an admin may edit on a Document node from the dashboard
 EDITABLE_DOCUMENT_FIELDS = {
@@ -19,39 +16,20 @@ EDITABLE_DOCUMENT_FIELDS = {
 }
 
 
-def _chunks(rows: list[dict], size: int = BATCH):
-    for i in range(0, len(rows), size):
-        yield rows[i : i + size]
-
-
 def sync_catalog_to_graph() -> dict:
-    """Mirror the MESOB snapshot into Neo4j and link roadmap documents to it."""
+    """Mirror the MESOB snapshot into the graph and link roadmap documents to it, in one transaction."""
     catalog = catalog_service.load_catalog()
     today = date.today().isoformat()
-
-    _query_rows("CREATE CONSTRAINT gov_service_id IF NOT EXISTS FOR (n:GovService) REQUIRE n.id IS UNIQUE")
-    _query_rows("CREATE CONSTRAINT institution_id IF NOT EXISTS FOR (n:Institution) REQUIRE n.id IS UNIQUE")
-    _query_rows("CREATE CONSTRAINT mesob_center_id IF NOT EXISTS FOR (n:MesobCenter) REQUIRE n.id IS UNIQUE")
 
     institutions = [
         {
             "id": i["id"], "name": i.get("name"), "name_am": i.get("name_am"),
             "short_name": i.get("short_name"), "logo_url": i.get("logo_url"),
             "service_count": i.get("service_count", 0),
+            "at_mesob": True, "scrape_method": "mesob_api",
         }
         for i in catalog["institutions"]
     ]
-    _query_rows(
-        """
-        UNWIND $rows AS row
-        MERGE (i:Institution {id: row.id})
-        SET i.name = row.name, i.name_am = row.name_am, i.short_name = row.short_name,
-            i.logo_url = row.logo_url, i.service_count = row.service_count,
-            i.at_mesob = true, i.scrape_method = 'mesob_api'
-        """,
-        {"rows": institutions},
-    )
-
     services = [
         {
             "id": s["id"], "source_id": s.get("source_id"), "language": s["language"],
@@ -62,195 +40,167 @@ def sync_catalog_to_graph() -> dict:
             "fee_text": s.get("fee_text"), "fee_etb_min": s.get("fee_etb_min"),
             "fee_etb_max": s.get("fee_etb_max"), "fee_has_usd": s.get("fee_has_usd", False),
             "online_url": s.get("online_url"), "source_url": s.get("source_url"),
+            "source": "mesob", "last_verified": today,
         }
         for s in catalog["services"]
     ]
-    for batch in _chunks(services):
-        _query_rows(
-            """
-            UNWIND $rows AS row
-            MERGE (g:GovService {id: row.id})
-            SET g += row, g.source = 'mesob', g.last_verified = date($today)
-            WITH g, row
-            MATCH (i:Institution {id: row.institution_id})
-            MERGE (g)-[:OFFERED_BY]->(i)
-            """,
-            {"rows": batch, "today": today},
-        )
-
-    # Services removed from MESOB since the last sync
-    removed = _query_rows(
-        """
-        MATCH (g:GovService {source: 'mesob'}) WHERE NOT g.id IN $ids
-        DETACH DELETE g RETURN count(*) AS c
-        """,
-        {"ids": [s["id"] for s in services]},
-    )
-
-    _query_rows(
-        """
-        UNWIND $rows AS row
-        MERGE (c:MesobCenter {id: row.id})
-        SET c.name = row.name, c.city = row.city, c.latitude = row.latitude,
-            c.longitude = row.longitude, c.map_url = row.map_url
-        """,
-        {"rows": catalog["centers"]},
-    )
-
+    center_fields = ("id", "name", "city", "latitude", "longitude", "map_url")
     links = [
-        {"doc": doc_id, "svc": s["id"]}
+        (doc_id, s["id"])
         for doc_id in catalog_service.DOCUMENT_SERVICE_RULES
         for s in catalog_service.services_for_document(doc_id)
     ]
-    _query_rows("MATCH (:Document)-[r:FULFILLED_BY]->(:GovService) DELETE r")
-    linked = _query_rows(
-        """
-        UNWIND $rows AS row
-        MATCH (d:Document {id: row.doc}), (g:GovService {id: row.svc})
-        MERGE (d)-[:FULFILLED_BY]->(g)
-        RETURN count(*) AS c
-        """,
-        {"rows": links},
-    )
+
+    with connection() as conn, conn.transaction():
+        for row in institutions:
+            graph_store.merge_node("Institution", row["id"], row, conn)
+        for row in services:
+            graph_store.merge_node("GovService", row["id"], row, conn)
+            graph_store.merge_edge("OFFERED_BY", ("GovService", row["id"]), ("Institution", row["institution_id"]),
+                                   conn=conn)
+        # Services removed from MESOB since the last sync
+        removed = graph_store.delete_nodes_except("GovService", [s["id"] for s in services], {"source": "mesob"},
+                                                  conn)
+        for c in catalog["centers"]:
+            graph_store.merge_node("MesobCenter", c["id"], {k: c.get(k) for k in center_fields}, conn)
+        graph_store.delete_edges("FULFILLED_BY", src_label="Document", dst_label="GovService", conn=conn)
+        linked = sum(
+            graph_store.merge_edge("FULFILLED_BY", ("Document", doc), ("GovService", svc), conn=conn)
+            for doc, svc in links
+        )
 
     return {
         "institutions": len(institutions),
         "services": len(services),
-        "services_removed": removed[0]["c"] if removed else 0,
+        "services_removed": removed,
         "centers": len(catalog["centers"]),
-        "document_links": linked[0]["c"] if linked else 0,
+        "document_links": linked,
     }
 
 
 def graph_counts() -> dict:
-    labels = _query_rows(
-        "MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS count ORDER BY count DESC"
+    nodes = graph_store.count_by_label()
+    rels = graph_store.count_by_type()
+    stale = fetch_one(
+        "select count(*)::int as c from graph_nodes where label = 'Document' and props @> '{\"stale\": true}'"
     )
-    rels = _query_rows(
-        "MATCH ()-[r]->() RETURN type(r) AS type, count(*) AS count ORDER BY count DESC"
-    )
-    stale = _query_rows("MATCH (d:Document) WHERE d.stale = true RETURN count(d) AS c")
     return {
-        "nodes": {r["label"]: r["count"] for r in labels},
-        "relationships": {r["type"]: r["count"] for r in rels},
-        "totalNodes": sum(r["count"] for r in labels),
-        "totalRelationships": sum(r["count"] for r in rels),
-        "staleDocuments": stale[0]["c"] if stale else 0,
+        "nodes": nodes,
+        "relationships": rels,
+        "totalNodes": sum(nodes.values()),
+        "totalRelationships": sum(rels.values()),
+        "staleDocuments": stale["c"] if stale else 0,
     }
 
 
 def flag_stale_documents(cutoff: date) -> dict:
-    rows = _query_rows(
+    """Mark documents not checked since the cutoff as stale, and the rest as not stale."""
+    row = fetch_one(
         """
-        MATCH (d:Document)
-        WITH d, (d.last_verified IS NULL OR d.last_verified < date($cutoff)) AS is_stale
-        SET d.stale = is_stale
-        RETURN count(CASE WHEN is_stale THEN 1 END) AS stale, count(d) AS total
+        with flagged as (
+          update graph_nodes
+          set props = props || jsonb_build_object(
+                'stale', props->>'last_verified' is null or (props->>'last_verified')::date < %(cutoff)s::date),
+              updated_at = now()
+          where label = 'Document'
+          returning (props->>'stale')::boolean as stale
+        )
+        select count(*) filter (where stale)::int as stale, count(*)::int as total from flagged
         """,
         {"cutoff": cutoff.isoformat()},
     )
-    row = rows[0] if rows else {"stale": 0, "total": 0}
+    row = row or {"stale": 0, "total": 0}
     return {"stale": row["stale"], "checked": row["total"], "cutoff": cutoff.isoformat()}
 
 
 def _serialize(value: Any) -> Any:
-    if hasattr(value, "iso_format"):
-        return value.iso_format()
-    if isinstance(value, (date,)):
+    if isinstance(value, (date, datetime)):
         return value.isoformat()
     return value
 
 
+# Each document with its direct prerequisites, the MESOB services that issue it and the goals it completes
+_DOCUMENT_ROWS = """
+        select d.props as doc,
+          coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'name', p.props->'name') order by p.id)
+                    from graph_edges e join graph_nodes p on p.label = e.src_label and p.id = e.src_id
+                    where e.type = 'REQUIRES' and e.src_label = 'Document'
+                      and e.dst_label = 'Document' and e.dst_id = d.id), '[]') as prerequisites,
+          coalesce((select jsonb_agg(jsonb_build_object('id', g.id, 'name', g.props->'name') order by g.id)
+                    from graph_edges e join graph_nodes g on g.label = e.dst_label and g.id = e.dst_id
+                    where e.type = 'FULFILLED_BY' and e.src_label = 'Document' and e.src_id = d.id
+                      and e.dst_label = 'GovService'), '[]') as mesob_services,
+          coalesce((select array_agg(e.src_id order by e.src_id) from graph_edges e
+                    where e.type = 'TARGETS' and e.src_label = 'Service'
+                      and e.dst_label = 'Document' and e.dst_id = d.id), '{}') as target_of
+        from graph_nodes d
+"""
+
+
 def list_documents() -> list[dict]:
-    rows = _query_rows(
-        """
-        MATCH (d:Document)
-        OPTIONAL MATCH (pre:Document)-[:REQUIRES]->(d)
-        OPTIONAL MATCH (d)-[:FULFILLED_BY]->(g:GovService)
-        OPTIONAL MATCH (s:Service)-[:TARGETS]->(d)
-        RETURN d AS doc,
-               collect(DISTINCT pre.id) AS prerequisites,
-               collect(DISTINCT {id: g.id, name: g.name}) AS mesob_services,
-               collect(DISTINCT s.id) AS target_of
-        ORDER BY d.name
-        """
-    )
+    rows = fetch_all(f"{_DOCUMENT_ROWS} where d.label = 'Document' order by d.props->>'name', d.id")
     out = []
     for r in rows:
-        doc = {k: _serialize(v) for k, v in dict(r["doc"]).items()}
-        doc["prerequisites"] = r["prerequisites"]
-        doc["mesob_services"] = [m for m in r["mesob_services"] if m.get("id")]
+        doc = {k: _serialize(v) for k, v in r["doc"].items()}
+        doc["prerequisites"] = [p["id"] for p in r["prerequisites"]]
+        doc["mesob_services"] = r["mesob_services"]
         doc["target_of"] = r["target_of"]
         out.append(doc)
     return out
 
 
 def get_document(doc_id: str) -> dict | None:
-    rows = _query_rows("MATCH (d:Document {id: $id}) RETURN properties(d) AS doc", {"id": doc_id})
-    if not rows:
+    doc = graph_store.get_node("Document", doc_id)
+    if doc is None:
         return None
-    return {k: _serialize(v) for k, v in dict(rows[0]["doc"]).items()}
+    return {k: _serialize(v) for k, v in doc.items()}
 
 
 def page_documents(
     q: str | None = None, status: str | None = None, limit: int = 20, offset: int = 0
 ) -> dict:
     """One page of Document nodes for the admin table, with search and a verified/stale filter."""
-    search = (
-        "($q = '' OR toLower(d.name) CONTAINS $q OR toLower(d.id) CONTAINS $q"
-        " OR toLower(coalesce(d.issuing_authority, '')) CONTAINS $q)"
-    )
-    where = [search]
+    where = [
+        "d.label = 'Document'",
+        "(%(q)s = '' or strpos(lower(coalesce(d.props->>'name', '')), %(q)s) > 0"
+        " or strpos(lower(d.id), %(q)s) > 0"
+        " or strpos(lower(coalesce(d.props->>'issuing_authority', '')), %(q)s) > 0)",
+    ]
     if status == "stale":
-        where.append("coalesce(d.stale, false) = true")
+        where.append("coalesce((d.props->>'stale')::boolean, false)")
     elif status == "verified":
-        where.append("coalesce(d.stale, false) = false")
+        where.append("not coalesce((d.props->>'stale')::boolean, false)")
     params = {"q": (q or "").strip().lower(), "limit": limit, "offset": offset}
-    cond = " AND ".join(where)
-    total = _query_rows(f"MATCH (d:Document) WHERE {cond} RETURN count(d) AS c", params)
-    rows = _query_rows(
-        f"""
-        MATCH (d:Document) WHERE {cond}
-        WITH d ORDER BY toLower(d.name), d.id SKIP $offset LIMIT $limit
-        OPTIONAL MATCH (pre:Document)-[:REQUIRES]->(d)
-        OPTIONAL MATCH (d)-[:FULFILLED_BY]->(g:GovService)
-        OPTIONAL MATCH (s:Service)-[:TARGETS]->(d)
-        RETURN properties(d) AS doc,
-               collect(DISTINCT {{id: pre.id, name: pre.name}}) AS prerequisites,
-               collect(DISTINCT {{id: g.id, name: g.name}}) AS mesob_services,
-               collect(DISTINCT s.id) AS target_of
-        ORDER BY toLower(doc.name), doc.id
-        """,
+    cond = " and ".join(where)
+    total = fetch_one(f"select count(*)::int as c from graph_nodes d where {cond}", params)
+    rows = fetch_all(
+        f"{_DOCUMENT_ROWS} where {cond} order by lower(d.props->>'name'), d.id offset %(offset)s limit %(limit)s",
         params,
     )
     items = []
     for r in rows:
-        doc = {k: _serialize(v) for k, v in dict(r["doc"]).items()}
-        pres = [p for p in r["prerequisites"] if p.get("id")]
+        doc = {k: _serialize(v) for k, v in r["doc"].items()}
+        pres = r["prerequisites"]
         doc["prerequisites"] = [p["id"] for p in pres]
         doc["prerequisite_names"] = {p["id"]: p.get("name") or p["id"] for p in pres}
-        doc["mesob_services"] = [m for m in r["mesob_services"] if m.get("id")]
+        doc["mesob_services"] = r["mesob_services"]
         doc["target_of"] = r["target_of"]
         items.append(doc)
-    return {"items": items, "total": total[0]["c"] if total else 0}
+    return {"items": items, "total": total["c"] if total else 0}
 
 
 def update_document(doc_id: str, changes: dict, *, mark_verified: bool, actor: str | None = None) -> dict | None:
     props = {k: v for k, v in changes.items() if k in EDITABLE_DOCUMENT_FIELDS}
     props["updated_by"] = actor
-    rows = _query_rows(
-        """
-        MATCH (d:Document {id: $id})
-        SET d += $props, d.updated_at = datetime()
-        FOREACH (_ IN CASE WHEN $verify THEN [1] ELSE [] END |
-          SET d.last_verified = date(), d.stale = false, d.verified_by = $actor)
-        RETURN properties(d) AS doc
-        """,
-        {"id": doc_id, "props": props, "verify": mark_verified, "actor": actor},
-    )
-    if not rows:
-        return None
-    return {k: _serialize(v) for k, v in dict(rows[0]["doc"]).items()}
+    props["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if mark_verified:
+        props.update(last_verified=date.today().isoformat(), stale=False, verified_by=actor)
+    with connection() as conn, conn.transaction():
+        if not conn.execute("select 1 from graph_nodes where label = 'Document' and id = %s for update",
+                            (doc_id,)).fetchone():
+            return None
+        doc = graph_store.merge_node("Document", doc_id, props, conn)
+    return {k: _serialize(v) for k, v in doc.items()}
 
 
 def compliance_graph_view() -> dict:
@@ -266,176 +216,120 @@ def compliance_graph_view() -> dict:
       ISSUES        organization service -> document it hands out
       PREREQUISITE  organization service -> organization service that needs it first
     """
-    nodes = _query_rows(
+    rows = fetch_all(
         """
-        MATCH (n) WHERE n:Service OR n:Document OR n:Sector OR n:OrgDocument
-                     OR (n:OrgService AND coalesce(n.published, false))
-        WITH n, labels(n)[0] AS type
-        OPTIONAL MATCH (n)-[:OFFERED_BY]->(o:Organization) WHERE type = 'OrgService'
-        RETURN type + ':' + coalesce(n.id, n.key) AS key, coalesce(n.id, n.key) AS id, type,
-               coalesce(n.name, n.label, n.id, n.key) AS label,
-               n.name_am AS label_am, n.description AS description, n.category AS category,
-               n.stale AS stale, coalesce(n.fee_etb, n.fee_min) AS fee,
-               n.avg_processing_days AS days, n.processing_minutes AS minutes,
-               coalesce(n.issuing_authority, n.regulatory_body) AS office, n.form_code AS form_code,
-               n.last_verified AS last_verified, n.verified_by AS verified_by,
-               n.source_url AS source_url, n.applicable_sectors AS sectors,
-               n.sector_specific AS sector_specific, n.slug AS slug,
-               o.name AS organization, o.id AS organization_id
+        select n.label as type, n.id, n.props, o.id as organization_id, o.props->>'name' as organization
+        from graph_nodes n
+        left join lateral (
+          select org.id, org.props from graph_edges e
+          join graph_nodes org on org.label = e.dst_label and org.id = e.dst_id
+          where n.label = 'OrgService' and e.type = 'OFFERED_BY' and e.src_label = 'OrgService'
+            and e.src_id = n.id and e.dst_label = 'Organization'
+          order by org.id limit 1
+        ) o on true
+        where n.label in ('Service', 'Document', 'Sector', 'OrgDocument')
+           or (n.label = 'OrgService' and coalesce((n.props->>'published')::boolean, false))
         """
     )
-    edges = _query_rows(
+
+    def first(p: dict, *keys: str) -> Any:
+        return next((p[k] for k in keys if p.get(k) is not None), None)
+
+    nodes = []
+    for r in rows:
+        p = r["props"]
+        nodes.append({
+            "key": f"{r['type']}:{r['id']}", "id": r["id"], "type": r["type"],
+            "label": first(p, "name", "label") or r["id"],
+            "label_am": p.get("name_am"), "description": p.get("description"), "category": p.get("category"),
+            "stale": p.get("stale"), "fee": first(p, "fee_etb", "fee_min"),
+            "days": p.get("avg_processing_days"), "minutes": p.get("processing_minutes"),
+            "office": first(p, "issuing_authority", "regulatory_body"), "form_code": p.get("form_code"),
+            "last_verified": p.get("last_verified"), "verified_by": p.get("verified_by"),
+            "source_url": p.get("source_url"), "sectors": p.get("applicable_sectors"),
+            "sector_specific": p.get("sector_specific"), "slug": p.get("slug"),
+            "organization": r["organization"], "organization_id": r["organization_id"],
+        })
+    edges = fetch_all(
         """
-        MATCH (a:Document)-[:REQUIRES]->(b:Document)
-        RETURN 'Document:' + a.id AS source, 'Document:' + b.id AS target, 'REQUIRES' AS type
-        UNION ALL
-        MATCH (s:Service)-[:TARGETS]->(d:Document)
-        RETURN 'Document:' + d.id AS source, 'Service:' + s.id AS target, 'TARGETS' AS type
-        UNION ALL
-        MATCH (sec:Sector)-[:SECTOR_EXTRA]->(d:Document)
-        RETURN 'Document:' + d.id AS source, 'Sector:' + sec.id AS target, 'SECTOR_EXTRA' AS type
-        UNION ALL
-        MATCH (s:OrgService)-[:REQUIRES]->(d) WHERE coalesce(s.published, false) AND (d:Document OR d:OrgDocument)
-        RETURN labels(d)[0] + ':' + coalesce(d.id, d.key) AS source, 'OrgService:' + s.id AS target,
-               'ORG_REQUIRES' AS type
-        UNION ALL
-        MATCH (s:OrgService)-[:ISSUES]->(d) WHERE coalesce(s.published, false) AND (d:Document OR d:OrgDocument)
-        RETURN 'OrgService:' + s.id AS source, labels(d)[0] + ':' + coalesce(d.id, d.key) AS target,
-               'ISSUES' AS type
-        UNION ALL
-        MATCH (s:OrgService)-[:PREREQUISITE]->(p:OrgService)
-        WHERE coalesce(s.published, false) AND coalesce(p.published, false)
-        RETURN 'OrgService:' + p.id AS source, 'OrgService:' + s.id AS target, 'PREREQUISITE' AS type
+        select 'Document:' || src_id as source, 'Document:' || dst_id as target, 'REQUIRES' as type
+        from graph_edges where type = 'REQUIRES' and src_label = 'Document' and dst_label = 'Document'
+        union all
+        select 'Document:' || dst_id, 'Service:' || src_id, 'TARGETS'
+        from graph_edges where type = 'TARGETS' and src_label = 'Service' and dst_label = 'Document'
+        union all
+        select 'Document:' || dst_id, 'Sector:' || src_id, 'SECTOR_EXTRA'
+        from graph_edges where type = 'SECTOR_EXTRA' and src_label = 'Sector' and dst_label = 'Document'
+        union all
+        select e.dst_label || ':' || e.dst_id, 'OrgService:' || e.src_id, 'ORG_REQUIRES'
+        from graph_edges e join graph_nodes s on s.label = e.src_label and s.id = e.src_id
+        where e.type = 'REQUIRES' and e.src_label = 'OrgService' and e.dst_label in ('Document', 'OrgDocument')
+          and coalesce((s.props->>'published')::boolean, false)
+        union all
+        select 'OrgService:' || e.src_id, e.dst_label || ':' || e.dst_id, 'ISSUES'
+        from graph_edges e join graph_nodes s on s.label = e.src_label and s.id = e.src_id
+        where e.type = 'ISSUES' and e.src_label = 'OrgService' and e.dst_label in ('Document', 'OrgDocument')
+          and coalesce((s.props->>'published')::boolean, false)
+        union all
+        select 'OrgService:' || e.dst_id, 'OrgService:' || e.src_id, 'PREREQUISITE'
+        from graph_edges e
+        join graph_nodes s on s.label = e.src_label and s.id = e.src_id
+        join graph_nodes p on p.label = e.dst_label and p.id = e.dst_id
+        where e.type = 'PREREQUISITE' and e.src_label = 'OrgService' and e.dst_label = 'OrgService'
+          and coalesce((s.props->>'published')::boolean, false) and coalesce((p.props->>'published')::boolean, false)
         """
     )
-    mesob = _query_rows(
+    mesob = fetch_all(
         """
-        MATCH (d:Document)-[:FULFILLED_BY]->(g:GovService)-[:OFFERED_BY]->(i:Institution)
-        RETURN d.id AS document, g.id AS id, g.name AS name, i.short_name AS institution,
-               g.fee_text AS fee_text, g.processing_time_text AS time_text
+        select f.src_id as document, g.id, g.props->>'name' as name, i.props->>'short_name' as institution,
+               g.props->>'fee_text' as fee_text, g.props->>'processing_time_text' as time_text
+        from graph_edges f
+        join graph_nodes g on g.label = f.dst_label and g.id = f.dst_id
+        join graph_edges o on o.type = 'OFFERED_BY' and o.src_label = g.label and o.src_id = g.id
+          and o.dst_label = 'Institution'
+        join graph_nodes i on i.label = o.dst_label and i.id = o.dst_id
+        where f.type = 'FULFILLED_BY' and f.src_label = 'Document' and f.dst_label = 'GovService'
         """
     )
-    keys = {n["key"] for n in nodes if n["key"]}
-    out_nodes = []
-    for n in nodes:
-        if not n["key"]:
-            continue
-        out_nodes.append({k: _serialize(v) for k, v in n.items()})
+    keys = {n["key"] for n in nodes}
+    out_nodes = [{k: _serialize(v) for k, v in n.items()} for n in nodes]
     # Drop links to anything not drawn (unpublished services, half-synced nodes)
     out_edges = [e for e in edges if e["source"] in keys and e["target"] in keys and e["source"] != e["target"]]
     return {"nodes": out_nodes, "edges": out_edges, "mesobLinks": mesob}
 
 
 def _institution_filter(q: str | None) -> tuple[str, dict]:
-    cond = ("i.at_mesob = true AND ($q = '' OR toLower(coalesce(i.name, '')) CONTAINS $q"
-            " OR toLower(coalesce(i.short_name, '')) CONTAINS $q)")
+    cond = ("i.label = 'Institution' and i.props @> '{\"at_mesob\": true}'"
+            " and (%(q)s = '' or strpos(lower(coalesce(i.props->>'name', '')), %(q)s) > 0"
+            " or strpos(lower(coalesce(i.props->>'short_name', '')), %(q)s) > 0)")
     return cond, {"q": (q or "").strip().lower()}
 
 
-_INSTITUTION_ROWS = """
-        OPTIONAL MATCH (g:GovService {language: 'en'})-[:OFFERED_BY]->(i)
-        RETURN i.id AS id, i.name AS name, i.short_name AS short_name,
-               count(g) AS services,
-               avg(g.processing_minutes) AS avg_minutes,
-               count(CASE WHEN g.online_url IS NOT NULL THEN 1 END) AS online
-        ORDER BY services DESC, name
-"""
+def _institution_rows(cond: str) -> str:
+    return f"""
+        select i.id, i.props->>'name' as name, i.props->>'short_name' as short_name,
+               count(g.id)::int as services,
+               avg((g.props->>'processing_minutes')::float8) as avg_minutes,
+               (count(g.id) filter (where g.props->>'online_url' is not null))::int as online
+        from graph_nodes i
+        left join graph_edges e on e.type = 'OFFERED_BY' and e.src_label = 'GovService'
+          and e.dst_label = i.label and e.dst_id = i.id
+        left join graph_nodes g on g.label = e.src_label and g.id = e.src_id and g.props->>'language' = 'en'
+        where {cond}
+        group by i.id, i.props
+        order by services desc, name
+    """
 
 
 def institution_breakdown() -> list[dict]:
     cond, params = _institution_filter(None)
-    return _query_rows(f"MATCH (i:Institution) WHERE {cond} {_INSTITUTION_ROWS}", params)
+    return fetch_all(_institution_rows(cond), params)
 
 
 def page_institutions(q: str | None = None, limit: int = 20, offset: int = 0) -> dict:
     """One page of MESOB institutions with their service counts, busiest first."""
     cond, params = _institution_filter(q)
-    rows = _query_rows(
-        f"MATCH (i:Institution) WHERE {cond} {_INSTITUTION_ROWS} SKIP $offset LIMIT $limit",
-        {**params, "limit": limit, "offset": offset},
-    )
-    total = _query_rows(f"MATCH (i:Institution) WHERE {cond} RETURN count(i) AS c", params)
-    return {"items": rows, "total": total[0]["c"] if total else 0}
-
-
-# ---------------------------------------------------------------- read-only Cypher console
-
-CYPHER_TIMEOUT_SECONDS = 10
-CYPHER_MAX_ROWS = 200
-
-
-class CypherRejected(ValueError):
-    """The console query does something other than read the graph."""
-
-
-# Clauses that change data or schema, read files or URLs, or run admin commands. Neo4j also
-# refuses writes because the session is READ-only; this list is the first line of defence and
-# covers reads we do not want either (LOAD CSV can fetch URLs, dbms.* and SHOW leak config).
-_FORBIDDEN = [
-    (r"\b(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|FOREACH|ALTER|RENAME|GRANT|DENY|REVOKE)\b",
-     "writes are not allowed"),
-    (r"\bLOAD\s+CSV\b", "LOAD CSV is not allowed"),
-    (r"\bUSING\s+PERIODIC\s+COMMIT\b|\bIN\s+(CONCURRENT\s+)?TRANSACTIONS\b", "batched transactions are not allowed"),
-    (r"\b(SHOW|START|STOP|TERMINATE|ENABLE|USE)\b", "admin commands are not allowed"),
-    (r"\b(apoc|dbms|gds)\s*\.", "APOC, GDS and dbms functions are not allowed"),
-]
-# CALL is limited to these read-only listings
-_ALLOWED_CALLS = {"db.labels", "db.relationshiptypes", "db.propertykeys", "db.schema.visualization",
-                  "db.schema.nodetypeproperties", "db.schema.reltypeproperties"}
-
-
-def _strip_literals(query: str) -> str:
-    """Blank out comments and string literals so 'Set' inside a name is not a keyword."""
-    out = re.sub(r"//[^\n]*|/\*.*?\*/", " ", query, flags=re.DOTALL)
-    out = re.sub(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|`[^`]*`", "''", out)
-    return out
-
-
-def check_readonly_cypher(query: str) -> None:
-    code = _strip_literals(query)
-    for pattern, reason in _FORBIDDEN:
-        if re.search(pattern, code, flags=re.IGNORECASE):
-            raise CypherRejected(f"Rejected: {reason}. This console only reads the graph.")
-    for call in re.finditer(r"\bCALL\b\s*([\w.]*)", code, flags=re.IGNORECASE):
-        name = call.group(1).lower()
-        if name not in _ALLOWED_CALLS:
-            what = f"the procedure {name}" if name else "a CALL { ... } subquery"
-            allowed = ", ".join(sorted(_ALLOWED_CALLS))
-            raise CypherRejected(f"Rejected: {what} is not allowed here. Allowed procedures: {allowed}.")
-
-
-def run_cypher_readonly(query: str, params: dict | None = None, limit: int = CYPHER_MAX_ROWS) -> dict:
-    """Read-only Cypher console for admins.
-
-    Three guards: the keyword check above, a READ session (Neo4j refuses any write), and a
-    server-side transaction timeout. At most `limit` rows are fetched; `truncated` says if more existed.
-    """
-    import neo4j
-    from neontology import GraphConnection
-
-    check_readonly_cypher(query)
-    driver = GraphConnection().engine.driver
-
-    @neo4j.unit_of_work(timeout=CYPHER_TIMEOUT_SECONDS)
-    def work(tx):
-        result = tx.run(query, params or {})
-        rows = result.fetch(limit + 1)
-        result.consume()
-        return rows
-
-    with driver.session(default_access_mode=neo4j.READ_ACCESS) as session:
-        records = session.execute_read(work)
-    rows = [{k: _jsonable(v) for k, v in rec.items()} for rec in records[:limit]]
-    return {"rows": rows, "truncated": len(records) > limit, "limit": limit}
-
-
-def _jsonable(value: Any) -> Any:
-    if hasattr(value, "items") and hasattr(value, "labels"):
-        return {"_labels": list(value.labels), **{k: _jsonable(v) for k, v in value.items()}}
-    if hasattr(value, "type") and hasattr(value, "start_node"):
-        return {"_type": value.type, **{k: _jsonable(v) for k, v in value.items()}}
-    if isinstance(value, list):
-        return [_jsonable(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _jsonable(v) for k, v in value.items()}
-    return _serialize(value)
+    rows = fetch_all(f"{_institution_rows(cond)} offset %(offset)s limit %(limit)s",
+                     {**params, "limit": limit, "offset": offset})
+    total = fetch_one(f"select count(*)::int as c from graph_nodes i where {cond}", params)
+    return {"items": rows, "total": total["c"] if total else 0}

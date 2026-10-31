@@ -24,7 +24,7 @@ class ScrapeJobRequest(BaseModel):
 
 
 class IngestJobRequest(BaseModel):
-    source: str = Field(default="all", description="Use 'graph' or 'seed' to run Neo4j seed")
+    source: str = Field(default="all", description="Use 'graph' or 'seed' to seed the compliance graph")
 
 
 def _task_response(task_id: str, task_name: str) -> TaskEnqueueResponse:

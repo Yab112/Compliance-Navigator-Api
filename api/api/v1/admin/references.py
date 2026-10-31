@@ -16,7 +16,7 @@ from models.compliance_relationships import EnrichesDocumentRel, EnrichesService
 
 from schemas.auth_user import AuthUser
 
-from services.graph_service import _query_rows
+from services import graph_store
 
 from services.rag_service import ingest_text
 
@@ -190,23 +190,11 @@ async def upload_reference(
 
     target_doc_id = None
 
-    rows = _query_rows(
+    targets = [n["id"] for n in graph_store.neighbors("Service", service_id, "TARGETS") if n["label"] == "Document"]
 
-        """
+    if targets:
 
-        MATCH (s:Service {id: $sid})-[:TARGETS]->(d:Document)
-
-        RETURN d.id AS id LIMIT 1
-
-        """,
-
-        {"sid": service_id},
-
-    )
-
-    if rows:
-
-        target_doc_id = rows[0]["id"]
+        target_doc_id = targets[0]
 
         doc = DocumentNode.match(target_doc_id)
 

@@ -23,7 +23,7 @@ export const DESTINATIONS: Record<DataSourceDestination, { label: string; help: 
   catalog: { label: "Service catalog", help: "the list of government services citizens browse and search" },
   graph: {
     label: "Knowledge graph",
-    help: "the map of services, documents, offices and how they depend on each other (Neo4j); roadmaps are built from it",
+    help: "the map of services, documents, offices and how they depend on each other; roadmaps are built from it",
   },
   knowledge: {
     label: "AI knowledge base",

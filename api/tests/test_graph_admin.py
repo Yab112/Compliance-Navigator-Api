@@ -1,10 +1,10 @@
-"""Admin knowledge graph: diagram data, paged documents, document edits, read-only Cypher console.
-Needs Neo4j with the seeded compliance graph, like the other integration tests."""
+"""Admin knowledge graph: diagram data, paged documents, document edits.
+Needs the seeded compliance graph, like the other integration tests."""
 
 import pytest
 
 from services import graph_admin
-from services.graph_service import _query_rows
+from services.db import Jsonb, execute, fetch_one
 
 API = "/api/v1/admin"
 
@@ -14,83 +14,18 @@ def admin(make_user):
     return make_user("admin")
 
 
-# ---------------------------------------------------------------- Cypher guard (no database needed)
-
-
-@pytest.mark.parametrize(
-    "query",
-    [
-        "MATCH (n) SET n.x = 1",
-        "create (n:Hack) return n",
-        "MATCH (n) DETACH DELETE n",
-        "MERGE (n:X {id: 1}) RETURN n",
-        "MATCH (n) REMOVE n.name RETURN n",
-        "MATCH (n) FOREACH (x IN [1] | SET n.y = x)",
-        "LOAD CSV FROM 'https://example.com/a.csv' AS row RETURN row",
-        "load   csv with headers from 'file:///etc/passwd' AS r RETURN r",
-        "CALL dbms.listConfig()",
-        "CALL apoc.load.json('https://example.com')",
-        "RETURN apoc.version()",
-        "CALL { MATCH (n) RETURN n } IN TRANSACTIONS RETURN 1",
-        "CALL db.createLabel('X')",
-        "SHOW USERS",
-        "DROP INDEX foo",
-        "MATCH (n) // harmless comment\nSET n.x = 1",
-    ],
-)
-def test_cypher_guard_rejects_writes_and_admin_calls(query):
-    with pytest.raises(graph_admin.CypherRejected):
-        graph_admin.check_readonly_cypher(query)
-
-
-@pytest.mark.parametrize(
-    "query",
-    [
-        "MATCH (d:Document) RETURN d.name AS name LIMIT 5",
-        "MATCH (d:Document {name: 'SET CREATE DELETE'}) RETURN d",  # keywords inside strings are fine
-        "MATCH (n) RETURN n.offset, n.created_at, n.settings LIMIT 1",  # words that merely contain keywords
-        "CALL db.labels()",
-        "MATCH (d) /* CREATE in a comment */ RETURN count(d) AS c",
-    ],
-)
-def test_cypher_guard_allows_reads(query):
-    graph_admin.check_readonly_cypher(query)
-
-
 # ---------------------------------------------------------------- API
 
 
 def test_graph_routes_require_admin(client, make_user):
     user = make_user()
     assert client.get(f"{API}/graph/view", headers=user["headers"]).status_code == 403
-    r = client.post(f"{API}/graph/query", json={"query": "MATCH (n) RETURN n LIMIT 1"}, headers=user["headers"])
-    assert r.status_code == 403
+    assert client.get(f"{API}/graph/documents", headers=user["headers"]).status_code == 403
 
 
-def test_cypher_console_rejects_write_and_caps_rows(client, admin):
-    before = _query_rows("MATCH (n:ZzConsoleTest) RETURN count(n) AS c")[0]["c"]
-    r = client.post(f"{API}/graph/query", json={"query": "CREATE (n:ZzConsoleTest) RETURN n"}, headers=admin["headers"])
-    assert r.status_code == 400
-    assert "Rejected" in r.json()["detail"]
-    assert _query_rows("MATCH (n:ZzConsoleTest) RETURN count(n) AS c")[0]["c"] == before
-
-    r = client.post(
-        f"{API}/graph/query",
-        json={"query": "UNWIND range(1, 500) AS x RETURN x"},
-        headers=admin["headers"],
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()["payload"]
-    assert body["count"] == graph_admin.CYPHER_MAX_ROWS
-    assert body["truncated"] is True
-
-
-def test_readonly_session_blocks_writes_that_slip_past_the_guard(monkeypatch):
-    # Even with the keyword check switched off, Neo4j refuses writes in the READ session
-    monkeypatch.setattr(graph_admin, "check_readonly_cypher", lambda q: None)
-    with pytest.raises(Exception, match="(?i)read|access"):
-        graph_admin.run_cypher_readonly("CREATE (n:ZzConsoleTest) RETURN n")
-    assert _query_rows("MATCH (n:ZzConsoleTest) RETURN count(n) AS c")[0]["c"] == 0
+def test_cypher_console_is_gone(client, admin):
+    r = client.post(f"{API}/graph/query", json={"query": "MATCH (n) RETURN n LIMIT 1"}, headers=admin["headers"])
+    assert r.status_code in (404, 405)
 
 
 def test_view_edges_connect_drawn_nodes(client, admin):
@@ -137,12 +72,12 @@ def test_documents_are_paged_searched_and_filtered(client, admin):
 @pytest.fixture
 def restored_document():
     """A real document whose properties are put back exactly as they were after the test."""
-    rows = _query_rows("MATCH (d:Document) RETURN d.id AS id, properties(d) AS props ORDER BY d.id LIMIT 1")
-    if not rows:
+    row = fetch_one("select id, props from graph_nodes where label = 'Document' order by id limit 1")
+    if not row:
         pytest.skip("no documents in the graph")
-    doc_id, props = rows[0]["id"], rows[0]["props"]
+    doc_id, props = row["id"], row["props"]
     yield doc_id, props
-    _query_rows("MATCH (d:Document {id: $id}) SET d = $props", {"id": doc_id, "props": props})
+    execute("update graph_nodes set props = %s where label = 'Document' and id = %s", (Jsonb(props), doc_id))
 
 
 def test_document_edit_validates_and_records_verifier(client, admin, restored_document):

@@ -7,10 +7,8 @@ logger = logging.getLogger(__name__)
 
 def _run_source(source: str, triggered_by: str) -> dict:
     """Same pipeline the admin dashboard runs, recorded in data_source_runs."""
-    from database.database import initiate_database
     from services import data_sources
 
-    initiate_database()
     try:
         run = data_sources.start_run(source, triggered_by)
     except data_sources.SourcePaused:
@@ -53,38 +51,30 @@ def flag_stale_graph_nodes(self) -> dict:
 @celery_app.task(name="worker.tasks.run_scheduled_custom_sources", bind=True)
 def run_scheduled_custom_sources(self) -> dict:
     """Refresh staff-added data sources whose daily or weekly schedule is due."""
-    from database.database import initiate_database
     from services import data_sources
 
-    initiate_database()
     return data_sources.run_due_custom_sources(f"schedule:celery:{self.request.id}")
 
 
 @celery_app.task(name="worker.tasks.check_processing_payouts", bind=True)
 def check_processing_payouts(self) -> dict:
     """Record payouts Chapa has finished sending (or failed to send)."""
-    from database.database import initiate_database
     from services import payment_service
 
-    initiate_database()
     return payment_service.check_processing_payouts()
 
 
 @celery_app.task(name="worker.tasks.check_sending_refunds", bind=True)
 def check_sending_refunds(self) -> dict:
     """Settle refunds whose gateway answer was never recorded; never sends a refund again."""
-    from database.database import initiate_database
     from services import payment_service
 
-    initiate_database()
     return payment_service.check_sending_refunds()
 
 
 @celery_app.task(name="worker.tasks.check_pending_payments", bind=True)
 def check_pending_payments(self) -> dict:
     """Record checkouts the client paid whose Chapa webhook never arrived, and give up on abandoned ones."""
-    from database.database import initiate_database
     from services import payment_service
 
-    initiate_database()
     return payment_service.check_pending_payments()

@@ -1,5 +1,5 @@
 """
-Seed the compliance graph in Neo4j.
+Seed the compliance graph (graph tables in Postgres).
 
 Run from api/:  uv run python -m scripts.seed_graph
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 # Ensure api/ is on path when run as module
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from database.database import initiate_database
+from services.db import run_migrations
 from models.compliance_nodes import (
     DocumentNode,
     EntityTypeNode,
@@ -143,8 +143,7 @@ def _merge_relationships() -> None:
 
 
 def main() -> None:
-    print("Connecting to Neo4j...")
-    initiate_database()
+    run_migrations()
     print("Merging catalog nodes...")
     _merge_nodes()
     print("Merging offices...")

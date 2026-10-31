@@ -5,10 +5,6 @@ from urllib.parse import urlsplit
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    neo4j_uri: str = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-    neo4j_username: str = os.environ.get("NEO4J_USERNAME", "neo4j")
-    # No default: set it in .env (docker compose uses the same value)
-    neo4j_password: str | None = os.environ.get("NEO4J_PASSWORD")
     redis_host: str = os.environ.get("REDIS_HOST", "localhost")
     redis_port: str = os.environ.get("REDIS_PORT", "6379")
     celery_broker_url: str | None = os.environ.get("CELERY_BROKER_URL")
@@ -146,8 +142,6 @@ class Settings(BaseSettings):
         if not self.payout_encryption_key:
             problems.append("PAYOUT_ENCRYPTION_KEY must be set (a Fernet key) so bank accounts and ID numbers are "
                             "not encrypted with a key derived from SECRET_KEY")
-        if not self.neo4j_password or self.neo4j_password == "darixsamani" or self.neo4j_password.startswith("change-me"):
-            problems.append("NEO4J_PASSWORD must be set to a real password")
         if "minioadmin" in (self.minio_access_key, self.minio_secret_key):
             problems.append("MINIO_ACCESS_KEY and MINIO_SECRET_KEY must not be minioadmin")
         if "navigator:navigator@" in self.database_url or "change-me" in self.database_url:

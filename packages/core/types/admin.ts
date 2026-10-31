@@ -173,8 +173,6 @@ export type GraphDocument = {
   target_of: string[];
 };
 
-export type CypherResult = { rows: Record<string, unknown>[]; count: number; truncated: boolean; limit: number };
-
 export type InstitutionBreakdown = {
   id: string;
   name: string;

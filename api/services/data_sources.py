@@ -25,7 +25,7 @@ class SourcePaused(RuntimeError):
 
 
 def _run_mesob_catalog() -> dict:
-    """Scrape mesobcenter.et, refresh the snapshot, and mirror it into Neo4j."""
+    """Scrape mesobcenter.et, refresh the snapshot, and mirror it into the knowledge graph."""
     from scrapers import mesob
 
     stats = mesob.sync()
@@ -35,7 +35,7 @@ def _run_mesob_catalog() -> dict:
 
 
 def _run_mesob_graph() -> dict:
-    """Mirror the existing snapshot into Neo4j without re-scraping."""
+    """Mirror the existing snapshot into the knowledge graph without re-scraping."""
     catalog_service.reload_catalog()
     return graph_admin.sync_catalog_to_graph()
 

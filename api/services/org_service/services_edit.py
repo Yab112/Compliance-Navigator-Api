@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any
 
-from services.db import Jsonb, connection, execute, fetch_all, fetch_one
+from services.db import Jsonb, connection, fetch_all
 from services import platform_settings
 from .graph_sync import remove_service_from_graph
 from .helpers import JSON_FIELDS, REQUIREMENT_FIELDS, SERVICE_FIELDS, OrgError, _log, _plain, _unique_slug, slugify
@@ -351,19 +351,20 @@ def submit_service(org_id: str, service_id: str, actor: str, change: dict | None
 
 
 def archive_service(org_id: str, service_id: str, actor: str) -> dict:
-    row = fetch_one(
-        "update org_services set status = 'archived', updated_at = now() where id = %s and org_id = %s returning id",
-        (service_id, org_id),
-    )
-    if not row:
-        raise OrgError("Service not found", 404)
-    execute(
-        "update org_service_revisions set status = 'superseded' where service_id = %s and status in ('pending', 'scheduled')",
-        (service_id,),
-    )
-    with connection() as conn:
+    with connection() as conn, conn.transaction():
+        row = conn.execute(
+            "update org_services set status = 'archived', updated_at = now() where id = %s and org_id = %s returning id",
+            (service_id, org_id),
+        ).fetchone()
+        if not row:
+            raise OrgError("Service not found", 404)
+        conn.execute(
+            "update org_service_revisions set status = 'superseded' where service_id = %s "
+            "and status in ('pending', 'scheduled')",
+            (service_id,),
+        )
         _log(conn, "service_archived", org_id=org_id, service_id=service_id, actor=actor)
-    remove_service_from_graph(service_id)
+        remove_service_from_graph(service_id, conn)
     return working_copy(service_id, org_id)
 
 

@@ -1,4 +1,4 @@
-"""Admin: the knowledge graph (diagram, documents table, MESOB institutions, read-only Cypher console)."""
+"""Admin: the knowledge graph (diagram, documents table, MESOB institutions)."""
 
 import logging
 import re
@@ -102,21 +102,3 @@ def graph_institutions(
 ):
     return _ok(graph_admin.page_institutions(q, limit, offset))
 
-
-class CypherQuery(BaseModel):
-    query: str = Field(..., min_length=6, max_length=4000)
-
-
-@router.post("/query")
-def graph_query(body: CypherQuery, admin: AuthUser = Depends(require_admin)):
-    log.info("cypher console query by %s: %s", admin.email, body.query[:500].replace("\n", " "))
-    try:
-        result = graph_admin.run_cypher_readonly(body.query)
-    except graph_admin.CypherRejected as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        message = str(getattr(exc, "message", None) or exc)
-        if "timeout" in message.lower() or "terminated" in message.lower():
-            message = f"The query took longer than {graph_admin.CYPHER_TIMEOUT_SECONDS} seconds and was stopped."
-        raise HTTPException(status_code=400, detail=f"Query failed: {message}") from exc
-    return _ok({**result, "count": len(result["rows"])})

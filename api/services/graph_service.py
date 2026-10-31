@@ -1,21 +1,13 @@
-"""Neo4j graph queries for compliance path generation."""
+"""Compliance graph queries for path generation (graph tables in Postgres, see services.graph_store)."""
 
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timezone
 from typing import Any
 
-from neontology import GraphConnection
-
-from models.compliance_nodes import DocumentNode, ServiceNode
-
-
-def _query_rows(cypher: str, params: dict | None = None) -> list[dict]:
-    """Neo4j driver rows as plain dicts (neontology .records is often empty)."""
-    gc = GraphConnection()
-    result = gc.evaluate_query(cypher, params or {})
-    return [dict(rec) for rec in (result.records_raw or [])]
+from models.compliance_nodes import ServiceNode
+from services import graph_store
+from services.db import fetch_all, fetch_one
 
 
 # Seed templates used +251 11 000 000x as stand-in numbers. Never show those as real contacts.
@@ -40,22 +32,33 @@ def _office_note(doc_id: str, sub_label: str, has_phone: bool) -> str | None:
 
 
 def graph_is_seeded() -> bool:
-    gc = GraphConnection()
-    result = gc.evaluate_query_single(
-        "MATCH (s:Service) RETURN count(s) AS c LIMIT 1"
-    )
-    return bool(result and result > 0)
+    return bool(fetch_one("select exists (select 1 from graph_nodes where label = 'Service') as seeded")["seeded"])
 
 
 def list_services_from_graph() -> list[dict]:
-    return _query_rows(
+    rows = [s for s in graph_store.find_nodes("Service") if s.get("is_active") in (None, True)]
+    rows.sort(key=lambda s: (s.get("sort_order") is None, s.get("sort_order") or 0, s.get("name") or ""))
+    return [
+        {"id": s["id"], "name": s.get("name"), "description": s.get("description"),
+         "category": s.get("category"), "sort_order": s.get("sort_order")}
+        for s in rows
+    ]
+
+
+def _linked_ids(label: str, id: str, type: str, target_label: str) -> list[str]:
+    return [n["id"] for n in graph_store.neighbors(label, id, type, "out") if n["label"] == target_label]
+
+
+def _requires_pairs(ids: list[str]) -> list[dict]:
+    """REQUIRES links between documents: prereq (the source) comes before dep (the target)."""
+    return fetch_all(
         """
-        MATCH (s:Service)
-        WHERE s.is_active IS NULL OR s.is_active = true
-        RETURN s.id AS id, s.name AS name, s.description AS description,
-               s.category AS category, s.sort_order AS sort_order
-        ORDER BY s.sort_order, s.name
-        """
+        select src_id as prereq, dst_id as dep from graph_edges
+        where type = 'REQUIRES' and src_label = 'Document' and dst_label = 'Document'
+          and src_id = any(%(ids)s) and dst_id = any(%(ids)s)
+        order by src_id, dst_id
+        """,
+        {"ids": list(ids)},
     )
 
 
@@ -95,48 +98,20 @@ def get_path_document_ids(
     Return ordered document ids from prerequisites through target for the service.
     Excludes documents already held unless needed as anchors.
     """
-    targets = _query_rows(
-        """
-        MATCH (s:Service {id: $goal})-[:TARGETS]->(end:Document)
-        RETURN end.id AS target_id
-        """,
-        {"goal": goal},
-    )
+    targets = _linked_ids("Service", goal, "TARGETS", "Document")
     if not targets:
         return None
 
-    target_id = targets[0]["target_id"]
+    target_id = targets[0]
 
-    path_rows = _query_rows(
-        """
-        MATCH (s:Service {id: $goal})-[:TARGETS]->(end:Document {id: $target_id})
-        MATCH (d:Document)-[:REQUIRES*]->(end)
-        RETURN DISTINCT d.id AS id
-        """,
-        {"goal": goal, "target_id": target_id},
-    )
-    doc_ids = {r["id"] for r in path_rows}
+    # Every document with a chain of REQUIRES links to the target (cycles are safe)
+    doc_ids = {i for label, i in graph_store.ancestors_via("REQUIRES", "Document", target_id) if label == "Document"}
     doc_ids.add(target_id)
 
     if industry:
-        for r in _query_rows(
-            """
-            MATCH (sec:Sector {id: $industry})-[:SECTOR_EXTRA]->(d:Document)
-            RETURN DISTINCT d.id AS id
-            """,
-            {"industry": industry},
-        ):
-            doc_ids.add(r["id"])
+        doc_ids.update(_linked_ids("Sector", industry, "SECTOR_EXTRA", "Document"))
 
-    req_rows = _query_rows(
-        """
-        MATCH (a:Document)-[r:REQUIRES]->(b:Document)
-        WHERE a.id IN $ids AND b.id IN $ids
-        RETURN a.id AS prereq, b.id AS dep
-        """,
-        {"ids": list(doc_ids)},
-    )
-    pairs = [(r["prereq"], r["dep"]) for r in req_rows]
+    pairs = [(r["prereq"], r["dep"]) for r in _requires_pairs(list(doc_ids))]
 
     ordered = _topo_sort_documents(list(doc_ids), pairs)
     held = set(documents_held)
@@ -151,87 +126,70 @@ def get_path_document_ids(
 _MAIN_OFFICES = ("ics_main", "motri_main", "nbe_main")
 
 
-def get_document_with_office(doc_id: str, sub_city: str, sub_label: str | None = None) -> dict | None:
-    rows = _query_rows(
+def _issuing_office(doc_id: str, sub_city: str) -> dict | None:
+    """The office in the citizen's sub-city that issues the document, else the main federal office."""
+    offices = fetch_all(
         """
-        MATCH (d:Document {id: $doc_id})
-        OPTIONAL MATCH (d)-[:ISSUED_BY]->(o:Office)-[:LOCATED_IN]->(sc:SubCity {id: $sub_city})
-        WITH d, o AS office_subcity
-        OPTIONAL MATCH (d)-[:ISSUED_BY]->(oMain:Office)
-        WHERE oMain.id IN $main_offices
-        WITH d, coalesce(office_subcity, oMain) AS o
-        RETURN d.id AS id, d.name AS name, d.name_am AS name_am,
-               d.issuing_authority AS issuing_authority, d.form_code AS form_code,
-               d.fee_etb AS fee_etb, d.avg_processing_days AS avg_days,
-               d.legal_basis AS legal_basis, d.required_input_labels AS required_inputs,
-               d.rejection_reasons AS rejection_reasons, d.source_url AS source_url,
-               d.sector_specific AS sector_specific, d.stale AS stale,
-               o.id AS office_id, o.name AS office_name,
-               o.parent_institution AS office_parent, o.address_detail AS office_address,
-               o.landmark AS office_landmark, o.latitude AS office_lat,
-               o.longitude AS office_lng, o.phones AS office_phones,
-               o.working_hours AS office_hours
-        LIMIT 1
+        select o.id, o.props,
+               exists (select 1 from graph_edges l
+                       where l.type = 'LOCATED_IN' and l.src_label = 'Office' and l.src_id = o.id
+                         and l.dst_label = 'SubCity' and l.dst_id = %(sub_city)s) as local
+        from graph_edges e join graph_nodes o on o.label = e.dst_label and o.id = e.dst_id
+        where e.type = 'ISSUED_BY' and e.src_label = 'Document' and e.src_id = %(doc_id)s
+          and e.dst_label = 'Office'
+        order by o.id
         """,
-        {"doc_id": doc_id, "sub_city": sub_city, "main_offices": list(_MAIN_OFFICES)},
+        {"doc_id": doc_id, "sub_city": sub_city},
     )
-    if not rows:
-        d = DocumentNode.match(doc_id)
-        if not d:
-            return None
-        return {
-            "id": d.id,
-            "name": d.name,
-            "name_am": d.name_am,
-            "issuing_authority": d.issuing_authority,
-            "form_code": d.form_code,
-            "fee_etb": d.fee_etb,
-            "avg_days": d.avg_processing_days,
-            "legal_basis": d.legal_basis,
-            "required_inputs": d.required_input_labels or [],
-            "rejection_reasons": d.rejection_reasons or [],
-            "source_url": d.source_url,
-            "sector_specific": d.sector_specific,
-            "stale": d.stale,
-            "office": None,
-        }
+    for o in offices:
+        if o["local"]:
+            return o["props"]
+    for o in offices:
+        if o["id"] in _MAIN_OFFICES:
+            return o["props"]
+    return None
 
-    row = rows[0]
+
+def get_document_with_office(doc_id: str, sub_city: str, sub_label: str | None = None) -> dict | None:
+    d = graph_store.get_node("Document", doc_id)
+    if d is None:
+        return None
+    o = _issuing_office(doc_id, sub_city)
 
     office = None
-    if row.get("office_id"):
+    if o and o.get("id"):
         sub_label = sub_label or sub_city.replace("_", " ").title()
-        local = row["office_id"] not in _MAIN_OFFICES
-        phones = real_phones(row.get("office_phones"))
+        local = o["id"] not in _MAIN_OFFICES
+        phones = real_phones(o.get("phones"))
         office = {
-            "name": (row.get("office_name") or "").replace("{sub_city}", sub_label),
-            "parentInstitution": row.get("office_parent") or "",
+            "name": (o.get("name") or "").replace("{sub_city}", sub_label),
+            "parentInstitution": o.get("parent_institution") or "",
             "subCity": sub_label,
-            "address": (row.get("office_address") or "").replace("{sub_city}", sub_label),
-            "landmark": row.get("office_landmark"),
-            "latitude": row.get("office_lat"),
-            "longitude": row.get("office_lng"),
+            "address": (o.get("address_detail") or "").replace("{sub_city}", sub_label),
+            "landmark": o.get("landmark"),
+            "latitude": o.get("latitude"),
+            "longitude": o.get("longitude"),
             "phones": phones,
-            "workingHours": row.get("office_hours") or "Mon–Fri 08:30–17:00 (EAT)",
+            "workingHours": o.get("working_hours") or "Mon–Fri 08:30–17:00 (EAT)",
         }
-        note = _office_note(row.get("id"), sub_label, bool(phones)) if local else None
+        note = _office_note(d.get("id"), sub_label, bool(phones)) if local else None
         if note:
             office["note"] = note
 
     return {
-        "id": row.get("id"),
-        "name": row.get("name"),
-        "name_am": row.get("name_am"),
-        "issuing_authority": row.get("issuing_authority"),
-        "form_code": row.get("form_code"),
-        "fee_etb": row.get("fee_etb"),
-        "avg_days": row.get("avg_days"),
-        "legal_basis": row.get("legal_basis"),
-        "required_inputs": row.get("required_inputs") or [],
-        "rejection_reasons": row.get("rejection_reasons") or [],
-        "source_url": row.get("source_url"),
-        "sector_specific": row.get("sector_specific"),
-        "stale": row.get("stale"),
+        "id": d.get("id"),
+        "name": d.get("name"),
+        "name_am": d.get("name_am"),
+        "issuing_authority": d.get("issuing_authority"),
+        "form_code": d.get("form_code"),
+        "fee_etb": d.get("fee_etb"),
+        "avg_days": d.get("avg_processing_days"),
+        "legal_basis": d.get("legal_basis"),
+        "required_inputs": d.get("required_input_labels") or [],
+        "rejection_reasons": d.get("rejection_reasons") or [],
+        "source_url": d.get("source_url"),
+        "sector_specific": d.get("sector_specific"),
+        "stale": d.get("stale"),
         "office": office,
     }
 
@@ -239,26 +197,20 @@ def get_document_with_office(doc_id: str, sub_city: str, sub_label: str | None =
 def get_prerequisites_many(doc_ids: list[str]) -> dict[str, list[str]]:
     """Direct prerequisites of several documents in one query."""
     found: dict[str, list[str]] = {d: [] for d in doc_ids}
-    for r in _query_rows(
+    for r in fetch_all(
         """
-        MATCH (pre:Document)-[:REQUIRES]->(d:Document)
-        WHERE d.id IN $ids
-        RETURN d.id AS id, collect(pre.id) AS pres
+        select dst_id as id, array_agg(src_id order by src_id) as pres from graph_edges
+        where type = 'REQUIRES' and src_label = 'Document' and dst_label = 'Document' and dst_id = any(%s)
+        group by dst_id
         """,
-        {"ids": list(doc_ids)},
+        (list(doc_ids),),
     ):
         found[r["id"]] = r["pres"]
     return found
 
 
 def get_prerequisites(doc_id: str) -> list[str]:
-    return [r["id"] for r in _query_rows(
-        """
-        MATCH (pre:Document)-[:REQUIRES]->(d:Document {id: $doc_id})
-        RETURN pre.id AS id
-        """,
-        {"doc_id": doc_id},
-    )]
+    return [n["id"] for n in graph_store.neighbors("Document", doc_id, "REQUIRES", "in") if n["label"] == "Document"]
 
 
 def build_roadmap_from_graph(
@@ -362,12 +314,9 @@ def build_roadmap_from_graph(
 
 
 def _sub_city_label(sub_city: str) -> str:
-    rows = _query_rows(
-        "MATCH (sc:SubCity {id: $id}) RETURN sc.label AS label",
-        {"id": sub_city},
-    )
-    if rows:
-        return rows[0]["label"]
+    sc = graph_store.get_node("SubCity", sub_city)
+    if sc and sc.get("label"):
+        return sc["label"]
     return sub_city.replace("_", " ").title()
 
 
@@ -375,29 +324,23 @@ def list_offices(sub_city: str | None = None) -> list[dict]:
     return [{**o, "phones": real_phones(o.get("phones"))} for o in _list_offices(sub_city)]
 
 
+_OFFICE_FIELDS = ("id", "name", "parent_institution", "address_detail", "landmark", "latitude", "longitude",
+                  "phones", "working_hours", "documents_issued")
+
+
 def _list_offices(sub_city: str | None) -> list[dict]:
-    if sub_city:
-        return _query_rows(
-            """
-            MATCH (o:Office)-[:LOCATED_IN]->(sc:SubCity {id: $sub_city})
-            RETURN o.id AS id, o.name AS name, o.parent_institution AS parent_institution,
-                   o.address_detail AS address_detail, o.landmark AS landmark,
-                   o.latitude AS latitude, o.longitude AS longitude,
-                   o.phones AS phones, o.working_hours AS working_hours,
-                   o.documents_issued AS documents_issued, sc.label AS sub_city_label
-            ORDER BY o.name
-            """,
-            {"sub_city": sub_city},
-        )
-    return _query_rows(
-        """
-        MATCH (o:Office)
-        OPTIONAL MATCH (o)-[:LOCATED_IN]->(sc:SubCity)
-        RETURN o.id AS id, o.name AS name, o.parent_institution AS parent_institution,
-               o.address_detail AS address_detail, o.landmark AS landmark,
-               o.latitude AS latitude, o.longitude AS longitude,
-               o.phones AS phones, o.working_hours AS working_hours,
-               o.documents_issued AS documents_issued, sc.label AS sub_city_label
-        ORDER BY o.name
-        """
+    """Offices with the label of the sub-city each is in (one row per sub-city link)."""
+    rows = fetch_all(
+        f"""
+        select o.props, sc.props->>'label' as sub_city_label
+        from graph_nodes o
+        {"join" if sub_city else "left join"} graph_edges l
+          on l.type = 'LOCATED_IN' and l.src_label = 'Office' and l.src_id = o.id and l.dst_label = 'SubCity'
+          {"and l.dst_id = %(sub_city)s" if sub_city else ""}
+        left join graph_nodes sc on sc.label = l.dst_label and sc.id = l.dst_id
+        where o.label = 'Office'
+        order by o.props->>'name', o.id
+        """,
+        {"sub_city": sub_city},
     )
+    return [{**{k: r["props"].get(k) for k in _OFFICE_FIELDS}, "sub_city_label": r["sub_city_label"]} for r in rows]
