@@ -1,7 +1,7 @@
 """Which service is the person talking about?
 
 Candidates come from every source we hold, each with English and Amharic names and aliases:
-  path:<document>   our multi-office paths (Neo4j)
+  path:<document>   our multi-office paths (the compliance graph)
   org:<uuid>        services organizations published themselves
   mesob:<id>        the MESOB partner catalog (English and Amharic entries)
 

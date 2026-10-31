@@ -1,4 +1,4 @@
-"""Integration tests, need `docker compose up -d postgres neo4j` and a seeded graph."""
+"""Integration tests, need `docker compose up -d postgres` and a seeded graph (scripts.seed_graph)."""
 
 import sys
 import uuid

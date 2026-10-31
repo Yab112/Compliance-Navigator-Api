@@ -45,13 +45,13 @@ def review_org(org_id: str, action: str, *, actor: str, note: str | None,
             (new_status, note, actor, catalog_institution_id, org_id),
         )
         _log(conn, action, org_id=org_id, actor=actor, note=note)
-    live = fetch_all("select id::text from org_services where org_id = %s and published_snapshot is not null "
-                     "and status <> 'archived'", (org_id,))
-    for s in live:
-        if new_status == "verified":
-            sync_service_to_graph(s["id"])
-        elif new_status == "suspended":
-            remove_service_from_graph(s["id"])
+        live = conn.execute("select id::text from org_services where org_id = %s and published_snapshot is not null "
+                            "and status <> 'archived'", (org_id,)).fetchall()
+        for s in live:
+            if new_status == "verified":
+                sync_service_to_graph(s["id"], conn)
+            elif new_status == "suspended":
+                remove_service_from_graph(s["id"], conn)
     title, body = ORG_DECISION_MESSAGES[action]
     _notify_members(org_id, kind=f"org_{action}", title=title, body=(f"{body} Note from our team: {note}" if note else body))
     return admin_org(org_id)
@@ -288,8 +288,9 @@ def review_submission(revision_id: str, action: str, *, actor: str, note: str | 
             )
         action_name = "service_scheduled" if scheduled else "service_published" if went_live else "changes_requested"
         _log(conn, action_name, org_id=rev["org_id"], service_id=rev["service_id"], actor=actor, note=note)
+        if went_live:
+            sync_service_to_graph(rev["service_id"], conn)
     if went_live:
-        sync_service_to_graph(rev["service_id"])
         _notify_change(rev, upcoming=False)
     if scheduled:
         _notify_change(rev, upcoming=True)
@@ -378,7 +379,7 @@ def promote_due_changes(force: bool = False) -> int:
             _go_live(conn, rev, actor="schedule", note=None)
             _log(conn, "service_published", org_id=rev["org_id"], service_id=rev["service_id"], actor="schedule",
                  note=f"Scheduled change effective {rev['effective_at']}")
-        sync_service_to_graph(rev["service_id"])
+            sync_service_to_graph(rev["service_id"], conn)
         _notify_change(rev, upcoming=False)
         promoted += 1
     return promoted

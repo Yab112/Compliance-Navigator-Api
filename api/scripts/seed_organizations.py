@@ -20,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from datetime import date, timedelta  # noqa: E402
 
-from database.database import initiate_database  # noqa: E402
 from schemas.organizations import ServiceIn  # noqa: E402
 from services import org_service, user_store  # noqa: E402
 from services.db import execute, fetch_all, fetch_one, run_migrations  # noqa: E402
@@ -141,7 +140,6 @@ def _schedule_fee_change(org: dict, service_id: str, new_fee: float, days_ahead:
 
 def main() -> None:
     run_migrations()
-    initiate_database()
     owner = _owner()
     _purge(owner)
 

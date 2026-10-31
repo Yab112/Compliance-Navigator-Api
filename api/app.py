@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.v1.router import api_router
 from config.config import settings
-from database.database import initiate_database
 from services.ai_admin import load_overrides
 from services.approvals import PendingApproval
 from services.db import run_migrations
@@ -27,7 +26,6 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("Set a strong SECRET_KEY (32+ random characters) before running in production")
     if settings.auth_cookie_samesite == "none" and not settings.auth_cookie_secure:
         raise RuntimeError("AUTH_COOKIE_SAMESITE=none requires AUTH_COOKIE_SECURE=true")
-    initiate_database()
     run_migrations()
     load_overrides()
     # Test IDs from the Fayda sandbox never count once real Fayda is switched on

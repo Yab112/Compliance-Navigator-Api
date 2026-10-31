@@ -18,7 +18,7 @@ from pathlib import Path
 FORMAT = "%(levelname)s %(asctime)s %(name)s %(funcName)s: %(message)s"
 
 # Chatty libraries that log connection details or raw payloads at DEBUG
-NOISY = ("neo4j", "httpx", "httpcore", "multipart", "python_multipart", "botocore",
+NOISY = ("httpx", "httpcore", "multipart", "python_multipart", "botocore",
          "boto3", "urllib3", "faster_whisper", "fastembed")
 
 _MARK = "_cn_handler"

@@ -2,7 +2,7 @@
 
 Sources, in the order we trust them:
   organization  services an organization published itself (org_services.published_snapshot)
-  path          documents our roadmap engine builds a full multi-office path for (Neo4j)
+  path          documents our roadmap engine builds a full multi-office path for (the compliance graph)
   mesob         the public MESOB catalog, shown as a partner source
 """
 

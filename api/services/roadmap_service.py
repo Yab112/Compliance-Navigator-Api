@@ -1,4 +1,4 @@
-"""Roadmap generation, Neo4j graph with in-memory/stub fallback."""
+"""Roadmap generation, from the compliance graph with an in-memory/stub fallback."""
 
 from __future__ import annotations
 

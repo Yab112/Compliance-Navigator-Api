@@ -18,7 +18,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from database.database import initiate_database  # noqa: E402
 from services import provider_service as svc, user_store  # noqa: E402
 from services.db import execute, fetch_one, run_migrations  # noqa: E402
 
@@ -154,7 +153,6 @@ def make_ready(provider_id: str) -> None:
 
 
 def make_all_ready() -> None:
-    initiate_database()
     run_migrations()
     from services.db import fetch_all
 
@@ -165,7 +163,6 @@ def make_all_ready() -> None:
 
 
 def seed() -> None:
-    initiate_database()
     run_migrations()
     if fetch_one("select 1 from providers where is_sample limit 1"):
         print("Sample providers already exist. Run with --purge first to reseed.")
@@ -263,7 +260,6 @@ if __name__ == "__main__":
     if "--make-ready" in sys.argv:
         make_all_ready()
     elif "--purge" in sys.argv:
-        initiate_database()
         print(svc.purge_samples(actor="scripts/seed_providers.py"))
     else:
         seed()
