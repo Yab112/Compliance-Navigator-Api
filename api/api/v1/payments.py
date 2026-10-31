@@ -338,3 +338,25 @@ def decide_payout(payout_id: UUID, body: PayoutDecision, user: AuthUser = Depend
                                                             actor=user.email)})
     except PaymentError as exc:
         _raise(exc)
+
+
+# ---------------------------------------------------------------- payment health
+
+
+@router.get("/admin/marketplace/payment-health")
+def payment_health(hours: int = Query(24, ge=1, le=168, description="The period, in hours (up to 7 days)"),
+                   user: AuthUser = Depends(require_admin)):
+    """Chapa's status, every call in the period by operation, and money that needs a person now.
+    Payouts in the list need payouts.view as well."""
+    return _ok(payment_service.health_overview(hours, include_payouts=user.can("payouts.view")))
+
+
+@router.get("/admin/marketplace/payment-health/errors", dependencies=[Depends(require_admin)])
+def payment_health_errors(limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0)):
+    return _ok(payment_service.recent_errors(limit, offset))
+
+
+@router.post("/admin/marketplace/payment-health/check", dependencies=[Depends(require_admin)])
+def payment_health_check():
+    """Ask Chapa for its bank list now (never the cached copy) and say how long it took."""
+    return _ok(payment_service.live_check())
