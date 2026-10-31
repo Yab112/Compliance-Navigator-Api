@@ -1,0 +1,131 @@
+name: End-to-end
+
+# Manual only: brings up Postgres and Redis, seeds them, starts the API and both Next apps, and runs e2e/.
+# Payments are simulated here, so the hire test finishes a test payment instead of opening Chapa.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: navigator
+          POSTGRES_PASSWORD: ci-postgres-password
+          POSTGRES_DB: compliance_navigator
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U navigator -d compliance_navigator"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # API (dummy values, CI only; no SMTP, so emails go to the API log)
+      ENVIRONMENT: development
+      SECRET_KEY: ci-only-secret-key-not-used-anywhere-else-0123456789
+      ID_HASH_PEPPER: ci-only-pepper
+      DATABASE_URL: postgresql://navigator:ci-postgres-password@localhost:5432/compliance_navigator
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      WEB_BASE_URL: http://localhost:3000
+      ADMIN_BASE_URL: http://localhost:3001
+      AUTH_COOKIE_SECURE: "false"
+      PAYMENTS_MODE: simulated
+      FAYDA_MODE: sandbox
+      LLM_PROVIDER: ollama
+      LOG_FILE: ""
+      LOG_LEVEL: INFO
+      RELOAD: "false"
+      # Web and admin
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080/api/v1
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_ADMIN_URL: http://localhost:3001
+      NEXT_TELEMETRY_DISABLED: "1"
+      # The suite (its backend helper uses api/.venv, which uv sync makes)
+      E2E_WEB_URL: http://localhost:3000
+      E2E_ADMIN_URL: http://localhost:3001
+      E2E_API_URL: http://localhost:8080
+      E2E_API_LOG: /tmp/api.log
+      E2E_CHROME: /usr/bin/google-chrome
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - name: Install the API
+        working-directory: api
+        run: |
+          uv python install 3.13
+          uv sync --frozen
+
+      - name: Migrate and seed
+        working-directory: api
+        run: |
+          uv run python -c "from services.db import run_migrations; run_migrations()"
+          uv run python -m scripts.seed_graph
+          uv run python -m scripts.seed_rag_samples
+          uv run python -m scripts.seed_providers
+          uv run python -m scripts.seed_providers --make-ready
+
+      - name: Start the API
+        working-directory: api
+        run: |
+          nohup uv run python main.py > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8080/api/v1/legal/documents > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:8080/api/v1/legal/documents > /dev/null
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and start web and admin
+        run: |
+          pnpm --dir web exec next build
+          pnpm --dir admin exec next build
+          nohup pnpm --dir web exec next start -p 3000 > /tmp/web.log 2>&1 &
+          nohup pnpm --dir admin exec next start -p 3001 > /tmp/admin.log 2>&1 &
+          for port in 3000 3001; do
+            for i in $(seq 1 60); do curl -sf http://localhost:$port/ > /dev/null && break; sleep 2; done
+            curl -sf http://localhost:$port/ > /dev/null
+          done
+
+      - name: Run the suite
+        run: pnpm e2e
+
+      - name: Keep the report and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            /tmp/api.log
+            /tmp/web.log
+            /tmp/admin.log
+          retention-days: 7
