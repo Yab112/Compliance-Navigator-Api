@@ -6,6 +6,8 @@
     "dev:web": "pnpm --filter compliance-navigator-web dev",
     "dev:admin": "pnpm --filter compliance-navigator-admin dev",
     "build": "pnpm -r --filter ./web --filter ./admin build",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "e2e": "pnpm --filter compliance-navigator-e2e test",
+    "e2e:phone": "pnpm --filter compliance-navigator-e2e test:phone"
   }
 }

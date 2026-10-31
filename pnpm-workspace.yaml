@@ -2,6 +2,7 @@ packages:
   - web
   - admin
   - packages/*
+  - e2e
 
 allowBuilds:
   '@sentry/cli': false
