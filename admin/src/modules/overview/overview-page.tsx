@@ -111,7 +111,7 @@ export function OverviewPage() {
           tone={orgs?.pending_submissions ? "attention" : "default"}
         />
         <StatTile label="MESOB services" value={o.catalog.services} hint={`${o.catalog.institutions} institutions · ${o.catalog.centers} centers`} href={link("/catalog")} />
-        <StatTile label="Graph nodes" value={graph?.totalNodes ?? "-"} hint={graph ? `${graph.totalRelationships.toLocaleString("en")} relationships` : "Neo4j unavailable"} href={link("/graph")} />
+        <StatTile label="Graph nodes" value={graph?.totalNodes ?? "-"} hint={graph ? `${graph.totalRelationships.toLocaleString("en")} relationships` : "Graph unavailable"} href={link("/graph")} />
         <StatTile
           label="Stale documents"
           value={graph?.staleDocuments ?? "-"}

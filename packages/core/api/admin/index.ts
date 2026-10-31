@@ -10,7 +10,6 @@ import type {
   AuthSummary,
   CustomDataSource,
   CustomDataSourceInput,
-  CypherResult,
   DataSource,
   DataSourceRun,
   FeedbackFilters,
@@ -153,11 +152,6 @@ export type DocumentPatch = Partial<
 export const useUpdateDocument = () => {
   const { run, isPending } = useAdminMutation<{ document: GraphDocument }, DocumentPatch>(GRAPH_KEYS);
   return { updateDocument: (id: string, body: DocumentPatch) => run(p.graphDocument(id), MTD.PATCH, body), isPending };
-};
-
-export const useCypherQuery = () => {
-  const { run, isPending } = useAdminMutation<CypherResult, { query: string }>("none");
-  return { runQuery: (query: string) => run(p.graphQuery, MTD.POST, { query }), isPending };
 };
 
 export const useAIStatus = () => useAdminQuery<AIStatus>(["ai-status"], p.aiStatus);

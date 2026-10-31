@@ -107,7 +107,7 @@ function InstitutionsTable({
       ) : breakdown.error ? (
         <ErrorState
           error={breakdown.error}
-          message={getErrorMessage(breakdown.error, "The graph database (Neo4j) is not reachable")}
+          message={getErrorMessage(breakdown.error, "The knowledge graph could not be loaded")}
           onRetry={() => breakdown.refetch()}
         />
       ) : !rows.length ? (

@@ -10,7 +10,6 @@ import { humanize } from "@cn/core/lib/format";
 import { AdminPage } from "@/modules/components/admin-page";
 import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { ErrorState, EmptyState, LoadingState } from "@/modules/shared/states";
-import { CypherConsole } from "@/modules/graph/cypher-console";
 import { DocumentEditor } from "@/modules/graph/document-editor";
 import { DocumentsTable } from "@/modules/graph/documents-table";
 import { GraphExplorer } from "@/modules/graph/graph-explorer";
@@ -74,7 +73,7 @@ export function GraphPage() {
       {stats.isLoading ? (
         <LoadingState />
       ) : stats.error || !s ? (
-        <ErrorState error={stats.error} message={getErrorMessage(stats.error, "The graph database (Neo4j) is not reachable")} onRetry={() => stats.refetch()} />
+        <ErrorState error={stats.error} message={getErrorMessage(stats.error, "The knowledge graph could not be loaded")} onRetry={() => stats.refetch()} />
       ) : (
         <div className={cn(STAT_STRIP, "grid-cols-2 md:grid-cols-4")}>
           <StatTile label="Items in the database" value={s.totalNodes} hint={`${Object.keys(s.nodes).length} kinds`} />
@@ -136,16 +135,6 @@ export function GraphPage() {
         </CardHeader>
         <CardContent>
           <DocumentsTable onEdit={setEditingId} />
-        </CardContent>
-      </Card>
-
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Cypher console (read-only)</CardTitle>
-          <CardDescription>Ask the graph database questions directly</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CypherConsole />
         </CardContent>
       </Card>
 
