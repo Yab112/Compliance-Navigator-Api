@@ -429,3 +429,117 @@ export type PayoutReceipt = {
   to: { bank: string | null; account_name: string | null; account_last4: string | null };
   transfer_reference: string | null;
 };
+
+// ---------------------------------------------------------------- payment health
+
+export type GatewayOperation =
+  | "initialize"
+  | "verify"
+  | "transfer"
+  | "verify_transfer"
+  | "refund"
+  | "verify_refund"
+  | "banks"
+  | "other";
+
+export type PaymentHealthState = "no_calls" | "healthy" | "degraded" | "down";
+
+export type PaymentHealthStatus = {
+  status: PaymentHealthState;
+  label: string;
+  /** Why, in plain words */
+  reason: string;
+  mode: PaymentsMode;
+  last_success_at: string | null;
+  last_call_at: string | null;
+  last_fault: { error: string | null; http_status: number | null; operation: GatewayOperation; created_at: string } | null;
+  calls_last_hour: number;
+  faults_last_hour: number;
+  refusals_last_hour: number;
+  p95_ms_last_hour: number | null;
+};
+
+/** failures = faults (no answer, 5xx, key refused, rate limit) + refusals (any other 4xx: Chapa said no) */
+export type GatewayCallFigures = {
+  calls: number;
+  failures: number;
+  faults: number;
+  refusals: number;
+  failure_rate: number;
+  avg_ms: number | null;
+  p95_ms: number | null;
+};
+
+export type GatewayOperationSummary = GatewayCallFigures & {
+  operation: GatewayOperation;
+  uncertain: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_failure_message: string | null;
+  last_failure_http_status: number | null;
+};
+
+export type PaymentHealthSummary = {
+  hours: number;
+  operations: GatewayOperationSummary[];
+  totals: GatewayCallFigures & { test_calls: number };
+};
+
+export type PaymentAttentionItem = {
+  kind: "payment" | "payout" | "refund";
+  id: string;
+  reference: string;
+  /** The payment's tx_ref (payments and refunds) */
+  tx_ref?: string;
+  engagement_id?: string;
+  status: string;
+  /** needs_check: the money may have moved; failed: it did not; stuck: a checkout still pending */
+  problem: "needs_check" | "failed" | "stuck";
+  amount: number;
+  since: string;
+  age_seconds: number;
+  is_test: boolean;
+  who: string | null;
+  reason: string;
+};
+
+export type PaymentHealth = {
+  status: PaymentHealthStatus;
+  summary: PaymentHealthSummary;
+  attention: { items: PaymentAttentionItem[]; total: number };
+};
+
+export type GatewayCallError = {
+  id: number;
+  created_at: string;
+  operation: GatewayOperation;
+  method: string;
+  path: string;
+  reference: string | null;
+  http_status: number | null;
+  error: string | null;
+  /** The call may have been carried out anyway (no answer or a server error) */
+  uncertain: boolean;
+  fault: boolean;
+  is_test: boolean;
+  duration_ms: number;
+  belongs_to:
+    | { kind: "payment"; id: string; tx_ref: string; engagement_id: string; status: string }
+    | { kind: "payout"; id: string; status: string }
+    | { kind: "refund"; id: string; tx_ref: string; status: string }
+    | null;
+};
+
+export type GatewayCallErrors = { items: GatewayCallError[]; total: number; limit: number; offset: number };
+
+export type GatewayLiveCheck = {
+  /** null when nothing was sent (test mode or payments off) */
+  ok: boolean | null;
+  simulated: boolean;
+  mode: PaymentsMode;
+  latency_ms: number | null;
+  http_status: number | null;
+  uncertain?: boolean;
+  error: string | null;
+  message: string;
+};

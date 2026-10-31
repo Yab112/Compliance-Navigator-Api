@@ -15,6 +15,9 @@ import type {
   AdminPaymentFilters,
   AdminPayments,
   AdminPayouts,
+  GatewayCallErrors,
+  GatewayLiveCheck,
+  PaymentHealth,
   PayoutReview,
   Bank,
   CheckoutStart,
@@ -342,4 +345,27 @@ export const useDecidePayout = () => {
   const { run, isPending } = useAdminMutation<{ payout: Payout }, PayoutDecision>();
   const decide = (id: string, body: PayoutDecision) => run(apiPaths.admin.marketPayout(id), MTD.POST, body).then((p) => p.payout);
   return { decide, isPending };
+};
+
+// ---------------------------------------------------------------- payment health
+
+/** Chapa's status, the calls in the last `hours` by operation, and money that needs a person. Refreshed every minute. */
+export const usePaymentHealth = (hours: number) =>
+  useAdminQuery<PaymentHealth>(["market", "payment-health", hours], withQuery(apiPaths.admin.marketPaymentHealth, { hours }), {
+    refetchInterval: 60 * 1000,
+  });
+
+/** Failed Chapa calls, newest first. */
+export const usePaymentHealthErrors = (page = 0, size = ADMIN_MONEY_PAGE_SIZE) =>
+  useAdminQuery<GatewayCallErrors>(
+    ["market", "payment-health", "errors", page, size],
+    withQuery(apiPaths.admin.marketPaymentHealthErrors, { limit: size, offset: page * size }),
+    { refetchInterval: 60 * 1000 },
+  );
+
+/** Ask Chapa for its bank list now; the call is recorded, so the health figures refresh after it. */
+export const usePaymentHealthCheck = () => {
+  const { run, isPending } = useAdminMutation<GatewayLiveCheck, undefined>([["market", "payment-health"]]);
+  const check = () => run(apiPaths.admin.marketPaymentHealthCheck, MTD.POST);
+  return { check, isPending };
 };
