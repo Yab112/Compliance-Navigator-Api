@@ -12,10 +12,11 @@ Compliance Navigator/
 ├── packages/
 │   ├── core/         # @cn/core: API client, auth session, types, data hooks, navigation
 │   └── ui/           # @cn/ui: design tokens, UI primitives, shared display components
+├── e2e/              # Playwright browser tests against a running stack
 └── api/              # FastAPI backend
 ```
 
-`web`, `admin` and `packages/*` are one pnpm workspace. The packages are TypeScript source that each app compiles
+`web`, `admin`, `e2e` and `packages/*` are one pnpm workspace. The packages are TypeScript source that each app compiles
 (`transpilePackages`), so a change to a button or a type lands in both apps.
 
 ## What's inside
@@ -109,6 +110,51 @@ The same jobs can be run on demand from **Admin → Data sources**; every run is
 
 ```bash
 cd api && uv run pytest -q     # needs postgres running and a seeded graph (scripts.seed_graph)
+```
+
+### End-to-end tests
+
+`e2e/` drives the real web and admin apps in Chrome against a running stack (API, web and admin all up,
+sample providers seeded). It uses the system Chrome (`/usr/bin/google-chrome`, or `E2E_CHROME`), never a
+downloaded browser.
+
+```bash
+pnpm e2e                 # every spec, desktop (1366px) and phone (390px)
+pnpm e2e:phone           # phone layout only
+pnpm --dir e2e exec playwright test tests/hire.spec.ts --project=desktop
+```
+
+What it covers: public pages (no console errors, no sideways scroll on phones), sign-up with the email link,
+sign-in, reload, sign-out, password reset, a full hire up to the checkout, the notification bell, the staff
+app's menus and a money setting that needs a second staff member, and access checks (signed-out redirects,
+another client's hire, public tokens on staff endpoints).
+
+Every account it makes starts with `e2e-suite-` and is deleted afterwards, with its hires, payments and
+notifications. Staff accounts come from `scripts.create_staff` with a random password kept in memory. Sample
+providers can't sign in, so their side of a hire runs through `e2e/helpers/backend.py` with the API's Python.
+The money setting it changes (`payout_hold_days`) is put back, with a second approval, when it finishes.
+
+| Variable | Default | What it is |
+|----------|---------|------------|
+| `E2E_WEB_URL`, `E2E_ADMIN_URL`, `E2E_API_URL` | `http://localhost:3000`, `:3001`, `:8080` | The stack under test |
+| `E2E_MAILPIT_URL` | unset | Read email links from Mailpit (the rehearsal stack) |
+| `E2E_API_LOG` | `api/logs/api.log` | Otherwise read them from the API log (dev without SMTP) |
+| `E2E_CHROME` | `/usr/bin/google-chrome` | The Chrome to drive |
+| `E2E_PYTHON`, `E2E_PYTHON_CWD` | `api/.venv/bin/python`, `api/` | How to run the API's Python, e.g. `docker compose exec -T web python` |
+| `E2E_WORKERS` | `1` | Specs share one database, so one at a time by default |
+
+For the HTTPS rehearsal stack (`*.cn.test`) set the URLs plus `E2E_MAILPIT_URL=https://mail.cn.test`; Chrome
+maps `*.cn.test` to 127.0.0.1 by itself, but Node (API calls, Mailpit) needs the names in `/etc/hosts` and
+`NODE_TLS_REJECT_UNAUTHORIZED=0` for the self-signed certificates. With Chapa test keys the hire test stops
+at the Chapa checkout address; with `PAYMENTS_MODE=simulated` it completes a test payment. The **End-to-end**
+GitHub workflow (`.github/workflows/e2e.yml`, run by hand) starts Postgres and Redis, seeds them, starts the API
+and both Next apps, and runs the suite.
+
+Against the local dev servers, point the suite at the API's log (where emails land without SMTP) and the API's
+Python if they are not in this checkout:
+
+```bash
+E2E_API_LOG=/path/to/api.log E2E_PYTHON=/path/to/api/.venv/bin/python E2E_PYTHON_CWD=/path/to/api pnpm e2e
 ```
 
 ## Auth model
