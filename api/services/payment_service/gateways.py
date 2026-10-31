@@ -192,12 +192,20 @@ class ChapaGateway:
         status = str(data.get("status", "")).lower()
         return "refunded" if status == "refunded" else "failed" if status in ("reversed", "failed") else "processing"
 
+    @staticmethod
+    def _plain(text: str, limit: int, fallback: str) -> str:
+        """Chapa's customization fields take only English letters, digits, spaces, hyphens, underscores and dots.
+        Anything else (punctuation, Amharic) becomes a space so a job title can never block a payment."""
+        cleaned = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ._-]", " ", text or "")).strip()[:limit].strip()
+        return cleaned or fallback
+
     def initialize(self, *, tx_ref: str, amount: Decimal, email: str | None, first_name: str, last_name: str,
                    phone: str | None, return_url: str, callback_url: str, title: str, reason: str) -> str:
         payload = {
             "amount": str(amount), "currency": "ETB", "tx_ref": tx_ref, "first_name": first_name or "Client",
             "last_name": last_name or "", "return_url": return_url, "callback_url": callback_url,
-            "customization": {"title": title[:16], "description": reason[:50]},
+            "customization": {"title": self._plain(title, 16, "Payment"),
+                              "description": self._plain(reason, 50, "Payment for a job")},
             "meta": {"payment_reason": reason[:100]},
         }
         # The email is optional: leave out one Chapa is known to refuse instead of asking twice

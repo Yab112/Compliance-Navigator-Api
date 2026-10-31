@@ -55,8 +55,9 @@ export function NotificationBell() {
           </span>
         )}
       </button>
+      {/* Phones: the bell sits mid-bar, so the panel spans the screen instead of hanging off its edge */}
       {open && (
-        <div className="border-border bg-card text-foreground absolute right-0 z-[60] mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-md border shadow-lg">
+        <div className="border-border bg-card text-foreground absolute right-0 z-[60] mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-md border shadow-lg max-md:fixed max-md:inset-x-3 max-md:w-auto max-md:max-w-none">
           <div className="border-border flex items-center justify-between border-b px-4 py-2.5">
             <p className="text-sm font-semibold">Notifications · ማሳወቂያዎች</p>
             {unread > 0 && (

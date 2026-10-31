@@ -56,9 +56,7 @@ function Choice({ active, onClick, title, am, body, icon }: { active: boolean; o
         active ? "border-primary bg-secondary/60 ring-primary shadow-sm ring-2" : "border-border bg-card hover:border-primary/50 hover:shadow-sm",
       )}
     >
-      <span className={cn("flex size-11 items-center justify-center rounded-lg", active ? "bg-primary text-white" : "bg-secondary text-primary")}>
-        <HugeiconsIcon icon={icon} className="size-6" />
-      </span>
+      <HugeiconsIcon icon={icon} className="text-primary size-7" />
       <span className="font-semibold">
         {title} <span className="text-muted-foreground text-sm font-normal">· {am}</span>
       </span>

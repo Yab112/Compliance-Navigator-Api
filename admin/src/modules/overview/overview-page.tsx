@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { cn } from "@cn/core/lib/utils";
 import { BarList } from "@cn/ui/charts/bar-list";
 import { LineChart } from "@cn/ui/charts/line-chart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@cn/ui/card";
@@ -8,7 +9,7 @@ import { useAdminOverview } from "@cn/core/api/admin";
 import { useSupportSummary } from "@cn/core/api/support";
 import { AdminPage } from "@/modules/components/admin-page";
 import { formatDay, humanize, timeAgo } from "@cn/core/lib/format";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { ErrorState, EmptyState, LoadingState } from "@/modules/shared/states";
 import { StatusBadge } from "@/modules/shared/status-badge";
 import { useCan } from "@/modules/access/api";
@@ -63,7 +64,7 @@ export function OverviewPage() {
       title="Overview"
       description="Live state of the Compliance Navigator platform: citizens' roadmaps, licensed Guday Geday agents, the MESOB catalog, the knowledge graph and the AI assistant."
     >
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className={cn(STAT_STRIP, "grid-cols-2 md:grid-cols-3 xl:grid-cols-6")}>
         {canSupport && (
           <StatTile
             label="Support desk"

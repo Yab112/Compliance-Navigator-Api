@@ -38,7 +38,7 @@ export function HireTimeline({ stage, next }: { stage: HireStage; next: string }
         })}
       </ol>
       {next && (
-        <p className="border-primary bg-secondary/40 mt-2 border-l-2 px-3 py-1.5 text-xs">
+        <p className="bg-secondary/40 mt-2 rounded-md px-3 py-1.5 text-xs">
           <span className="font-semibold">Next: </span>
           {next}
         </p>

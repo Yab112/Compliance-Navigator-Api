@@ -11,16 +11,15 @@ flow.
 from __future__ import annotations
 
 import logging
-import smtplib
 import uuid
 from dataclasses import dataclass
-from email.message import EmailMessage
 
 from psycopg.types.json import Jsonb
 
 from auth import security
 from auth.service import AuthError, ClientInfo
 from config.config import settings
+from core import mailer
 from schemas.staff_user import StaffActor
 from services import access
 from services.db import connection, execute, fetch_all, fetch_one
@@ -103,16 +102,31 @@ def list_audit(*, actor: str | None = None, action: str | None = None, target: s
 def _recent_failures(column: str, value: str | None) -> int:
     if not value:
         return 0
-    expr = "lower(actor_email) = lower(%s)" if column == "email" else "ip = %s"
-    # A sign-in resets the counter; for an address, so does a completed password reset or invite
-    resets = "('auth.login', 'auth.password_reset', 'auth.invite_accepted')" if column == "email" else "('auth.login')"
+    if column == "ip":
+        # Fixed window per network; a sign-in only forgives that same address's earlier failures from it,
+        # so signing in to one account between guesses at others does not clear the count (see auth/service.py)
+        return fetch_one(
+            """
+            select count(*) as c from staff_audit_log f
+            where f.action = 'auth.login_failed' and f.ip = %s
+              and f.created_at > now() - make_interval(mins => %s)
+              and not exists (
+                select 1 from staff_audit_log s
+                where s.action = 'auth.login' and s.ip = f.ip and lower(s.actor_email) = lower(f.actor_email)
+                  and s.created_at > f.created_at
+              )
+            """,
+            (value, LOCKOUT_MINUTES),
+        )["c"]
+    # A sign-in resets an address's counter, and so does a completed password reset or invite
     return fetch_one(
-        f"""
+        """
         select count(*) as c from staff_audit_log
-        where action = 'auth.login_failed' and {expr}
+        where action = 'auth.login_failed' and lower(actor_email) = lower(%s)
           and created_at > now() - make_interval(mins => %s)
           and created_at > coalesce((
-            select max(created_at) from staff_audit_log where action in {resets} and {expr}
+            select max(created_at) from staff_audit_log
+            where action in ('auth.login', 'auth.password_reset', 'auth.invite_accepted') and lower(actor_email) = lower(%s)
           ), '-infinity')
         """,
         (value, LOCKOUT_MINUTES, value),
@@ -442,17 +456,8 @@ def send_email(to: str, subject: str, body: str) -> bool:
     if not settings.smtp_host:
         log.warning("Email to %s (no SMTP configured): %s\n%s", to, subject, body)
         return False
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = settings.smtp_from
-    msg["To"] = to
-    msg.set_content(body)
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-            smtp.starttls()
-            if settings.smtp_username:
-                smtp.login(settings.smtp_username, settings.smtp_password or "")
-            smtp.send_message(msg)
+        mailer.deliver(to, subject, body)
         return True
     except Exception:
         log.exception("Could not send email to %s", to)

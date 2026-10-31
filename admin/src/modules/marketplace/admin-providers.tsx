@@ -17,6 +17,7 @@ import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { cn } from "@cn/core/lib/utils";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { AdminPage } from "@/modules/components/admin-page";
 import { useCan } from "@/modules/access/api";
 import {
@@ -148,22 +149,17 @@ export function AdminProviders() {
       description="Guday Geday agents and agencies. Approve applications, check sector licences and watch trust scores."
       actions={<PurgeSamples />}
     >
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className={cn(STAT_STRIP, "mb-6 grid-cols-2 md:grid-cols-5")}>
         {[
           { label: "Awaiting review", value: counts.pending ?? 0, accent: (counts.pending ?? 0) > 0 },
           { label: "Approved providers", value: counts.approved ?? 0 },
           { label: "Licences to check", value: stats?.licensesPending ?? 0, accent: (stats?.licensesPending ?? 0) > 0, href: "?license=pending&status=all" },
           { label: "Open complaints", value: stats?.openDisputes ?? 0, accent: (stats?.openDisputes ?? 0) > 0, href: "/marketplace/hires?disputed=1" },
           { label: "Reviews (hidden)", value: `${stats?.reviews ?? 0} (${stats?.hiddenReviews ?? 0})`, href: "/marketplace/reviews" },
-        ].map((tile) => {
-          const body = (
-            <div className={cn("border-border h-full border p-3", tile.accent && "border-amber-500/60")}>
-              <p className="text-muted-foreground text-[11px]">{tile.label}</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{stats ? tile.value : "…"}</p>
-            </div>
-          );
-          return tile.href ? <Link key={tile.label} href={tile.href} className="hover:bg-muted/50">{body}</Link> : <div key={tile.label}>{body}</div>;
-        })}
+        ].map((tile) => (
+          <StatTile key={tile.label} label={tile.label} value={stats ? tile.value : "…"} href={tile.href}
+            tone={tile.accent ? "attention" : "default"} />
+        ))}
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2 text-xs">

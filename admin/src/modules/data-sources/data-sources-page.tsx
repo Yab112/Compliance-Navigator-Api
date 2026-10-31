@@ -8,7 +8,7 @@ import { AdminPage } from "@/modules/components/admin-page";
 import { timeAgo } from "@cn/core/lib/format";
 import { cn } from "@cn/core/lib/utils";
 import { ErrorState, LoadingState } from "@/modules/shared/states";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { StatusBadge } from "@/modules/shared/status-badge";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import type { DataSource } from "@cn/core/types/admin";
@@ -137,7 +137,7 @@ function SummaryStrip({ sources }: { sources: DataSource[] }) {
     .sort((a, b) => (b.health.lastFailureAt ?? "").localeCompare(a.health.lastFailureAt ?? ""))[0];
   const neverRun = active.length - ran.length;
   return (
-    <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+    <div className={cn(STAT_STRIP, "mb-6 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6")}>
       <StatTile
         label="Healthy"
         value={`${ran.length - failing.length} of ${active.length}`}

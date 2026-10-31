@@ -26,7 +26,7 @@ function ServiceSearch({ className, onDone }: { className?: string; onDone?: () 
   return (
     <form
       role="search"
-      className={cn("flex", className)}
+      className={cn("relative flex", className)}
       onSubmit={(e) => {
         e.preventDefault();
         router.push(q.trim() ? `/services?q=${encodeURIComponent(q.trim())}` : "/services");
@@ -41,12 +41,12 @@ function ServiceSearch({ className, onDone }: { className?: string; onDone?: () 
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search services · አገልግሎት ይፈልጉ"
-        className="border-input bg-background focus:border-primary h-9 min-w-0 flex-1 rounded-l-md border px-3 text-sm outline-none"
+        className="border-input bg-background focus:border-primary h-9 min-w-0 flex-1 rounded-md border pr-9 pl-3 text-sm outline-none"
       />
       <button
         type="submit"
         aria-label="Search"
-        className="bg-primary text-primary-foreground hover:bg-primary/90 flex h-9 w-10 items-center justify-center rounded-r-md"
+        className="text-muted-foreground hover:text-primary absolute right-0 flex h-9 w-9 items-center justify-center"
       >
         <HugeiconsIcon icon={Search01Icon} className="size-4" />
       </button>
@@ -187,9 +187,13 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
           <span className="font-semibold">
             {mainNav.find((i) => isActive(pathname, i.href))?.label ?? "Menu"}
           </span>
-          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="mobile-menu" className="text-white/90 underline-offset-4 hover:underline">
-            {open ? "Close" : "Menu · ምናሌ"}
-          </button>
+          <div className="flex items-center gap-5">
+            {/* The utility bar with the bell is hidden on phones, so the bell lives here */}
+            {user && <NotificationBell />}
+            <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="mobile-menu" className="text-white/90 underline-offset-4 hover:underline">
+              {open ? "Close" : "Menu · ምናሌ"}
+            </button>
+          </div>
         </div>
         {open && (
           <div id="mobile-menu" className="border-border bg-card absolute inset-x-0 top-full border-b shadow-lg">
@@ -206,8 +210,8 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
                       onClick={() => setOpen(false)}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "border-border flex items-center justify-between border-b border-l-4 px-4 py-3 text-sm",
-                        active ? "border-l-primary bg-secondary font-semibold" : "border-l-transparent",
+                        "border-border flex items-center justify-between border-b px-4 py-3 text-sm",
+                        active ? "bg-secondary text-primary font-semibold" : "",
                       )}
                     >
                       {item.label}

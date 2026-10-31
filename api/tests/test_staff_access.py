@@ -440,3 +440,26 @@ def test_leaving_out_the_json_content_type_does_not_skip_approval(client, make_s
     assert r.json()["payload"]["approval"]["status"] == "pending"
     assert platform_settings.get("commission_percent") == before
     execute("delete from approval_requests where id = %s", (r.json()["payload"]["approval"]["id"],))
+
+
+def test_staff_sign_in_does_not_clear_the_network_count(monkeypatch, make_staff):
+    from auth import staff_service
+    from auth.common import ClientInfo
+
+    staff, ip = make_staff("viewer"), f"198.51.100.7-{uuid.uuid4().hex[:6]}"
+    monkeypatch.setattr(staff_service, "MAX_FAILED_PER_IP", 3)
+    net = ClientInfo(ip=ip)
+    try:
+        for i in range(2):
+            with pytest.raises(staff_service.AuthError):
+                staff_service.login(f"nobody-{i}-{uuid.uuid4().hex[:6]}@example.com", "guess-1", net)
+        staff_service.login(staff["email"], staff["password"], net)
+        with pytest.raises(staff_service.AuthError):
+            staff_service.login(f"nobody-x-{uuid.uuid4().hex[:6]}@example.com", "guess-1", net)
+        # Three failures at other addresses: blocked, though this person signed in between
+        with pytest.raises(staff_service.AuthError) as exc:
+            staff_service.login(staff["email"], staff["password"], net)
+        assert exc.value.status_code == 429
+        assert staff_service._recent_failures("ip", ip) == 3
+    finally:
+        execute("delete from staff_audit_log where ip = %s", (ip,))

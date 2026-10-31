@@ -5,7 +5,7 @@ export function BuiltForGrid() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-14">
       <div className="mb-10 max-w-2xl">
-        <div className="border-gov-green border-l-4 pl-3">
+        <div>
           <h2 className="text-gov-ink text-2xl font-bold tracking-tight">Built for people, not paperwork experts</h2>
           <p className="text-muted-foreground text-sm">ለሁሉም ሰው የተሰራ</p>
         </div>

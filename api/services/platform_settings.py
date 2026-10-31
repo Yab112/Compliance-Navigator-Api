@@ -73,6 +73,10 @@ FIELDS: list[Field] = [
     Field("payout_new_account_days", "money", "Flag recently changed bank accounts",
           "Payout review warns when the account was added or changed this recently.",
           "int", lambda: 7, 0, 90, "days", applies="Payout reviews"),
+    Field("payout_hold_days", "money", "Hold new earnings for",
+          "Earnings can be withdrawn only this many days after the client paid, so a dispute or refund can "
+          "still be taken from them. 0 means at once.",
+          "int", lambda: 7, 0, 60, "days", applies="All earnings, at once"),
 
     Field("legal_name", "business", "Legal name", "Registered business name.", "text",
           lambda: settings.platform_legal_name, required=True, placeholder="Compliance Navigator PLC"),

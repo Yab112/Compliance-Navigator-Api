@@ -278,7 +278,7 @@ def _production_kwargs(**overrides) -> dict:
         api_public_url="https://api.navigator.example", payments_mode="chapa", chapa_secret_key="CHASECK-live",
         chapa_webhook_secret="whsec", fayda_mode="live", fayda_client_id="id", fayda_authorize_url="https://f/a",
         fayda_token_url="https://f/t", fayda_userinfo_url="https://f/u", fayda_jwks_url="https://f/j",
-        fayda_private_key="-----BEGIN KEY-----", fayda_redirect_uri="https://navigator.example/cb",
+        fayda_private_key="-----BEGIN KEY-----", fayda_issuer="https://f", fayda_redirect_uri="https://navigator.example/cb",
         id_hash_pepper="pepper", payout_encryption_key="fernet-key", smtp_host="smtp.example", log_level="INFO", demo_password=None,
     )
     return {**good, **overrides}
@@ -316,6 +316,7 @@ def test_development_stays_permissive():
     ({"chapa_webhook_secret": None}, "CHAPA_WEBHOOK_SECRET"),
     ({"fayda_mode": "sandbox"}, "FAYDA_MODE"),
     ({"fayda_jwks_url": None}, "FAYDA_JWKS_URL"),
+    ({"fayda_issuer": None}, "FAYDA_ISSUER"),
     ({"id_hash_pepper": None}, "ID_HASH_PEPPER"),
     ({"smtp_host": None}, "SMTP_HOST"),
     ({"log_level": "debug"}, "LOG_LEVEL"),

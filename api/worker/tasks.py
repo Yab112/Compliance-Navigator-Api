@@ -68,3 +68,23 @@ def check_processing_payouts(self) -> dict:
 
     initiate_database()
     return payment_service.check_processing_payouts()
+
+
+@celery_app.task(name="worker.tasks.check_sending_refunds", bind=True)
+def check_sending_refunds(self) -> dict:
+    """Settle refunds whose gateway answer was never recorded; never sends a refund again."""
+    from database.database import initiate_database
+    from services import payment_service
+
+    initiate_database()
+    return payment_service.check_sending_refunds()
+
+
+@celery_app.task(name="worker.tasks.check_pending_payments", bind=True)
+def check_pending_payments(self) -> dict:
+    """Record checkouts the client paid whose Chapa webhook never arrived, and give up on abandoned ones."""
+    from database.database import initiate_database
+    from services import payment_service
+
+    initiate_database()
+    return payment_service.check_pending_payments()

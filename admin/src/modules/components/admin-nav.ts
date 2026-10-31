@@ -1,7 +1,7 @@
 /** `perm`: hide the link from staff without this permission (the server still checks every request). */
 export type AdminNavItem = { href: string; label: string; group: string; perm?: string };
 
-/** Sidebar sections in display order, with a line explaining what belongs in each. */
+/** Navigation sections (menus in the top bar) in display order, with a line explaining what belongs in each. */
 export const ADMIN_NAV_GROUPS: { name: string; hint: string }[] = [
   { name: "Daily work", hint: "Queues that need a person today" },
   { name: "Marketplace", hint: "Providers, the jobs they take and what clients say" },

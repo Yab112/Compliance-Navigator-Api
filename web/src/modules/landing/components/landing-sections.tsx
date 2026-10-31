@@ -27,7 +27,7 @@ const POPULAR = [
 function SectionTitle({ title, am, action }: { title: string; am: string; action?: React.ReactNode }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div className="border-gov-green border-l-4 pl-3">
+      <div>
         <h2 className="text-gov-ink text-xl font-bold md:text-2xl">{title}</h2>
         <p className="text-muted-foreground text-sm">{am}</p>
       </div>
@@ -53,9 +53,7 @@ export function PopularServices() {
             href={`/roadmap/new?goal=${s.id}`}
             className="group border-border bg-card hover:border-primary flex items-start gap-4 rounded-md border p-4 transition-colors"
           >
-            <span className="bg-secondary text-primary group-hover:bg-primary flex size-12 shrink-0 items-center justify-center rounded-md transition-colors group-hover:text-white">
-              <HugeiconsIcon icon={s.icon} className="size-6" />
-            </span>
+            <HugeiconsIcon icon={s.icon} className="text-primary mt-0.5 size-7 shrink-0" />
             <span className="min-w-0">
               <span className="block font-semibold">{s.label}</span>
               <span className="text-muted-foreground block text-sm">{s.am}</span>

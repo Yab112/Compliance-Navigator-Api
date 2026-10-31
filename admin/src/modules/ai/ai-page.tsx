@@ -1,6 +1,7 @@
 "use client";
 
 import { IntentModelSection } from "@/modules/ai/intent-model";
+import { cn } from "@cn/core/lib/utils";
 import { useState } from "react";
 import { Button } from "@cn/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@cn/ui/card";
@@ -12,7 +13,7 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { AdminPage } from "@/modules/components/admin-page";
 import { formatDateTime, humanize } from "@cn/core/lib/format";
 import { NativeSelect } from "@/modules/shared/native-select";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
 import { StatusBadge } from "@/modules/shared/status-badge";
 import type { AIStatus, AITestResult, KnowledgeHit } from "@cn/core/types/admin";
@@ -222,7 +223,7 @@ export function AIPage() {
         <ErrorState error={error} message={getErrorMessage(error)} onRetry={() => refetch()} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <div className={cn(STAT_STRIP, "grid-cols-2 md:grid-cols-3 xl:grid-cols-6")}>
             <StatTile label="Active provider" value={humanize(s.provider)} />
             <StatTile
               label="Ollama"

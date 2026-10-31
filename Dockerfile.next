@@ -1,0 +1,51 @@
+# One image recipe for both Next.js apps. Build from the repo root:
+#   docker build -f Dockerfile.next --build-arg APP=web \
+#     --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.example.et/api/v1 \
+#     --build-arg NEXT_PUBLIC_SITE_URL=https://example.et \
+#     --build-arg NEXT_PUBLIC_ADMIN_URL=https://admin.example.et -t cn-web .
+# NEXT_PUBLIC_* values are written into the browser code at build time, so build one image per site address.
+
+FROM node:22-slim AS build
+ARG APP=web
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH NEXT_TELEMETRY_DISABLED=1 CI=true
+RUN npm install -g pnpm@11.25.0
+WORKDIR /repo
+
+# Dependencies first so code changes do not reinstall them
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY web/package.json web/
+COPY admin/package.json admin/
+COPY packages/core/package.json packages/core/
+COPY packages/ui/package.json packages/ui/
+# The whole workspace: the shared packages need their own dependencies too
+RUN pnpm install --frozen-lockfile
+
+COPY packages packages
+COPY ${APP} ${APP}
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_SITE_URL
+ARG NEXT_PUBLIC_ADMIN_URL
+ARG NEXT_PUBLIC_SENTRY_DSN=
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
+    NEXT_PUBLIC_ADMIN_URL=$NEXT_PUBLIC_ADMIN_URL \
+    NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN \
+    NEXT_STANDALONE=1
+RUN test -n "$NEXT_PUBLIC_API_BASE_URL" || (echo "Set --build-arg NEXT_PUBLIC_API_BASE_URL" && exit 1)
+RUN mkdir -p ${APP}/public && pnpm --filter "./${APP}" build
+
+# Only the server Next traced, the static files and public/
+FROM node:22-slim
+ARG APP=web
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
+WORKDIR /app
+RUN useradd --create-home --uid 10001 app
+COPY --from=build --chown=app:app /repo/${APP}/.next/standalone ./
+COPY --from=build --chown=app:app /repo/${APP}/.next/static ./${APP}/.next/static
+COPY --from=build --chown=app:app /repo/${APP}/public ./${APP}/public
+USER app
+ENV APP=${APP}
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+CMD ["sh", "-c", "exec node ${APP}/server.js"]

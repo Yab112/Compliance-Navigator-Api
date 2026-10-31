@@ -175,7 +175,9 @@ async def join(
         identity = id_verification.current(user.id)
         if not identity:
             raise HTTPException(status_code=400, detail="Verify your national ID with Fayda first")
-        fields["national_id"] = identity["masked_id"]
+        fields.pop("national_id", None)
+        fields["national_id_hash"] = id_verification.verified_hash(user.id)
+        fields["national_id_last4"] = identity["id_last4"]
         fields["national_id_verified"] = True
         fields["id_verification_method"] = identity["method"]
         fields["verified_name"] = identity["verified_name"]
@@ -202,7 +204,7 @@ async def join(
             vetting.upload(provider, "id_copy", id_copy, actor=user.email, strict=False)
     except (MarketplaceError, VettingError) as exc:
         _raise(exc)
-    provider.pop("national_id", None)
+    provider.pop("national_id_last4", None)
     return _ok({"provider": provider})
 
 

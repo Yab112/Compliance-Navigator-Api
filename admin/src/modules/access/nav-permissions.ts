@@ -1,5 +1,5 @@
 /**
- * Which permission each existing admin page needs, so the sidebar can hide pages a staff member
+ * Which permission each existing admin page needs, so the navigation can hide pages a staff member
  * can't open. Pages not listed stay visible; the server is the real check either way.
  */
 export const NAV_PERMISSIONS: Record<string, string> = {

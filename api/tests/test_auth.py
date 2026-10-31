@@ -220,3 +220,54 @@ def test_sessions_and_activity_page_with_totals(make_user):
         events = get("/auth/activity", limit=2)
         assert events["total"] >= 4 and len(events["events"]) == 2
         assert events["events"][0]["created_at"] >= events["events"][1]["created_at"]  # newest first
+
+
+def _test_ip() -> str:
+    return f"198.51.100.{uuid.uuid4().int % 250 + 1}-{uuid.uuid4().hex[:6]}"
+
+
+def test_signing_in_to_own_account_does_not_clear_the_network_count(monkeypatch, make_user):
+    """Guessing at other accounts, then signing in to your own, must not reset the per-network limit."""
+    import pytest
+
+    from auth import service as auth_service
+    from auth.common import ClientInfo
+
+    attacker, ip = make_user(), _test_ip()
+    # After make_user: it signs in from the shared test client address
+    monkeypatch.setattr(auth_service, "MAX_FAILED_PER_IP", 4)
+    client_info = ClientInfo(ip=ip)
+    try:
+        for round_ in range(2):
+            for i in range(2):
+                with pytest.raises(auth_service.AuthError):
+                    auth_service.login(f"victim-{round_}-{i}-{uuid.uuid4().hex[:6]}@example.com", "guess-1", client_info)
+            if round_ == 0:
+                auth_service.login(attacker["email"], attacker["password"], client_info)
+        with pytest.raises(auth_service.AuthError) as exc:
+            auth_service.login(attacker["email"], attacker["password"], client_info)
+        assert exc.value.status_code == 429
+    finally:
+        execute("delete from auth_events where ip = %s", (ip,))
+
+
+def test_colleagues_typos_do_not_lock_out_a_shared_office(monkeypatch, make_user):
+    """Failures by someone who then signs in from the same network stop counting against it."""
+    import pytest
+
+    from auth import service as auth_service
+    from auth.common import ClientInfo
+
+    colleagues = [make_user() for _ in range(3)]
+    monkeypatch.setattr(auth_service, "MAX_FAILED_PER_IP", 4)
+    ip = _test_ip()
+    office = ClientInfo(ip=ip)
+    try:
+        for person in colleagues:
+            for _ in range(2):
+                with pytest.raises(auth_service.AuthError):
+                    auth_service.login(person["email"], "typo-typo-1", office)
+            auth_service.login(person["email"], person["password"], office)
+        assert auth_service._recent_failures("ip", ip) == 0
+    finally:
+        execute("delete from auth_events where ip = %s", (ip,))

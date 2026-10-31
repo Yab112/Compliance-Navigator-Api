@@ -63,7 +63,7 @@ export function SiteFooter() {
           ))}
         </div>
 
-        <p className="mt-10 border-l-4 border-gov-yellow bg-white/5 px-4 py-3 text-xs leading-relaxed text-white/80">
+        <p className="mt-10 rounded-md bg-white/5 px-4 py-3 text-xs leading-relaxed text-white/80">
           {siteIdentity.disclaimer}
         </p>
 

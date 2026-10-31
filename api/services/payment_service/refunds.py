@@ -277,7 +277,9 @@ def execute_refund(payload: dict, actor: str) -> dict:
         except PaymentError as exc:
             with connection() as conn, conn.transaction():
                 refund = _refund_row(refund["id"], conn)
-                if exc.uncertain:
+                if refund["status"] != "sending":
+                    pass  # the automatic check already settled it (see check_sending_refunds)
+                elif exc.uncertain:
                     # Chapa may have carried it out: count it, and let staff confirm with Chapa before undoing anything
                     conn.execute("update refunds set status = 'needs_check', error = %s, updated_at = now() where id = %s",
                                  (str(exc)[:500], refund["id"]))
@@ -293,12 +295,14 @@ def execute_refund(payload: dict, actor: str) -> dict:
             with connection() as conn, conn.transaction():
                 refund = _refund_row(refund["id"], conn)
                 done = result["status"] == "refunded"
-                conn.execute(
+                # Only while it is still sending: the automatic check may have counted it already
+                if conn.execute(
                     "update refunds set status = %s, gateway_ref = %s, updated_at = now(), "
-                    "completed_at = case when %s then now() else completed_at end where id = %s",
+                    "completed_at = case when %s then now() else completed_at end where id = %s and status = 'sending' "
+                    "returning id",
                     (result["status"], result.get("ref_id"), done, refund["id"]),
-                )
-                _apply_refund(conn, refund, payment, actor)
+                ).fetchone():
+                    _apply_refund(conn, refund, payment, actor)
     refund = _refund_row(refund["id"])
     if refund["status"] == "refunded" and refund["engagement_id"]:
         _refund_done(refund, actor)
@@ -388,6 +392,67 @@ def refund_action(refund_id: str, *, action: str, note: str | None, transfer_ref
             provider_service._tell(eng, "client", f"Your refund of {after['amount']:,.2f} ETB was sent",
                                    f"Reference {after['reference']}. Your refund receipt is ready.")
     return _admin_refund(refund_id)
+
+
+def check_sending_refunds(min_age_minutes: int = 15) -> dict:
+    """
+    Settle refunds left "sending": the refund was asked of the gateway but the answer was never recorded
+    (the process stopped in between). The gateway is asked by our own reference; nothing is ever sent again.
+      refunded   counted and closed, as if the answer had arrived
+      failed     the gateway has it as failed or reversed, so no money left; marked failed (never counted)
+      otherwise  the gateway can't tell: counted and marked needs checking for staff, like an uncertain error
+    Runs every 15 minutes.
+    """
+    rows = fetch_all(
+        "select r.id::text, p.tx_ref from refunds r join payments p on p.id = r.payment_id "
+        "where r.status = 'sending' and r.method = 'gateway' and r.created_at < now() - make_interval(mins => %s) "
+        "order by r.created_at limit 100",
+        (min_age_minutes,),
+    )
+    counts = {"checked": 0, "refunded": 0, "failed": 0, "needs_check": 0, "errors": 0}
+    actor = "automatic refund check"
+    for row in rows:
+        try:
+            refund = _refund_row(row["id"])
+            try:
+                status = payment_service.gateway_named(refund["gateway"]).verify_refund(refund["reference"])
+            except Exception:
+                log.exception("Automatic check of refund %s could not reach the gateway", refund["reference"])
+                status = "unknown"
+            with connection() as conn, conn.transaction():
+                # Same lock order as execute_refund: the payment first, then the refund
+                payment = _payment_for_refund(row["tx_ref"], conn)
+                refund = _refund_row(row["id"], conn)
+                if refund["status"] != "sending":
+                    continue  # settled meanwhile
+                if status == "refunded":
+                    conn.execute("update refunds set status = 'refunded', completed_at = now(), updated_at = now() "
+                                 "where id = %s", (refund["id"],))
+                    _apply_refund(conn, refund, payment, actor)
+                elif status == "failed":
+                    conn.execute("update refunds set status = 'failed', error = %s, updated_at = now() where id = %s",
+                                 ("The gateway reports this refund failed (found by the automatic check)", refund["id"]))
+                else:
+                    status = "needs_check"
+                    conn.execute(
+                        "update refunds set status = 'needs_check', error = %s, updated_at = now() where id = %s",
+                        ("The answer from the gateway was never recorded and it can't confirm the refund now. "
+                         "Check the Chapa dashboard, then confirm or mark it failed.", refund["id"]))
+                    _apply_refund(conn, refund, payment, actor)
+            counts["checked"] += 1
+            counts[status] += 1
+            after = _refund_row(row["id"])
+            if status == "refunded" and after["engagement_id"]:
+                _refund_done(after, actor)
+            if status != "failed":
+                _tell_refund(after, payment)
+            else:
+                log.warning("Refund %s for %s failed at the gateway; nothing was refunded", after["reference"],
+                            row["tx_ref"])
+        except Exception:
+            counts["errors"] += 1
+            log.exception("Automatic check of refund %s failed", row["id"])
+    return counts
 
 
 def _admin_refund(refund_id: str) -> dict:

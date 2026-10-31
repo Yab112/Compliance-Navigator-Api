@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 
 from psycopg.types.json import Jsonb
 
-from services import catalog_service, trust_score, vetting
+from services import catalog_service, id_verification, trust_score, vetting
 from services.db import connection, fetch_one
 
 from .common import (
@@ -107,10 +107,17 @@ def join(data: dict, *, user_id: str, actor: str) -> dict:
     if fields.get("external_license_no"):
         fields["external_license_status"] = "pending"
 
+    id_hash, id_last4 = data.get("national_id_hash"), data.get("national_id_last4")
+    if not id_hash and data.get("national_id"):
+        id_hash, typed_last4 = id_verification.id_hash_and_last4(data["national_id"])
+        id_last4 = id_last4 or typed_last4
+
     fields |= {
         "user_id": user_id, "provider_type": t, "entity_type": e,
         "slug": _slugify(fields.get("legal_name") if e == "company" and fields.get("legal_name") else data["display_name"]),
-        "national_id": data.get("national_id"),
+        # Never the number itself: a keyed hash (staff search) and the last four characters
+        "national_id_hash": id_hash,
+        "national_id_last4": id_last4,
         "national_id_verified": bool(data.get("national_id_verified")),
         "id_verification_method": data.get("id_verification_method"),
         "verified_name": data.get("verified_name"),
@@ -286,7 +293,7 @@ def owner_view(user_id: str) -> dict | None:
     provider = get_for_user(user_id)
     if not provider:
         return None
-    provider.pop("national_id", None)
+    provider.pop("national_id_last4", None)
     from services import payment_service
 
     provider["payout"] = payment_service.payout_view(provider)

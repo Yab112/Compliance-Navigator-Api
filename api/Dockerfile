@@ -1,11 +1,13 @@
 FROM python:3.13-slim
 
+# PYTHONPATH: Celery puts the app folder on the import path only while loading; tasks import more modules later
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
-    PATH="/opt/venv/bin:$PATH"
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH=/app
 
 RUN pip install --no-cache-dir uv \
     && useradd --create-home --uid 10001 app

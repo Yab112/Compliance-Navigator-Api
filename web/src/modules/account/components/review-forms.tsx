@@ -153,7 +153,7 @@ export function ClosedJobFeedback({ hire, changing, onRequestChange }: { hire: H
           </p>
           {hire.review_comment && <p className="mt-1 text-sm">{hire.review_comment}</p>}
           {hire.review_reply && (
-            <div className="border-primary/40 mt-2 border-l-2 pl-3 text-xs">
+            <div className="bg-secondary/40 mt-2 rounded-md px-3 py-1.5 text-xs">
               <p className="font-medium">{who} replied</p>
               <p className="text-muted-foreground mt-0.5">{hire.review_reply}</p>
             </div>

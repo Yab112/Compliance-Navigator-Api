@@ -125,7 +125,7 @@ export function Register() {
         </div>
         <fieldset className="border-border flex flex-col gap-3 rounded-md border p-4">
           <legend className="px-1 text-sm font-semibold">Agreements · ስምምነቶች</legend>
-          <p className="border-gov-yellow bg-secondary/60 border-l-4 px-3 py-2 text-xs leading-relaxed">{OFF_PLATFORM_SUMMARY}</p>
+          <p className="bg-secondary/60 rounded-md px-3 py-2 text-xs leading-relaxed">{OFF_PLATFORM_SUMMARY}</p>
           {SIGNUP_DOCS.map((key) => (
             <LegalCheckbox
               key={key}

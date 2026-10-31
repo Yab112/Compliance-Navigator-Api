@@ -66,18 +66,34 @@ MAX_REGISTER_EMAILS_PER_HOUR = 3
 def _recent_failures(column: str, value: str | None) -> int:
     if not value:
         return 0
-    expr = "lower(email) = lower(%s)" if column == "email" else "ip = %s"
-    # A successful sign-in resets the counter; for an address, so does a password reset (the owner proved
+    if column == "ip":
+        # Failures from this network in the last LOCKOUT_MINUTES. A success does not reset the whole count
+        # (or anyone could clear it by signing in to their own account between guesses); it only forgives
+        # that same address's earlier failures from this network, so a shared office is not locked out by
+        # colleagues' typos.
+        return fetch_one(
+            """
+            select count(*) as c from auth_events f
+            where f.event = 'login_failed' and f.ip = %s
+              and f.created_at > now() - make_interval(mins => %s)
+              and not exists (
+                select 1 from auth_events s
+                where s.event = 'login_success' and s.ip = f.ip and lower(s.email) = lower(f.email)
+                  and s.created_at > f.created_at
+              )
+            """,
+            (value, LOCKOUT_MINUTES),
+        )["c"]
+    # A successful sign-in resets an address's counter, and so does a password reset (the owner proved
     # they hold the mailbox, and the lockout message tells them to reset)
-    resets = "('login_success', 'password_reset')" if column == "email" else "('login_success')"
     row = fetch_one(
-        f"""
+        """
         select count(*) as c from auth_events
-        where event = 'login_failed' and {expr}
+        where event = 'login_failed' and lower(email) = lower(%s)
           and created_at > now() - make_interval(mins => %s)
           and created_at > coalesce((
             select max(created_at) from auth_events
-            where event in {resets} and {expr}
+            where event in ('login_success', 'password_reset') and lower(email) = lower(%s)
           ), '-infinity')
         """,
         (value, LOCKOUT_MINUTES, value),

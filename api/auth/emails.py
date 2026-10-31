@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import logging
-import smtplib
-from email.message import EmailMessage
-
 from auth import security
 from auth.audit import record_event
 from auth.common import AuthError, ClientInfo, Email
 from auth.sessions import public_user, revoke_all_sessions
 from config.config import settings
+from core import mailer
 from services import user_store
 from services.db import connection, execute, fetch_one
 
@@ -74,17 +72,8 @@ def send_email(email: Email) -> None:
             log.warning("DEVELOPMENT ONLY, no SMTP configured. Email to %s: %s\n%s",
                         email.to, email.subject, email.text)
         return
-    msg = EmailMessage()
-    msg["Subject"] = email.subject
-    msg["From"] = settings.smtp_from
-    msg["To"] = email.to
-    msg.set_content(email.text)
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-            smtp.starttls()
-            if settings.smtp_username:
-                smtp.login(settings.smtp_username, settings.smtp_password or "")
-            smtp.send_message(msg)
+        mailer.deliver(email.to, email.subject, email.text)
     except Exception:
         log.exception("Could not send email: %s", email.subject)
 

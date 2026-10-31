@@ -127,14 +127,14 @@ export function ChatInput({ onSend, disabled, enableVoice }: ChatInputProps) {
         {enableVoice && (
           <Button
             type="button"
-            variant={isRecording ? "destructive" : "outline"}
+            variant="ghost"
             size="icon"
             className="shrink-0 self-end"
             onClick={toggleRecording}
             disabled={busy && !isRecording}
             aria-label={isRecording ? "Stop recording" : "Start voice input"}
           >
-            <MicIcon className={cn("size-4", isRecording && "animate-pulse")} />
+            <MicIcon className={cn("size-5", isRecording && "text-destructive")} />
           </Button>
         )}
         <Textarea

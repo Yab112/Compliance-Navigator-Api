@@ -211,7 +211,11 @@ function IdentityPanel({ p }: { p: AdminProvider }) {
           Ask the provider to verify from their account. Fayda confirms the name, birth date and phone straight from the national ID
           system, so no photo of the card is needed.
         </p>
-        {p.national_id && <p className="mt-2 text-xs">ID number they typed: <span className="font-mono">{p.national_id}</span> (not confirmed)</p>}
+        {p.national_id_last4 && (
+          <p className="mt-2 text-xs">
+            ID number they typed ends in <span className="font-mono">•••• {p.national_id_last4}</span> (not confirmed)
+          </p>
+        )}
         {p.id_document_url && (
           <div className="mt-2">
             <p className="text-muted-foreground mb-1 text-[11px]">Uploaded copy from an older sign-up:</p>

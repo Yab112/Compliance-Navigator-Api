@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from config.config import settings
 from services import payment_service, platform_settings
-from services.db import Jsonb, connection, execute, fetch_one
+from services.db import Jsonb, connection, execute, fetch_all, fetch_one
 
 from .earnings import _test_money
 from .gateways import PaymentError, _money, mode
@@ -231,6 +231,49 @@ def confirm(tx_ref: str) -> dict:
         provider_service._tell(eng, "client", f"Payment received: {amount}",
                                f"Receipt {tx_ref}. {eng['title']} is closed. You can now review {eng['provider_name']}.")
     return payment_service.get(tx_ref)
+
+
+def check_pending_payments(min_age_minutes: int = 10, max_age_days: int = 3) -> dict:
+    """
+    Settle checkouts whose webhook never arrived: ask the gateway through confirm(), exactly as the webhook
+    would, so a paid one closes the hire and credits the provider once (confirm only records a payment that
+    is still pending, so a webhook at the same moment can't count it twice).
+    A checkout still pending after max_age_days gets one last check, then is marked cancelled (abandoned).
+    Runs every 15 minutes.
+    """
+    rows = fetch_all(
+        "select tx_ref, created_at < now() - make_interval(days => %s) as too_old from payments "
+        "where status = 'pending' and created_at < now() - make_interval(mins => %s) order by created_at limit 200",
+        (max_age_days, min_age_minutes),
+    )
+    counts = {"checked": 0, "success": 0, "failed": 0, "abandoned": 0, "errors": 0}
+    for row in rows:
+        try:
+            after = payment_service.confirm(row["tx_ref"])
+        except Exception:
+            counts["errors"] += 1
+            log.exception("Automatic check of payment %s failed", row["tx_ref"])
+            continue
+        counts["checked"] += 1
+        if after["status"] in ("success", "failed"):
+            counts[after["status"]] += 1
+        elif after["status"] == "pending" and row["too_old"]:
+            with connection() as conn, conn.transaction():
+                # Conditional, so a payment confirmed meanwhile is never cancelled
+                gone = conn.execute(
+                    "update payments set status = 'cancelled', raw = coalesce(raw, '{}'::jsonb) || %s, updated_at = now() "
+                    "where tx_ref = %s and status = 'pending' returning engagement_id",
+                    (Jsonb({"abandoned": True}), row["tx_ref"]),
+                ).fetchone()
+                if gone:
+                    counts["abandoned"] += 1
+                    conn.execute(
+                        "update engagements set payment_status = 'unpaid', updated_at = now() where id = %s "
+                        "and payment_status = 'pending' "
+                        "and not exists (select 1 from payments where engagement_id = %s and status = 'pending')",
+                        (gone["engagement_id"], gone["engagement_id"]),
+                    )
+    return counts
 
 
 def simulate(tx_ref: str, *, user, outcome: str) -> dict:

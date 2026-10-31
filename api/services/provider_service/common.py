@@ -48,7 +48,7 @@ PUBLIC_COLUMNS = """
 """
 
 PRIVATE_COLUMNS = PUBLIC_COLUMNS + """,
-  p.phone, p.telegram_username, p.email, p.vat_registered, p.vat_number, p.user_id::text, p.status, p.national_id, p.tin, p.trade_license_no, p.license_document_url,
+  p.phone, p.telegram_username, p.email, p.vat_registered, p.vat_number, p.user_id::text, p.status, p.national_id_last4, p.tin, p.trade_license_no, p.license_document_url,
   p.id_document_url, p.representative_title, p.address, p.external_license_no,
   p.external_license_verified_by, p.external_license_verified_at, p.reviewed_by,
   p.reviewed_at, p.review_note, p.updated_at, p.id_verification_method, p.verified_name,
