@@ -184,6 +184,38 @@ VETTING_ROOT = UPLOAD_ROOT / "vetting"
 VETTING_MAX_BYTES = 5 * 1024 * 1024
 
 
+REFERENCE_MAX_BYTES = 10 * 1024 * 1024
+_REFERENCE_TYPES = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+}
+
+
+def check_reference_file(content: bytes, filename: str) -> tuple[str, str]:
+    """
+    Staff reference uploads (source documents for the assistant): PDF, Word (.docx) or plain text, at most
+    10 MB. The type comes from the bytes, not the browser, and the stored name and type are ours, so a file
+    can never be served as HTML or SVG. Returns (extension, content type).
+    """
+    if len(content) > REFERENCE_MAX_BYTES:
+        raise ValueError("Reference files must be 10 MB or smaller")
+    ext = Path(filename or "").suffix.lower()
+    if content.startswith(b"%PDF-"):
+        ext = ".pdf"
+    elif ext == ".docx" and content.startswith(b"PK\x03\x04"):
+        pass
+    elif ext in (".txt", ".md") and b"\x00" not in content[:4096]:
+        try:
+            content.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError("Text files must be UTF-8") from None
+    else:
+        raise ValueError("Upload a PDF, a Word file (.docx) or a text file (.txt, .md)")
+    return ext, _REFERENCE_TYPES[ext]
+
+
 def sniff_type(content: bytes) -> str | None:
     """The real file type from its first bytes, whatever the name or the browser claims."""
     if content.startswith(b"\xff\xd8\xff"):

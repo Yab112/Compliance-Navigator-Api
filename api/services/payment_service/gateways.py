@@ -251,11 +251,16 @@ def gateway_named(name: str):
 
 
 def webhook_signature_ok(raw_body: bytes, headers: dict) -> bool:
-    """Chapa signs either the payload or the secret itself with HMAC SHA256; accept a valid one."""
+    """
+    Chapa sends x-chapa-signature (HMAC SHA256 of the body) and Chapa-Signature (HMAC SHA256 of the secret).
+    The body signature proves this exact message, so when it is sent it must match. The secret signature is
+    the same for every message, so it is only accepted when no body signature came, and only in its own header.
+    Either way the payment is confirmed with Chapa before anything is recorded.
+    """
     secret = (settings.chapa_webhook_secret or "").encode()
     if not secret:
         return False
-    payload_sig = hmac.new(secret, raw_body, hashlib.sha256).hexdigest()
-    secret_sig = hmac.new(secret, secret, hashlib.sha256).hexdigest()
-    sent = [headers.get("x-chapa-signature"), headers.get("chapa-signature")]
-    return any(s and (hmac.compare_digest(s, payload_sig) or hmac.compare_digest(s, secret_sig)) for s in sent)
+    body_sent, secret_sent = headers.get("x-chapa-signature"), headers.get("chapa-signature")
+    if body_sent:
+        return hmac.compare_digest(body_sent, hmac.new(secret, raw_body, hashlib.sha256).hexdigest())
+    return bool(secret_sent) and hmac.compare_digest(secret_sent, hmac.new(secret, secret, hashlib.sha256).hexdigest())

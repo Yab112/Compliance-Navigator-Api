@@ -39,7 +39,10 @@ FROM node:22-slim
 ARG APP=web
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
 WORKDIR /app
-RUN useradd --create-home --uid 10001 app
+# The running app needs only node: drop npm, npx and corepack (and the CVEs in their bundled packages)
+RUN useradd --create-home --uid 10001 app \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+              /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 COPY --from=build --chown=app:app /repo/${APP}/.next/standalone ./
 COPY --from=build --chown=app:app /repo/${APP}/.next/static ./${APP}/.next/static
 COPY --from=build --chown=app:app /repo/${APP}/public ./${APP}/public
