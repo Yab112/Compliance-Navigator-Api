@@ -91,6 +91,13 @@ services:
   worker:
     build: .
     command: celery -A worker.celery_app worker --loglevel=info
+    # The image's health check polls the API port; a worker answers a Celery ping instead
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A worker.celery_app inspect ping -d celery@$$HOSTNAME --timeout 10 | grep -q pong"]
+      interval: 60s
+      timeout: 20s
+      start_period: 30s
+      retries: 3
     env_file:
       - .env
     environment:
@@ -114,6 +121,9 @@ services:
   beat:
     build: .
     command: celery -A worker.celery_app beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    # Beat serves nothing to poll; restart: unless-stopped brings it back if it exits
+    healthcheck:
+      disable: true
     env_file:
       - .env
     environment:

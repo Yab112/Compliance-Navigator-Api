@@ -16,10 +16,11 @@ export const env = envSchema.parse({
   // The public site and the staff app are separate deployments that link to each other
   NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
   NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3001",
-  NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
-  SENTRY_ORG: process.env.SENTRY_ORG,
-  SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+  // Hosts often pass unset values as empty strings; treat those as not set
+  NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN || undefined,
+  SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN || undefined,
+  SENTRY_ORG: process.env.SENTRY_ORG || undefined,
+  SENTRY_PROJECT: process.env.SENTRY_PROJECT || undefined,
 });
 
 const join = (base: string, path: string) => base.replace(/\/$/, "") + (path.startsWith("/") ? path : `/${path}`);

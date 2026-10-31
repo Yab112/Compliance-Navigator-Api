@@ -216,8 +216,14 @@ def seed() -> None:
             if rating is None:
                 svc.provider_action(hire["id"], user_id=owner_id, action="decline", reason="Fully booked this week")
             else:
-                svc.provider_action(hire["id"], user_id=owner_id, action="accept")
-                svc.provider_action(hire["id"], user_id=owner_id, action="complete")
+                price = random.choice((p["fee_from"] or 800, p["fee_to"] or 1500))
+                svc.provider_action(hire["id"], user_id=owner_id, action="accept", price=price)
+                svc.provider_action(hire["id"], user_id=owner_id, action="start")
+                svc.provider_action(hire["id"], user_id=owner_id, action="complete",
+                                    note="Sample job: the work was delivered and the client was told.")
+                # Sample jobs never carry real money: close them as paid so they can be reviewed like real ones
+                execute("update engagements set client_confirmed_at = now(), payment_status = 'paid' where id = %s",
+                        (hire["id"],))
                 sub = lambda: max(1, min(5, rating + random.choice((-1, 0, 0, 1))))  # noqa: E731
                 svc.leave_review(hire["id"], user_id=client["id"], data={
                     "rating": rating, "communication": sub(), "fee_honesty": sub(), "speed": sub(),

@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     neo4j_uri: str = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-    neo4j_username: str = os.environ.get("NEO4J_USERNAME")
+    neo4j_username: str = os.environ.get("NEO4J_USERNAME", "neo4j")
     # No default: set it in .env (docker compose uses the same value)
     neo4j_password: str | None = os.environ.get("NEO4J_PASSWORD")
     redis_host: str = os.environ.get("REDIS_HOST", "localhost")
@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     smtp_username: str | None = os.environ.get("SMTP_USERNAME")
     smtp_password: str | None = os.environ.get("SMTP_PASSWORD")
     smtp_from: str = os.environ.get("SMTP_FROM", "no-reply@localhost")
+    # starttls (port 587), ssl (port 465) or none (local mail catcher only); see core/mailer.py
+    smtp_security: str = os.environ.get("SMTP_SECURITY", "starttls")
     environment: str = os.environ.get("ENVIRONMENT", "development")
     log_level: str = os.environ.get("LOG_LEVEL", "INFO")
     # Shared password of the seeded demo accounts; never set in production
@@ -180,6 +182,8 @@ class Settings(BaseSettings):
             problems.append("ID_HASH_PEPPER must be set (once, never changed)")
         if not self.smtp_host:
             problems.append("SMTP_HOST must be set (sign-up and password emails need it)")
+        if (self.smtp_security or "").strip().lower() not in ("starttls", "ssl"):
+            problems.append("SMTP_SECURITY must be starttls or ssl (emails carry sign-in links)")
         if (self.log_level or "").strip().upper() == "DEBUG":
             problems.append("LOG_LEVEL must not be DEBUG")
         if self.demo_password:

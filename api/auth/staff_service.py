@@ -11,16 +11,15 @@ flow.
 from __future__ import annotations
 
 import logging
-import smtplib
 import uuid
 from dataclasses import dataclass
-from email.message import EmailMessage
 
 from psycopg.types.json import Jsonb
 
 from auth import security
 from auth.service import AuthError, ClientInfo
 from config.config import settings
+from core import mailer
 from schemas.staff_user import StaffActor
 from services import access
 from services.db import connection, execute, fetch_all, fetch_one
@@ -457,17 +456,8 @@ def send_email(to: str, subject: str, body: str) -> bool:
     if not settings.smtp_host:
         log.warning("Email to %s (no SMTP configured): %s\n%s", to, subject, body)
         return False
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = settings.smtp_from
-    msg["To"] = to
-    msg.set_content(body)
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-            smtp.starttls()
-            if settings.smtp_username:
-                smtp.login(settings.smtp_username, settings.smtp_password or "")
-            smtp.send_message(msg)
+        mailer.deliver(to, subject, body)
         return True
     except Exception:
         log.exception("Could not send email to %s", to)
