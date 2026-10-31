@@ -71,3 +71,27 @@ def test_admin_file_endpoint_serves_s3_private_files_to_staff_only(client, make_
     assert r.status_code == 200, r.text
     assert r.content == PDF
     assert r.headers["cache-control"] == "private, no-store"
+
+
+# ---------------------------------------------------------------- staff reference uploads
+
+
+def test_reference_files_are_checked_by_content_not_name():
+    from services.storage_service import REFERENCE_MAX_BYTES, check_reference_file
+
+    assert check_reference_file(b"%PDF-1.7 rest", "anything.html") == (".pdf", "application/pdf")
+    assert check_reference_file(b"PK\x03\x04 word", "notes.docx")[0] == ".docx"
+    assert check_reference_file("ሰላም notes".encode(), "notes.md")[0] == ".md"
+    for content, name in ((b"<svg onload=alert(1)>", "x.svg"), (b"<html></html>", "page.txt.html"),
+                          (b"PK\x03\x04", "archive.zip"), (b"\x00\x01binary", "data.txt")):
+        try:
+            check_reference_file(content, name)
+        except ValueError:
+            continue
+        raise AssertionError(f"{name} should be refused")
+    try:
+        check_reference_file(b"%PDF-" + b"x" * REFERENCE_MAX_BYTES, "big.pdf")
+    except ValueError as exc:
+        assert "10 MB" in str(exc)
+    else:
+        raise AssertionError("oversized file accepted")

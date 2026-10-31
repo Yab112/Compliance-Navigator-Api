@@ -20,7 +20,7 @@ from services import graph_store
 
 from services.rag_service import ingest_text
 
-from services.storage_service import upload_file
+from services.storage_service import REFERENCE_MAX_BYTES, check_reference_file, upload_file
 
 from services.roadmap_store import save_manual_reference
 
@@ -130,27 +130,17 @@ async def upload_reference(
 
     ref_id = str(uuid.uuid4())
 
-    safe_name = file.filename or "upload.bin"
+    # Read one byte past the limit so an oversized file is refused without holding all of it
+    content = await file.read(REFERENCE_MAX_BYTES + 1)
+    try:
+        ext, content_type = check_reference_file(content, file.filename or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    safe_name = f"reference{ext}"
 
-    content = await file.read()
+    file_url = upload_file(content, safe_name, prefix="references", content_type=content_type)
 
-
-
-    file_url = upload_file(
-
-        content,
-
-        safe_name,
-
-        prefix="references",
-
-        content_type=file.content_type,
-
-    )
-
-
-
-    raw_text = _extract_text_from_bytes(content, safe_name, file.content_type)
+    raw_text = _extract_text_from_bytes(content, safe_name, content_type)
 
     title = notes or f"{service.name}" + (f", {company_name}" if company_name else "")
 
