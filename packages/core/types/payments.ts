@@ -209,9 +209,11 @@ export type RefundActionInput = {
 
 // ---------------------------------------------------------------- provider earnings and payouts
 
-export type PayoutStatus = "requested" | "approved" | "paid" | "rejected" | "failed";
+/** returned: paid, then the bank sent it back; the amount is back in the provider's balance */
+export type PayoutStatus = "requested" | "approved" | "paid" | "rejected" | "failed" | "returned";
 
-export type LedgerKind = "earning" | "payout" | "adjustment" | "refund";
+/** payout_return: a paid transfer came back, credited once (+amount) */
+export type LedgerKind = "earning" | "payout" | "adjustment" | "refund" | "payout_return";
 
 export type LedgerEntry = {
   id: string;
@@ -253,6 +255,8 @@ export type Payout = {
   decided_by: string | null;
   decided_at: string | null;
   paid_at: string | null;
+  /** When staff recorded that the transfer came back (status returned) */
+  returned_at?: string | null;
   created_at: string;
   is_test?: boolean;
 };
@@ -290,6 +294,9 @@ export type AdminPayoutTotals = {
   /** Approved payouts whose transfer got an error: check with Chapa */
   needs_check?: number;
   paid_amount: number;
+  /** Paid payouts Chapa now reports failed or returned: check, then Transfer came back */
+  paid_needs_check?: number;
+  returned?: number;
   owed_to_providers: number;
 };
 
@@ -305,7 +312,14 @@ export type AdminPayouts = {
 /** hard: can't be approved at all. block: approving needs a written reason. */
 export type PayoutCheck = { level: "hard" | "block" | "warn" | "info"; code: string; text: string };
 
-export type StaffPayout = Payout & { bank_code?: string | null; needs_check?: boolean; check_note?: string | null };
+export type StaffPayout = Payout & {
+  bank_code?: string | null;
+  needs_check?: boolean;
+  check_note?: string | null;
+  /** Who asked for and who approved "Transfer came back" */
+  returned_by?: string | null;
+  return_note?: string | null;
+};
 
 /** Everything staff look at before sending a payout. */
 export type PayoutReview = {
@@ -351,7 +365,7 @@ export type PayoutReview = {
   checks: PayoutCheck[];
 };
 
-export type PayoutDecision = { decision: "approve" | "reject" | "refresh" | "mark_failed"; note?: string };
+export type PayoutDecision = { decision: "approve" | "reject" | "refresh" | "mark_failed" | "returned"; note?: string };
 
 // ---------------------------------------------------------------- receipts
 
@@ -495,8 +509,9 @@ export type PaymentAttentionItem = {
   tx_ref?: string;
   engagement_id?: string;
   status: string;
-  /** needs_check: the money may have moved; failed: it did not; stuck: a checkout still pending */
-  problem: "needs_check" | "failed" | "stuck";
+  /** needs_check: the money may have moved; returned: a paid transfer Chapa now reports failed or returned;
+   * failed: it did not move; stuck: a checkout still pending */
+  problem: "needs_check" | "returned" | "failed" | "stuck";
   amount: number;
   since: string;
   age_seconds: number;

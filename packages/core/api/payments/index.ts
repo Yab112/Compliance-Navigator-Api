@@ -39,6 +39,7 @@ import type {
   RefundInput,
   RefundReceipt,
   RefundStatus,
+  StaffPayout,
   TestCheckout,
 } from "../../types/payments";
 
@@ -342,9 +343,19 @@ export const useAdminPayoutReview = (id: string, enabled = true) =>
  * refresh a processing payout, or mark_failed (only once Chapa says it failed or never got it; needs a note).
  */
 export const useDecidePayout = () => {
-  const { run, isPending } = useAdminMutation<{ payout: Payout }, PayoutDecision>();
+  const { run, isPending } = useAdminMutation<{ payout: StaffPayout }, PayoutDecision>();
   const decide = (id: string, body: PayoutDecision) => run(apiPaths.admin.marketPayout(id), MTD.POST, body).then((p) => p.payout);
   return { decide, isPending };
+};
+
+/**
+ * A paid transfer came back from the bank. Chapa is asked first; then it waits for a second staff member:
+ * the answer is `{approval}` (sent to Approvals), or `{payout}` when nobody else could approve and it ran at once.
+ */
+export const useReturnPayout = () => {
+  const { run, isPending } = useAdminMutation<{ approval?: ApprovalRequestSummary; payout?: StaffPayout }, PayoutDecision>();
+  const markReturned = (id: string, note: string) => run(apiPaths.admin.marketPayout(id), MTD.POST, { decision: "returned", note });
+  return { markReturned, isPending };
 };
 
 // ---------------------------------------------------------------- payment health

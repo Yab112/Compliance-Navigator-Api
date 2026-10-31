@@ -3,7 +3,7 @@
 import { siteUrl } from "@cn/core/config/env";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { ADMIN_MONEY_PAGE_SIZE, formatETB, useAdminPayoutReview, useAdminPayouts, useDecidePayout } from "@cn/core/api/payments";
+import { ADMIN_MONEY_PAGE_SIZE, formatETB, useAdminPayoutReview, useAdminPayouts, useDecidePayout, useReturnPayout } from "@cn/core/api/payments";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { getErrorMessage } from "@cn/core/lib/errors";
@@ -22,6 +22,7 @@ const FILTERS: { value: PayoutStatus; label: string; empty: string }[] = [
   { value: "paid", label: "Paid", empty: "No payouts have been paid yet." },
   { value: "rejected", label: "Rejected", empty: "No payouts were rejected." },
   { value: "failed", label: "Failed", empty: "No payouts failed." },
+  { value: "returned", label: "Came back", empty: "No paid transfers came back." },
 ];
 
 const MODE_LABEL: Record<PaymentsMode, string> = {
@@ -244,9 +245,55 @@ function PayoutReviewPanel({ p, onClose, onNotice }: { p: AdminPayout; onClose: 
   );
 }
 
+/** A paid transfer the bank sent back: Chapa is asked again, then a second staff member must approve. */
+function ReturnForm({ p, onDone, onCancel }: { p: AdminPayout; onDone: (text: string) => void; onCancel: () => void }) {
+  const { markReturned, isPending } = useReturnPayout();
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    setError(null);
+    try {
+      const result = await markReturned(p.id, note.trim());
+      onDone(
+        result?.approval
+          ? "Sent to Approvals. Another staff member with payout rights must approve it there; then the money goes back into the provider's balance."
+          : "Recorded as came back. The money is back in the provider's balance.",
+      );
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not record that this transfer came back"));
+    }
+  };
+  return (
+    <form
+      className="bg-secondary/50 mt-3 space-y-2 rounded-md p-3 text-sm"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <p>
+        Only when the bank or Chapa shows the <strong>{formatETB(p.amount)}</strong> did not stay in {bankLine(p.bank_name, p.account_last4)}. We ask Chapa
+        again first; if it still shows the transfer as paid, or can&apos;t be reached, nothing changes.
+      </p>
+      <p className="text-muted-foreground text-xs">
+        This does not happen at once: a second staff member must approve it in Approvals. Then the payout is marked as came back and the amount goes back
+        into the provider&apos;s balance, once.
+      </p>
+      <label htmlFor={`return-${p.id}`} className="block text-xs font-medium">What you checked with the bank and Chapa (at least 10 characters)</label>
+      <Input id={`return-${p.id}`} value={note} onChange={(e) => setNote(e.target.value)} autoFocus />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" variant="destructive" loading={isPending} disabled={note.trim().length < 10}>Ask for approval</Button>
+        <Button type="button" size="sm" variant="ghost" disabled={isPending} onClick={onCancel}>Cancel</Button>
+      </div>
+      {error && <p className="text-destructive text-xs" role="alert">{error}</p>}
+    </form>
+  );
+}
+
 function PayoutRow({ p, onNotice }: { p: AdminPayout; onNotice: OnNotice }) {
   const { decide, isPending } = useDecidePayout();
   const [reviewing, setReviewing] = useState(false);
+  const [returning, setReturning] = useState(false);
   const [failing, setFailing] = useState(false);
   const [failNote, setFailNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -259,6 +306,8 @@ function PayoutRow({ p, onNotice }: { p: AdminPayout; onNotice: OnNotice }) {
     try {
       const result = await decide(p.id, { decision: "refresh" });
       if (result.status === "approved") setInfo("Still on its way, or Chapa has no answer yet. Check again later.");
+      else if (result.status === "paid" && result.needs_check) setInfo("Chapa still does not report this transfer as paid.");
+      else if (result.status === "paid" && p.needs_check) setInfo("Chapa reports this transfer as paid again. The flag is cleared.");
     } catch (err) {
       setError(getErrorMessage(err, "Could not update this payout"));
     }
@@ -301,6 +350,13 @@ function PayoutRow({ p, onNotice }: { p: AdminPayout; onNotice: OnNotice }) {
               {p.paid_at ? ` · paid ${formatDateTime(p.paid_at)}` : ""}
             </p>
           )}
+          {p.status === "returned" && (
+            <p className="text-muted-foreground text-xs">
+              Came back, recorded {formatDateTime(p.returned_at)}
+              {p.returned_by ? ` by ${p.returned_by}` : ""}. The amount is back in the provider&apos;s balance.
+            </p>
+          )}
+          {p.status === "returned" && p.return_note && <p className="text-xs">What was checked: {p.return_note}</p>}
           {p.note && <p className="text-xs">Note: {p.note}</p>}
         </div>
         <div className="flex items-center gap-3">
@@ -320,6 +376,30 @@ function PayoutRow({ p, onNotice }: { p: AdminPayout; onNotice: OnNotice }) {
           <span className="font-semibold">Needs checking: </span>
           {p.check_note ?? "The transfer got an error. The money stays held until Chapa confirms what happened."}
         </p>
+      )}
+      {p.status === "paid" && p.needs_check && (
+        <p className="border-destructive/40 bg-destructive/5 mt-3 rounded-md border px-3 py-2 text-xs" role="note">
+          <span className="font-semibold">Transfer may have come back: </span>
+          {p.check_note ?? "Chapa now reports this transfer failed or was returned. Check the bank and Chapa."}
+        </p>
+      )}
+      {p.status === "paid" && p.needs_check && !returning && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" loading={isPending} onClick={refresh}>Check with Chapa</Button>
+          <Button size="sm" variant="destructive" onClick={() => { setReturning(true); setError(null); setInfo(null); }}>Transfer came back</Button>
+        </div>
+      )}
+      {returning && (
+        <ReturnForm
+          p={p}
+          onCancel={() => setReturning(false)}
+          onDone={(text) => {
+            setReturning(false);
+            setInfo(text);
+            // The list refreshes and the row may move to the Came back tab, so the page keeps the message too
+            onNotice({ tone: "info", text: `${p.provider_name}, ${formatETB(p.amount)}: ${text}` });
+          }}
+        />
       )}
       {p.status === "failed" && p.check_note && (
         <p className="text-muted-foreground mt-3 text-xs" role="note">
@@ -402,7 +482,13 @@ export function AdminPayouts() {
           href="?status=approved"
           tone={totals?.needs_check ? "attention" : "default"}
         />
-        <StatTile label="Paid out in total" value={totals ? formatETB(totals.paid_amount) : "…"} href="?status=paid" />
+        <StatTile
+          label="Paid out in total"
+          value={totals ? formatETB(totals.paid_amount) : "…"}
+          hint={totals?.paid_needs_check ? `${totals.paid_needs_check} may have come back: check them` : undefined}
+          href="?status=paid"
+          tone={totals?.paid_needs_check ? "attention" : "default"}
+        />
         <StatTile label="Owed to providers" value={totals ? formatETB(totals.owed_to_providers) : "…"} hint="Earned and not yet paid out" />
       </div>
 
