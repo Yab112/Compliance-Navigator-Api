@@ -270,7 +270,7 @@ def fetch_all_rows(sql: str) -> list[dict]:
 
 def _production_kwargs(**overrides) -> dict:
     good = dict(
-        environment="production", secret_key="x" * 40, neo4j_password="a-real-neo4j-password",
+        environment="production", secret_key="x" * 40,
         minio_access_key="minio-key", minio_secret_key="minio-secret-value",
         database_url="postgresql://app:strong-password@db:5432/cn", auth_cookie_secure=True,
         cors_origins="https://navigator.example,https://admin.navigator.example",
@@ -298,8 +298,6 @@ def test_development_stays_permissive():
 @pytest.mark.parametrize("override, needle", [
     ({"secret_key": "change-me-in-production-but-long-enough-to-pass"}, "SECRET_KEY"),
     ({"secret_key": "short"}, "SECRET_KEY"),
-    ({"neo4j_password": None}, "NEO4J_PASSWORD"),
-    ({"neo4j_password": "darixsamani"}, "NEO4J_PASSWORD"),
     ({"minio_access_key": "minioadmin"}, "MINIO"),
     ({"database_url": "postgresql://navigator:navigator@localhost:5433/cn"}, "DATABASE_URL"),
     ({"database_url": "postgresql://navigator:change-me-postgres-password@db/cn"}, "DATABASE_URL"),

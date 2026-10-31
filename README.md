@@ -23,17 +23,17 @@ Compliance Navigator/
 | Area | What it does |
 |------|--------------|
 | **Roadmaps** | Graph-based step-by-step path to a goal (passport, TIN, trade license, …) per sub-city; each step shows office, fee, documents, legal basis, and where it can be done at **MESOB** |
-| **MESOB catalog** | Live scrape of [mesobcenter.et](https://mesobcenter.et/service-catalogue): 24 institutions, ~470 services (EN/AM), 19 centers — searchable at `/services`, mirrored into Neo4j, embedded for the AI |
+| **MESOB catalog** | Live scrape of [mesobcenter.et](https://mesobcenter.et/service-catalogue): 24 institutions, ~470 services (EN/AM), 19 centers, searchable at `/services`, mirrored into the knowledge graph, embedded for the AI |
 | **Guday Geday (ጉዳይ ገዳይ)** | Registry of licensed errand agents: self-registration with ID upload → admin review (approve / reject / suspend / renew) → public directory → client requests → ratings |
 | **AI assistant** | Chat (EN/AM, voice) that extracts goal/sub-city/documents, builds roadmaps, and cites MESOB + legal references via pgvector RAG. Providers: Ollama, Claude, or offline keyword mode — switchable from the dashboard |
-| **Admin app** (`admin/`, port 3001) | Overview metrics, data-source runs, MESOB catalog, knowledge-graph viewer/editor + read-only Cypher console, AI status/testing, Guday Geday management, feedback queue, users & roles |
+| **Admin app** (`admin/`, port 3001) | Overview metrics, data-source runs, MESOB catalog, knowledge-graph viewer/editor with search, AI status/testing, Guday Geday management, feedback queue, users & roles |
 
 ## Data stores
 
 | Store | Role |
 |-------|------|
-| **Postgres + pgvector** (docker, port 5433) | System of record: users & roles, roadmaps, Guday Geday agents/cases/audit log, data-source runs, feedback, settings, RAG embeddings. Migrations in `api/db/migrations` run automatically at startup |
-| **Neo4j** | Compliance graph — services, documents, REQUIRES paths, offices, plus MESOB `GovService` / `Institution` / `MesobCenter` nodes |
+| **Postgres + pgvector** (docker, port 5433) | System of record: users & roles, roadmaps, Guday Geday agents/cases/audit log, data-source runs, feedback, settings, RAG embeddings, and the compliance graph. Migrations in `api/db/migrations` run automatically at startup |
+| **Compliance graph** (in Postgres) | `graph_nodes` and `graph_edges`: services, documents, REQUIRES paths, offices, plus MESOB `GovService` / `Institution` / `MesobCenter` nodes. Prerequisite chains are a recursive SQL query (`services/graph_store.py`) |
 | **Redis + Celery** (optional) | Scheduled jobs: nightly MESOB refresh, daily maintenance |
 | **Local disk / S3** | Uploads. Agent photos → `api/uploads/public` (served); ID documents → `api/uploads/private` (admin-only endpoint) |
 
@@ -46,7 +46,7 @@ Everything runs self-hosted — no third-party auth or database service.
 ```bash
 cd api
 cp .env.sample .env          # set SECRET_KEY
-docker compose up -d postgres neo4j redis
+docker compose up -d postgres redis
 ```
 
 ### 2. API
@@ -108,7 +108,7 @@ The same jobs can be run on demand from **Admin → Data sources**; every run is
 ### Tests
 
 ```bash
-cd api && uv run pytest -q     # needs postgres + neo4j running and a seeded graph
+cd api && uv run pytest -q     # needs postgres running and a seeded graph (scripts.seed_graph)
 ```
 
 ## Auth model
@@ -143,7 +143,7 @@ The API ships as a Docker image (`api/Dockerfile`): it runs as a non-root user, 
 ```bash
 cd api
 cp .env.sample .env            # then fill in every value below
-docker compose up -d --build postgres neo4j redis web worker beat
+docker compose up -d --build postgres redis web worker beat
 ```
 
 Run exactly one `beat`: it starts the scheduled jobs (Chapa payout checks every 15 minutes, daily upkeep). The trained assistant models (`models_store/`, not in git) are copied into the image when the build machine has them and kept on the `models` volume; on a fresh server either build from a machine that has them or retrain from Admin, Assistant.
@@ -156,7 +156,7 @@ Set these in `api/.env` (or your host's secret store) before the first start:
 - [ ] `SECRET_KEY`: 32 or more random characters (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Never reuse the sample value.
 - [ ] `PAYOUT_ENCRYPTION_KEY`: a Fernet key (`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`) that encrypts bank accounts and guarantor ID numbers. Production refuses to start without it. Keep it with your backups: without it those values can't be read.
 - [ ] `ID_HASH_PEPPER`: its own random value, set once and never changed (it keys the stored national ID hashes).
-- [ ] `POSTGRES_PASSWORD`, `NEO4J_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`: strong, unique passwords. Compose refuses to start without them. Use letters and digits only for `POSTGRES_PASSWORD`, since it is placed inside `DATABASE_URL`.
+- [ ] `POSTGRES_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`: strong, unique passwords. Compose refuses to start without them. Use letters and digits only for `POSTGRES_PASSWORD`, since it is placed inside `DATABASE_URL`.
 - [ ] `AUTH_COOKIE_SECURE=true` (HTTPS only). `AUTH_COOKIE_SAMESITE=none` only if the web site and the API are on different sites.
 - [ ] `CORS_ORIGINS`: only your real web and admin addresses, for example `https://example.et,https://admin.example.et`.
 - [ ] `WEB_BASE_URL`, `ADMIN_BASE_URL`, `API_PUBLIC_URL`: the public HTTPS addresses (used in emails, payment returns and the Chapa webhook).
@@ -177,5 +177,6 @@ Set these in `api/.env` (or your host's secret store) before the first start:
 
 - Uploaded files (including national ID copies) live on the `uploads` volume, never in the image. Back it up together with the databases and keep the backups encrypted.
 - Postgres is the system of record. Back it up every day, for example `docker compose exec postgres pg_dump -U navigator compliance_navigator | gzip > backup-$(date +%F).sql.gz`, keep copies off the server, and test a restore regularly.
-- Neo4j holds the compliance graph, which can be rebuilt from the seed scripts and data sources, but a dump (`neo4j-admin database dump`) saves time.
+- The compliance graph is in Postgres (`graph_nodes`, `graph_edges`), so the daily dump covers it. It can also be rebuilt from the seed scripts and data sources.
+- Moving an older install off Neo4j: `uv sync --group migrate`, then `uv run python -m scripts.copy_graph_from_neo4j --dry-run` (counts only) and without `--dry-run` to copy, with `NEO4J_URI`, `NEO4J_USERNAME` and `NEO4J_PASSWORD` set. It is safe to run again.
 - Database migrations run automatically when the API starts.
