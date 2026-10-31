@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+from datetime import timedelta
 from decimal import Decimal
 
 from config.config import settings
@@ -65,28 +66,34 @@ def _balances(provider_id: str) -> dict:
     # Dispute window: an earning can be withdrawn only some days after it was credited. Refunds already taken
     # from that payment count against its hold, so the same money is never subtracted twice.
     days = _hold_days()
-    hold = fetch_one(
+    recent = fetch_all(
         f"""
-        with recent as (
-          select l.created_at,
-                 greatest(l.amount + coalesce((select sum(r.amount) from provider_ledger r
-                                               where r.payment_id = l.payment_id and r.provider_id = l.provider_id
-                                                 and r.kind in ('refund', 'adjustment')), 0), 0) as net
-          from provider_ledger l
-          where l.provider_id = %(p)s and l.kind = 'earning' and l.created_at > now() - make_interval(days => %(d)s)
-                {only.replace("is_test", "l.is_test")}
-        )
-        select coalesce(sum(net), 0)::float as held,
-               min(created_at) filter (where net > 0) + make_interval(days => %(d)s) as held_until
-        from recent
+        select l.created_at,
+               greatest(l.amount + coalesce((select sum(r.amount) from provider_ledger r
+                                             where r.payment_id = l.payment_id and r.provider_id = l.provider_id
+                                               and r.kind in ('refund', 'adjustment')), 0), 0)::float as net
+        from provider_ledger l
+        where l.provider_id = %(p)s and l.kind = 'earning' and l.created_at > now() - make_interval(days => %(d)s)
+              {only.replace("is_test", "l.is_test")}
+        order by l.created_at desc
         """,
         {"p": provider_id, "d": days},
-    )
-    row["held"] = round(hold["held"], 2) if days > 0 else 0.0
-    row["held_until"] = hold["held_until"] if days > 0 and row["held"] > 0 else None
+    ) if days > 0 else []
+    # Payouts use the oldest money first, so the held earnings are the newest ones and can never add up to more
+    # than what is still in the balance (money already withdrawn is not held again).
+    unpaid = max(row["balance"] - row["in_payout"], 0.0)
+    held, held_until = 0.0, None
+    for e in recent:
+        if held >= unpaid:
+            break
+        held += min(e["net"], unpaid - held)
+        if e["net"] > 0:
+            held_until = e["created_at"] + timedelta(days=days)
+    row["held"] = round(held, 2)
+    row["held_until"] = held_until if row["held"] > 0 else None
     row["hold_days"] = days
     # Money already asked for is held until the payout is paid or refused, and new earnings until the window
-    # ends. The hold only ever lowers what can be withdrawn, so a negative balance still blocks payouts.
+    # ends. A negative balance (a refund took more than was left) still blocks payouts.
     row["available"] = round(row["balance"] - row["in_payout"] - row["held"], 2)
     row["live"] = live
     return row
