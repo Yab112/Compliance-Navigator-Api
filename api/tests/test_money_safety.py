@@ -564,3 +564,50 @@ def test_chapa_transfer_verify_reads_list_and_test_mode_answers(monkeypatch):
     assert gw.verify_transfer("slow") == "approved"
     monkeypatch.setattr(ps.settings, "chapa_secret_key", "CHASECK-live")
     assert gw.verify_transfer("test-empty") == "approved"  # the test-mode shortcut needs a test key
+
+
+def test_withdrawal_life_cycle_numbers_at_every_step(client, make_user, fake_gateway, monkeypatch):
+    """The provider's screen at each step: earn, ask, Chapa refuses (money comes back), ask again, paid,
+    then a new earning held for the dispute window. Earned in total only ever goes up."""
+    import importlib
+
+    earnings = importlib.import_module("services.payment_service.earnings")
+    job = _paid_job(client, make_user)  # the provider earns 885 ETB
+    agent = job["agent"]
+    _payout_account(client, agent)
+
+    def screen():
+        e = _earnings(client, agent)
+        return {k: e[k] for k in ("earned_total", "balance", "in_payout", "held", "available", "paid_out")}
+
+    assert screen() == {"earned_total": 885, "balance": 885, "in_payout": 0, "held": 0, "available": 885, "paid_out": 0}
+
+    # Asks for everything: it waits for staff and can't be asked for twice
+    first = _request_payout(client, agent, 885)
+    assert screen() == {"earned_total": 885, "balance": 885, "in_payout": 885, "held": 0, "available": 0, "paid_out": 0}
+    r = client.post(f"{API}/providers/me/payouts", json={"amount": 100}, headers=agent["headers"])
+    assert r.status_code == 409
+
+    # Chapa clearly refuses the transfer: nothing left our account, the money is available again
+    fake_gateway(error=PaymentError("Invalid account number", 400, gateway_status=400))
+    with pytest.raises(PaymentError):
+        payment_service.decide_payout(first["id"], decision="approve", note=None, actor="staff@example.com")
+    assert fetch_one("select status from payouts where id = %s", (first["id"],))["status"] == "failed"
+    assert screen() == {"earned_total": 885, "balance": 885, "in_payout": 0, "held": 0, "available": 885, "paid_out": 0}
+
+    # Asks again, Chapa pays: the balance and what can be withdrawn are both 0, earned in total is unchanged
+    second = _request_payout(client, agent, 885)
+    gw = fake_gateway(transfer_status="paid")
+    assert payment_service.decide_payout(second["id"], decision="approve", note=None, actor="staff@example.com")["status"] == "paid"
+    assert len(gw.transfers) == 1
+    assert screen() == {"earned_total": 885, "balance": 0, "in_payout": 0, "held": 0, "available": 0, "paid_out": 885}
+    r = client.post(f"{API}/providers/me/payouts", json={"amount": 100}, headers=agent["headers"])
+    assert r.status_code == 409  # nothing left to withdraw
+
+    # A new earning arrives inside the 7-day window: earned in total goes up, it is held, available stays 0
+    monkeypatch.setattr(earnings, "_hold_days", lambda: 7)
+    pid, flag = job["provider"]["id"], fetch_one(
+        "select is_test from provider_ledger where provider_id = %s and kind = 'earning'", (job["provider"]["id"],))["is_test"]
+    execute("insert into provider_ledger (provider_id, kind, amount, note, is_test) values (%s, 'earning', 500, 'test', %s)",
+            (pid, flag))
+    assert screen() == {"earned_total": 1385, "balance": 500, "in_payout": 0, "held": 500, "available": 0, "paid_out": 885}
