@@ -2,7 +2,7 @@
 
 from typing import ClassVar
 
-from neontology import BaseRelationship
+from models.graph_model import GraphRelationship
 
 from models.compliance_nodes import (
     DocumentNode,
@@ -18,56 +18,56 @@ from models.compliance_nodes import (
 from models.user import UserNode
 
 
-class TargetsRel(BaseRelationship):
+class TargetsRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "TARGETS"
 
     source: ServiceNode
     target: DocumentNode
 
 
-class RequiresRel(BaseRelationship):
+class RequiresRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "REQUIRES"
 
     source: DocumentNode
     target: DocumentNode
 
 
-class IssuedByRel(BaseRelationship):
+class IssuedByRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "ISSUED_BY"
 
     source: DocumentNode
     target: OfficeNode
 
 
-class LocatedInRel(BaseRelationship):
+class LocatedInRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "LOCATED_IN"
 
     source: OfficeNode
     target: SubCityNode
 
 
-class SectorExtraRel(BaseRelationship):
+class SectorExtraRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "SECTOR_EXTRA"
 
     source: SectorNode
     target: DocumentNode
 
 
-class AppliesToRel(BaseRelationship):
+class AppliesToRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "APPLIES_TO"
 
     source: DocumentNode
     target: SectorNode
 
 
-class OfferedByRel(BaseRelationship):
+class OfferedByRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "OFFERED_BY"
 
     source: GovServiceNode
     target: InstitutionNode
 
 
-class FulfilledByRel(BaseRelationship):
+class FulfilledByRel(GraphRelationship):
     """Roadmap document can be obtained through this catalog service."""
 
     __relationshiptype__: ClassVar[str] = "FULFILLED_BY"
@@ -76,28 +76,28 @@ class FulfilledByRel(BaseRelationship):
     target: GovServiceNode
 
 
-class EnrichesDocumentRel(BaseRelationship):
+class EnrichesDocumentRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "ENRICHES"
 
     source: ManualReferenceNode
     target: DocumentNode
 
 
-class EnrichesServiceRel(BaseRelationship):
+class EnrichesServiceRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "ENRICHES_SERVICE"
 
     source: ManualReferenceNode
     target: ServiceNode
 
 
-class OwnsRel(BaseRelationship):
+class OwnsRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "OWNS"
 
     source: UserNode
     target: RoadmapNode
 
 
-class ForServiceRel(BaseRelationship):
+class ForServiceRel(GraphRelationship):
     __relationshiptype__: ClassVar[str] = "FOR"
 
     source: RoadmapNode

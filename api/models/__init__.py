@@ -1,4 +1,4 @@
-"""Import all models so neontology registers node/relationship types at startup."""
+"""Graph node and relationship models, stored in Postgres through services.graph_store."""
 
 from models.user import UserNode
 from models.compliance_nodes import (
