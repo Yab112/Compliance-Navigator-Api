@@ -27,7 +27,7 @@ def _hold_days() -> int:
 PAYOUT_COLUMNS = """
   po.id::text, po.provider_id::text, po.amount::float, po.status, po.bank_code, po.bank_name, po.account_name,
   po.account_last4, po.reference, po.gateway, po.gateway_reference, po.note, po.decided_by, po.decided_at, po.paid_at,
-  po.created_at, po.is_test, po.needs_check, po.check_note
+  po.created_at, po.is_test, po.needs_check, po.check_note, po.returned_at, po.returned_by, po.return_note
 """
 
 
@@ -40,6 +40,7 @@ def _balances(provider_id: str) -> dict:
     In live mode only real money counts: earnings from test checkouts (and payouts of them) are shown apart
     as test_balance and can never be withdrawn. In test mode everything counts, so the flow can be tried.
     A refund can make the balance negative; it is recovered from the next earnings before any payout.
+    paid_out counts a transfer that came back (a 'payout_return' line) as not paid out.
     """
     live = not _test_money()
     only = "and not is_test" if live else ""
@@ -52,8 +53,8 @@ def _balances(provider_id: str) -> dict:
                          and created_at >= date_trunc('month', now())), 0)::float as earned_this_month,
                coalesce((select sum(amount) from payouts where provider_id = %(p)s and status in ('requested', 'approved')
                          {only}), 0)::float as in_payout,
-               coalesce((select -sum(amount) from provider_ledger where provider_id = %(p)s and kind = 'payout' {only}), 0)::float
-                 as paid_out,
+               coalesce((select -sum(amount) from provider_ledger where provider_id = %(p)s
+                         and kind in ('payout', 'payout_return') {only}), 0)::float as paid_out,
                coalesce((select -sum(amount) from provider_ledger where provider_id = %(p)s and kind in ('refund', 'adjustment')
                          and refund_id is not null {only}), 0)::float as refunded,
                coalesce((select sum(amount) from provider_ledger where provider_id = %(p)s and is_test), 0)::float
@@ -129,7 +130,8 @@ def earnings(user_id: str) -> dict:
 
 def _public_payout(payout: dict) -> dict:
     """What the provider sees of their payout: not the staff-only checking note."""
-    return {k: v for k, v in payout.items() if k not in ("check_note", "needs_check", "bank_code")}
+    return {k: v for k, v in payout.items()
+            if k not in ("check_note", "needs_check", "bank_code", "returned_by", "return_note")}
 
 
 def ledger_page(user_id: str, limit: int = 20, offset: int = 0) -> dict:
@@ -198,7 +200,9 @@ def request_payout(user_id: str, amount: float) -> dict:
 def admin_payouts(status: str | None = "requested", limit: int = 25, offset: int = 0) -> dict:
     where, params = ("po.status = %s", [status]) if status else ("true", [])
     # Requests waiting for approval are a queue (oldest first); everything else is history (newest first)
-    order = "po.created_at" if status == "requested" else "coalesce(po.paid_at, po.decided_at, po.created_at) desc"
+    # Paid transfers flagged as maybe returned come first, so they are not lost among the paid ones
+    order = "po.created_at" if status == "requested" else \
+        "po.needs_check desc, coalesce(po.returned_at, po.paid_at, po.decided_at, po.created_at) desc"
     items = fetch_all(
         f"""
         select {PAYOUT_COLUMNS}, pr.display_name as provider_name, pr.slug as provider_slug
@@ -216,6 +220,8 @@ def admin_payouts(status: str | None = "requested", limit: int = 25, offset: int
                count(*) filter (where status = 'approved') as processing,
                count(*) filter (where status = 'approved' and needs_check) as needs_check,
                coalesce(sum(amount) filter (where status = 'paid'), 0)::float as paid_amount,
+               count(*) filter (where status = 'paid' and needs_check) as paid_needs_check,
+               count(*) filter (where status = 'returned') as returned,
                coalesce((select sum(amount) from provider_ledger where true {only}), 0)::float as owed_to_providers
         from payouts where true {only}
         """

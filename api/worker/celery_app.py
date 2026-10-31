@@ -31,11 +31,15 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.flag_stale_graph_nodes",
         "schedule": 60 * 60 * 24,
     },
-    # Staff-added sources with a daily or weekly schedule; each one runs only when it is due
     # Payouts approved and sent to Chapa, until Chapa says they landed or failed
     "payouts-processing-15min": {
         "task": "worker.tasks.check_processing_payouts",
         "schedule": 60 * 15,
+    },
+    # Paid transfers of the last 30 days that a bank sent back after Chapa said "success"
+    "payouts-paid-daily": {
+        "task": "worker.tasks.check_paid_payouts",
+        "schedule": 60 * 60 * 24,
     },
     # Refunds whose gateway answer was lost, and checkouts whose webhook was lost
     "refunds-sending-15min": {
@@ -46,6 +50,7 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.check_pending_payments",
         "schedule": 60 * 15,
     },
+    # Staff-added sources with a daily or weekly schedule; each one runs only when it is due
     "custom-sources-hourly": {
         "task": "worker.tasks.run_scheduled_custom_sources",
         "schedule": 60 * 60,

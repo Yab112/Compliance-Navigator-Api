@@ -237,8 +237,9 @@ def recent_errors(limit: int = 25, offset: int = 0, *, gateway: str = "chapa") -
 def attention(*, include_payouts: bool = True, limit: int = 50) -> dict:
     """
     Money that needs a person now, most urgent first:
-      - payouts approved but not confirmed (needs_check: the money may have left), and payouts that failed
-        in the last 7 days
+      - payouts approved but not confirmed (needs_check: the money may have left), paid payouts Chapa now
+        reports failed or returned (returned: the money may be back in our Chapa account), and payouts that
+        failed in the last 7 days
       - refunds that need checking with Chapa, and refunds that failed in the last 7 days
       - payments still pending 30 minutes after the checkout started
     Each with its amount, its age in seconds and the stored reason.
@@ -248,22 +249,24 @@ def attention(*, include_payouts: bool = True, limit: int = 50) -> dict:
         for r in fetch_all(
             """
             select po.id::text, po.reference, po.status, po.needs_check, po.amount::float, po.check_note, po.is_test,
-                   coalesce(po.decided_at, po.created_at) as since, pr.display_name as provider_name,
-                   extract(epoch from now() - coalesce(po.decided_at, po.created_at))::int as age_seconds
+                   coalesce(po.paid_at, po.decided_at, po.created_at) as since, pr.display_name as provider_name,
+                   extract(epoch from now() - coalesce(po.paid_at, po.decided_at, po.created_at))::int as age_seconds
             from payouts po left join providers pr on pr.id = po.provider_id
-            where (po.status = 'approved' and po.needs_check)
+            where (po.status in ('approved', 'paid') and po.needs_check)
                or (po.status = 'failed' and coalesce(po.decided_at, po.created_at) > now() - make_interval(days => %s))
             order by po.needs_check desc, since limit %s
             """,
             (RECENT_DAYS, limit),
         ):
-            check = r["status"] == "approved"
+            problem = {"approved": "needs_check", "paid": "returned"}.get(r["status"], "failed")
             items.append({
                 "kind": "payout", "id": r["id"], "reference": r["reference"], "status": r["status"],
-                "problem": "needs_check" if check else "failed", "amount": r["amount"], "since": r["since"],
+                "problem": problem, "amount": r["amount"], "since": r["since"],
                 "age_seconds": r["age_seconds"], "is_test": r["is_test"], "who": r["provider_name"],
-                "reason": r["check_note"] or ("The transfer could not be confirmed. Check with Chapa." if check
-                                              else "The transfer failed."),
+                "reason": r["check_note"] or {
+                    "needs_check": "The transfer could not be confirmed. Check with Chapa.",
+                    "returned": "Chapa now reports this paid transfer failed or was returned. Check the bank and Chapa.",
+                }.get(problem, "The transfer failed."),
             })
     for r in fetch_all(
         """
@@ -308,7 +311,7 @@ def attention(*, include_payouts: bool = True, limit: int = 50) -> dict:
             "problem": "stuck", "amount": r["amount"], "since": r["since"], "age_seconds": r["age_seconds"],
             "is_test": r["is_test"], "who": r["client_name"], "engagement_id": r["engagement_id"], "reason": reason,
         })
-    rank = {"needs_check": 0, "failed": 1, "stuck": 2}
+    rank = {"needs_check": 0, "returned": 0, "failed": 1, "stuck": 2}
     items.sort(key=lambda i: (rank[i["problem"]], -i["age_seconds"]))
     return {"items": items, "total": len(items)}
 
