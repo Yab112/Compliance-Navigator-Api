@@ -155,6 +155,13 @@ def create_hire(data: dict, *, user_id: str) -> dict:
     title = (data.get("title") or (service["name"] if service else "")).strip()
     if not title:
         raise MarketplaceError("Describe what you need")
+    # Both sides talk on Telegram once the provider accepts, so a request needs the client's username:
+    # the one typed now, or the one saved on their account
+    telegram = data.get("client_telegram") or (
+        fetch_one("select telegram_username from users where id = %s", (user_id,)) or {}).get("telegram_username")
+    if not telegram:
+        raise MarketplaceError("Add your Telegram username so the provider can message you once they accept. "
+                               "You can save it in My account.", 400)
     row = fetch_one(
         """
         insert into engagements (client_user_id, client_name, client_phone, client_telegram, provider_id, title,
@@ -162,16 +169,15 @@ def create_hire(data: dict, *, user_id: str) -> dict:
         values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         returning id::text
         """,
-        (user_id, data["client_name"], data["client_phone"], data.get("client_telegram"), provider_id, title[:200],
+        (user_id, data["client_name"], data["client_phone"], telegram, provider_id, title[:200],
          service["id"] if service else None, service["name"] if service else None,
          data.get("specialty"), data.get("sub_city"), data.get("details"), data.get("budget"),
          "requested" if provider_id else "open"),
     )
     _event(None, row["id"], "created", who="client", to_status="requested" if provider_id else "open",
            provider_id=provider_id)
-    if data.get("client_telegram"):  # remembered for the next hire
-        execute("update users set telegram_username = coalesce(telegram_username, %s) where id = %s",
-                (data["client_telegram"], user_id))
+    # Remembered for the next hire
+    execute("update users set telegram_username = coalesce(telegram_username, %s) where id = %s", (telegram, user_id))
     eng = provider_service.get_engagement(row["id"])
     if provider_id:
         first = (eng["client_name"] or "A client").split()[0]

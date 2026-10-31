@@ -100,6 +100,9 @@ def join(data: dict, *, user_id: str, actor: str) -> dict:
     t, e = data["provider_type"], data["entity_type"]
     if t not in PROVIDER_TYPES or e not in ENTITY_TYPES:
         raise MarketplaceError("Unknown provider or entity type")
+    if not data.get("telegram_username"):
+        # Clients message providers on Telegram once a job is accepted (the website form asks for it too)
+        raise MarketplaceError("Add your Telegram username so clients can message you")
     fields = _validate({k: data[k] for k in PROFILE_FIELDS if data.get(k) not in (None, "")}, t, e)
     _requirements({**fields, "provider_type": t, "entity_type": e})
     if not fields.get("sub_city"):
