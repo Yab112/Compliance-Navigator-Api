@@ -272,6 +272,33 @@ export const useAdminPayments = (filters: PaymentStatus | AdminPaymentFilters = 
   );
 };
 
+/**
+ * Downloads the provider's own financial report (summary, earnings, withdrawals) as an Excel file.
+ * Dates are YYYY-MM-DD in Addis Ababa time; empty means this year so far.
+ */
+export const useEarningsReport = () => {
+  const axiosAuth = useAxiosAuth();
+  return useCallback(
+    async (from?: string, to?: string) => {
+      const res = await axiosAuth.get<Blob>(`/${withQuery(apiPaths.providers.meEarningsReport, { from, to })}`, {
+        responseType: "blob",
+      });
+      const name = /filename="([^"]+)"/.exec(String(res.headers["content-disposition"] ?? ""))?.[1] ?? "earnings-report.xlsx";
+      const url = URL.createObjectURL(
+        new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    [axiosAuth],
+  );
+};
+
 /** Downloads the filtered payments as CSV (needs the Export payments permission; every export is logged). */
 export const usePaymentsExport = () => {
   const axiosAuth = useAxiosAuth();

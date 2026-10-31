@@ -36,6 +36,8 @@ MINUTE, HOUR, DAY = 60, 3600, 86400
 RULES: dict[str, tuple[Rule, ...]] = {
     # Per network: stops mail bombing and link churn. Per email: extra requests are silently not sent
     "forgot_password": (Rule(10, HOUR),),
+    # A report reads a year of ledger lines: enough for real use, not for hammering the database
+    "earnings_report": (Rule(20, HOUR),),
     "forgot_password_email": (Rule(3, HOUR),),
     "verify_resend": (Rule(3, HOUR), Rule(10, DAY)),
     # Anonymous and signed-in conversations call the language model, which costs money per turn
