@@ -33,7 +33,7 @@ export function AdminHeader() {
       </Link>
       <div className="ml-auto flex items-center gap-4">
         {user && (
-          <Link href="/account" className="hidden max-w-48 truncate text-white/80 hover:underline sm:inline">
+          <Link href="/account" className="max-w-28 truncate text-white/80 hover:underline sm:max-w-48">
             {user.fullname || user.email}
           </Link>
         )}

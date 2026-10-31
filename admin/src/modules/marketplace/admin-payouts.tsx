@@ -10,7 +10,7 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { EmptyState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
 import { ErrorState } from "@/modules/shared/states";
 import { PayoutStatusBadge, bankLine } from "@cn/ui/marketplace/payout-status";
@@ -387,7 +387,7 @@ export function AdminPayouts() {
           {payload.mode === "chapa" && payload.test_mode ? CHAPA_TEST : MODE_LABEL[payload.mode]}
         </p>
       )}
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className={cn(STAT_STRIP, "mb-6 grid-cols-2 lg:grid-cols-4")}>
         <StatTile
           label="Waiting for approval"
           value={totals ? totals.requested : "…"}

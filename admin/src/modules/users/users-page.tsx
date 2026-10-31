@@ -20,7 +20,7 @@ import { cn } from "@cn/core/lib/utils";
 import { NativeSelect } from "@/modules/shared/native-select";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
 import { StatusBadge } from "@/modules/shared/status-badge";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import type { AdminUser } from "@cn/core/types/admin";
 
 const PAGE_SIZE = 25;
@@ -305,7 +305,7 @@ function SecuritySummary() {
   const { payload } = useAuthSummary();
   if (!payload) return null;
   return (
-    <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className={cn(STAT_STRIP, "mb-6 grid-cols-2 lg:grid-cols-4")}>
       <StatTile label="Signed in now" value={payload.signed_in_users} hint={`${payload.active_sessions} active sessions`} />
       <StatTile label="New accounts (7 days)" value={payload.registrations_7d} />
       <StatTile

@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { cn } from "@cn/core/lib/utils";
 import { useCallback, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@cn/ui/card";
 import { useGraphStats, useGraphView } from "@cn/core/api/admin";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { humanize } from "@cn/core/lib/format";
 import { AdminPage } from "@/modules/components/admin-page";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { ErrorState, EmptyState, LoadingState } from "@/modules/shared/states";
 import { CypherConsole } from "@/modules/graph/cypher-console";
 import { DocumentEditor } from "@/modules/graph/document-editor";
@@ -75,7 +76,7 @@ export function GraphPage() {
       ) : stats.error || !s ? (
         <ErrorState error={stats.error} message={getErrorMessage(stats.error, "The graph database (Neo4j) is not reachable")} onRetry={() => stats.refetch()} />
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className={cn(STAT_STRIP, "grid-cols-2 md:grid-cols-4")}>
           <StatTile label="Items in the database" value={s.totalNodes} hint={`${Object.keys(s.nodes).length} kinds`} />
           <StatTile label="Links" value={s.totalRelationships} hint={`${Object.keys(s.relationships).length} kinds`} />
           <StatTile

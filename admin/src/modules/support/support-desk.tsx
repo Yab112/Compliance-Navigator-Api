@@ -12,7 +12,7 @@ import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
 import { timeAgo } from "@cn/core/lib/format";
 import { NativeSelect } from "@/modules/shared/native-select";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { EmptyState, ErrorState, LoadingState } from "@/modules/shared/states";
 import { useDebounced } from "@cn/ui/guday/shared";
 import { PriorityBadge, SlaBadge, TicketStatusBadge } from "@cn/ui/support/ticket-badges";
@@ -153,7 +153,7 @@ export function SupportDesk() {
         <ErrorState error={summary.error} message={getErrorMessage(summary.error)} onRetry={() => summary.refetch()} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+          <div className={cn(STAT_STRIP, "grid-cols-2 md:grid-cols-4 xl:grid-cols-7")}>
             <StatTile label="New" value={t.new} hint="Not opened yet" tone={t.new ? "attention" : "default"} href="/support?status=new" />
             <StatTile label="Open" value={t.open} hint="Being worked on" href="/support?status=open" />
             <StatTile label="Waiting on customer" value={t.waiting_customer} hint="We replied last" href="/support?status=waiting_customer" />
@@ -169,7 +169,7 @@ export function SupportDesk() {
             <StatTile label="Resolved, 7 days" value={t.resolved_7d} />
           </div>
           <h2 className="text-muted-foreground mt-6 mb-2 text-[11px] font-medium tracking-wider uppercase">Related work in other queues</h2>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+          <div className={cn(STAT_STRIP, "grid-cols-2 md:grid-cols-3 lg:grid-cols-5")}>
             <StatTile
               label="Hires awaiting a provider"
               value={s.related.hires_unmatched}

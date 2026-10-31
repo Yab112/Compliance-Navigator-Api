@@ -187,9 +187,13 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
           <span className="font-semibold">
             {mainNav.find((i) => isActive(pathname, i.href))?.label ?? "Menu"}
           </span>
-          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="mobile-menu" className="text-white/90 underline-offset-4 hover:underline">
-            {open ? "Close" : "Menu · ምናሌ"}
-          </button>
+          <div className="flex items-center gap-5">
+            {/* The utility bar with the bell is hidden on phones, so the bell lives here */}
+            {user && <NotificationBell />}
+            <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="mobile-menu" className="text-white/90 underline-offset-4 hover:underline">
+              {open ? "Close" : "Menu · ምናሌ"}
+            </button>
+          </div>
         </div>
         {open && (
           <div id="mobile-menu" className="border-border bg-card absolute inset-x-0 top-full border-b shadow-lg">

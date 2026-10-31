@@ -22,7 +22,7 @@ import { Pager, useUrlPage, useUrlPageSize } from "@cn/ui/pager";
 import { cn } from "@cn/core/lib/utils";
 import { AdminPage } from "@/modules/components/admin-page";
 import { useCan } from "@/modules/access/api";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { EmptyState, LoadingState, formatDateTime } from "@cn/ui/guday/shared";
 import { ErrorState } from "@/modules/shared/states";
 import type { AdminPayment, AdminPaymentFilters, PaymentStatus, PaymentsMode, Refund, RefundStatus } from "@cn/core/types/payments";
@@ -341,7 +341,7 @@ export function AdminPayments() {
           {payload.test_payments > 0 && ` · ${payload.test_payments} test payments left out of the totals`}
         </p>
       )}
-      <div className="mb-2 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      <div className={cn(STAT_STRIP, "mb-2 grid-cols-2 md:grid-cols-3 lg:grid-cols-5")}>
         <StatTile label="Paid payments" value={totals ? totals.paid_count : "…"} href="?status=success" />
         <StatTile label="Gross collected" value={totals ? birr(totals.gross) : "…"} hint={totals ? `${birr(totals.price)} price + ${birr(totals.provider_vat)} provider VAT` : undefined} />
         <StatTile label="Our commission" value={totals ? birr(totals.commission) : "…"} hint={totals ? `+ ${birr(totals.commission_vat)} VAT on it` : undefined} />

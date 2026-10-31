@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cn } from "@cn/core/lib/utils";
 import { useAdminMutation, useAdminQuery } from "@cn/core/api/admin/use-admin-query";
 import { Button } from "@cn/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@cn/ui/card";
@@ -9,7 +10,7 @@ import { MTD } from "@cn/core/lib/constants/methods";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { formatDateTime } from "@cn/core/lib/format";
 import { NativeSelect } from "@/modules/shared/native-select";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { ErrorState, LoadingState } from "@/modules/shared/states";
 import { Pager } from "@cn/ui/pager";
 
@@ -142,7 +143,7 @@ export function IntentModelSection() {
       <CardContent className="space-y-6">
         {m ? (
           <>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className={cn(STAT_STRIP, "grid-cols-2 md:grid-cols-3 xl:grid-cols-6")}>
               <StatTile label="Active version" value={m.version} hint={m.chosen} />
               <StatTile label="Overall score" value={pct(m.test.macro_f1)} hint={`macro-F1 on ${m.test.n} test messages`} />
               <StatTile label="English" value={pct(m.test.en?.macro_f1)} />

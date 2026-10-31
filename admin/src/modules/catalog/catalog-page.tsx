@@ -14,7 +14,7 @@ import { apiPaths } from "@cn/core/lib/constants/api-paths";
 import { getErrorMessage } from "@cn/core/lib/errors";
 import { AdminPage } from "@/modules/components/admin-page";
 import { daysSince, formatDateTime, timeAgo } from "@cn/core/lib/format";
-import { StatTile } from "@/modules/shared/stat-tile";
+import { STAT_STRIP, StatTile } from "@/modules/shared/stat-tile";
 import { ErrorState, EmptyState, LoadingState } from "@/modules/shared/states";
 import { cn } from "@cn/core/lib/utils";
 import type { CatalogInstitution, CatalogStats, MesobCenter } from "@cn/core/types/catalog";
@@ -246,7 +246,7 @@ export function CatalogPage() {
               refresh it so citizens see current information.
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className={cn(STAT_STRIP, "grid-cols-2 md:grid-cols-5")}>
             <StatTile label="Snapshot taken" value={timeAgo(s.fetchedAt)} hint={formatDateTime(s.fetchedAt)} tone={stale ? "attention" : "default"} />
             <StatTile label="Institutions" value={s.institutions} />
             <StatTile label="Services (English)" value={s.services} />
