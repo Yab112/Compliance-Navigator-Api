@@ -1,7 +1,7 @@
 [project]
 name = "fastapi-neo4j"
 version = "0.1.0"
-description = "A simple starter for building RESTful APIs with FastAPI and NEO4J."
+description = "Compliance Navigator API (FastAPI and Postgres)."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -9,7 +9,6 @@ dependencies = [
     "config>=0.5.1",
     "fastapi>=0.115.13",
     "redis>=5.0.0",
-    "neontology>=2.1.0",
     "numpy>=2.3.0",
     "passlib>=1.7.4",
     "pydantic-settings>=2.9.1",
@@ -34,4 +33,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+]
+# Only for scripts/copy_graph_from_neo4j.py (the one-time move off Neo4j): uv sync --group migrate
+migrate = [
+    "neo4j>=5.28",
 ]
