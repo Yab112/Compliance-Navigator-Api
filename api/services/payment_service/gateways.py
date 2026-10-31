@@ -6,12 +6,15 @@ import hashlib
 import hmac
 import logging
 import re
+import time
 from decimal import ROUND_HALF_UP, Decimal
 
 import httpx
 
 from config.config import settings
 from services.db import fetch_one
+
+from . import calls
 
 log = logging.getLogger(__name__)
 
@@ -115,17 +118,31 @@ class ChapaGateway:
             raise PaymentError("Payments are not set up yet (CHAPA_SECRET_KEY is missing)", 503)
         self.base = settings.chapa_base_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {settings.chapa_secret_key}", "Content-Type": "application/json"}
+        self.last_status: int | None = None  # the HTTP status of the last answer (the Payment health check shows it)
+
+    def _note(self, method: str, path: str, json: dict | None, data: dict | None, started: float, **outcome) -> None:
+        """Record the call for the Payment health page. A recording problem never reaches the payment."""
+        try:
+            calls.record(gateway=self.name, method=method, path=path, json=json, data=data,
+                         duration_ms=round((time.monotonic() - started) * 1000),
+                         is_test=(settings.chapa_secret_key or "").startswith("CHASECK_TEST"), **outcome)
+        except Exception:
+            log.warning("Could not record a Chapa call", exc_info=True)
 
     def _call(self, method: str, path: str, json: dict | None = None, data: dict | None = None) -> dict:
         headers = self.headers if data is None else {"Authorization": self.headers["Authorization"]}
+        started = time.monotonic()
         try:
             r = httpx.request(method, f"{self.base}{path}", headers=headers, json=json, data=data,
                               timeout=CHAPA_TIMEOUT)
         except httpx.HTTPError as exc:
             # A timeout can come after Chapa already accepted the request
             log.warning("Chapa unreachable: %s", exc)
+            self._note(method, path, json, data, started, http_status=None, ok=False, uncertain=True,
+                       error=f"No answer from Chapa ({type(exc).__name__}){f': {exc}' if str(exc) else ''}")
             raise PaymentError("The payment service is not reachable right now. Please try again.", 502,
                                uncertain=True) from exc
+        self.last_status = r.status_code
         try:
             body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
         except ValueError:
@@ -136,8 +153,11 @@ class ChapaGateway:
                 message = "; ".join(f"{k}: {', '.join(v) if isinstance(v, list) else v}" for k, v in message.items())
             log.warning("Chapa %s %s -> %s %s", method, path, r.status_code, message)
             # A 5xx says nothing about whether the request was carried out; a 4xx is a clear refusal
+            self._note(method, path, json, data, started, http_status=r.status_code, ok=False,
+                       uncertain=r.status_code >= 500, error=message or f"HTTP {r.status_code} without a message")
             raise PaymentError(f"Payment service: {message or 'request failed'}", 502, uncertain=r.status_code >= 500,
                                gateway_status=r.status_code)
+        self._note(method, path, json, data, started, http_status=r.status_code, ok=True)
         return body
 
     def banks(self) -> list[dict]:

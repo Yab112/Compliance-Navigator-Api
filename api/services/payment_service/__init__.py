@@ -31,6 +31,7 @@ PAYMENTS_MODE: off | simulated (a local test checkout, no money moves) | chapa
 
 from config.config import settings  # noqa: F401  (re-exported)
 
+from .calls import prune as prune_gateway_calls  # noqa: F401
 from .checkout import (  # noqa: F401
     breakdown,
     check_pending_payments,

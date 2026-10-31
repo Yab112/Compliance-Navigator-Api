@@ -36,8 +36,9 @@ def _pool() -> ConnectionPool:
 
 
 @contextmanager
-def connection() -> Iterator[Any]:
-    with _pool().connection() as conn:
+def connection(timeout: float | None = None) -> Iterator[Any]:
+    """timeout: give up after this many seconds when every pooled connection is busy (default: the pool's own)."""
+    with (_pool().connection(timeout=timeout) if timeout is not None else _pool().connection()) as conn:
         yield conn
 
 

@@ -90,6 +90,8 @@ def _run_stale_check() -> dict:
     from services import payment_service
 
     stats.update({f"payouts_{k}": v for k, v in payment_service.check_processing_payouts().items()})
+    # The record of Chapa calls behind the Payment health page is kept for 90 days
+    stats["gateway_calls_removed"] = payment_service.prune_gateway_calls()
     return stats
 
 
