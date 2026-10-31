@@ -56,8 +56,6 @@ test.describe("staff app", () => {
   });
 
   test("staff signs in, the menus open and navigate, Overview shows its numbers", async ({ page, consoleErrors }) => {
-    // The admin app has no favicon yet; that is checked on its own below
-    consoleErrors.allow(/status of 404 .*\/favicon\.ico/);
     await signInAdmin(page, first);
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
     for (const stat of ["Registered users", "Approved providers", "Open hires", "MESOB services"]) {
@@ -88,7 +86,6 @@ test.describe("staff app", () => {
   });
 
   test("the staff app serves a favicon", async ({ request }) => {
-    test.fixme(true, "admin/ has no favicon.ico or icon file, so Chrome logs a 404 on every staff page");
     const res = await request.get(`${ADMIN_URL}/favicon.ico`);
     expect(res.status()).toBe(200);
   });
