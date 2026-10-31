@@ -141,7 +141,7 @@ def test_not_ready_cannot_be_hired_assigned_or_take_new_work_but_can_finish(clie
     assert not _listed(client, p)
 
     r = client.post(f"{API}/hires", json={"provider_id": p["slug"], "title": "Renew my passport",
-                                          "client_name": "Test Client", "client_phone": "0922000000"},
+                                          "client_name": "Test Client", "client_phone": "0922000000", "client_telegram": "test_client"},
                     headers=customer["headers"])
     assert r.status_code == 409 and "can't take new requests" in r.json()["detail"]
     assert "Guarantor" not in r.json()["detail"]  # the client never learns why

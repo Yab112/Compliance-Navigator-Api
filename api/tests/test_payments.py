@@ -163,7 +163,7 @@ def test_telegram_shared_only_after_accept(client, make_user):
                         headers=agent["headers"]).status_code == 422
     client.patch(f"{API}/providers/me", json={"telegram_username": "https://t.me/test_agent_1"}, headers=agent["headers"])
     r = client.post(f"{API}/hires", json={"provider_id": provider["slug"], "title": "Renew my passport",
-                                          "client_name": "Test Client", "client_phone": "0922000000",
+                                          "client_name": "Test Client", "client_phone": "0922000000", "client_telegram": "test_client",
                                           "client_telegram": "@test_client_1"}, headers=customer["headers"])
     hire = r.json()["payload"]["hire"]
     assert hire["provider_telegram"] is None  # hidden until accepted

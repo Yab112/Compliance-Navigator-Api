@@ -7,6 +7,7 @@ import pytest
 from conftest import API
 from fayda_helpers import ensure_verified
 from services import trust_score
+from services.db import execute
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
 PASSPORT_RENEWAL = "mesob-728"
@@ -27,7 +28,7 @@ def _join(client, user, *, verify=True, agree=True, files=None, **overrides):
         _accept_agreement(client, user)
     data = {
         "provider_type": "guday_geday", "entity_type": "individual",
-        "display_name": "Test Agent", "phone": "0911000000",
+        "display_name": "Test Agent", "phone": "0911000000", "telegram_username": "test_agent_tg",
         "service_areas": ["bole"], "service_ids": [PASSPORT_RENEWAL], "experience_years": 2,
         **overrides,
     }
@@ -107,7 +108,7 @@ def _approved(client, admin, user, **overrides) -> dict:
 def _hire(client, customer, provider, **extra):
     r = client.post(f"{API}/hires", json={
         "provider_id": provider["slug"], "title": "Renew my passport",
-        "client_name": "Test Client", "client_phone": "0922000000", **extra,
+        "client_name": "Test Client", "client_phone": "0922000000", "client_telegram": "test_client", **extra,
     }, headers=customer["headers"])
     assert r.status_code == 201, r.text
     return r.json()["payload"]["hire"]
@@ -312,7 +313,7 @@ def test_suspension_hides_provider_and_reopens_jobs(client, make_user):
 def test_other_users_cannot_touch_hires(client, make_user):
     customer, stranger = make_user(), make_user()
     r = client.post(f"{API}/hires", json={"service_id": PASSPORT_RENEWAL, "client_name": "Test Client",
-                                          "client_phone": "0922000000"}, headers=customer["headers"])
+                                          "client_phone": "0922000000", "client_telegram": "test_client"}, headers=customer["headers"])
     hire = r.json()["payload"]["hire"]
     assert hire["status"] == "open"
     assert client.post(f"{API}/hires/{hire['id']}/cancel", headers=stranger["headers"]).status_code == 404
@@ -552,3 +553,25 @@ def test_approval_records_what_was_checked(client, make_user):
     pid = r.json()["payload"]["provider"]["id"]
     assert _admin(client, admin, pid, "approve", note="ok").status_code == 400
     assert _admin(client, admin, pid, "approve", note="Fayda ID matches, phone confirmed").status_code == 200
+
+
+def test_hire_needs_the_clients_telegram(client, make_user):
+    """Both sides talk on Telegram after acceptance, so a request without one is refused, and a saved one is reused."""
+    admin, agent, customer = make_user("admin"), make_user(), make_user()
+    provider = _approved(client, admin, agent)
+    base = {"provider_id": provider["slug"], "title": "Renew my passport", "client_name": "Test Client",
+            "client_phone": "0922000000"}
+    execute("update users set telegram_username = null where id = %s", (customer["id"],))
+    r = client.post(f"{API}/hires", json=base, headers=customer["headers"])
+    assert r.status_code == 400 and "Telegram" in r.json()["detail"]
+    r = client.post(f"{API}/hires", json={**base, "client_telegram": "@first_client"}, headers=customer["headers"])
+    assert r.status_code == 201 and r.json()["payload"]["hire"]["client_telegram"] == "first_client"
+    # Saved on the account, so the next request works without typing it again
+    r = client.post(f"{API}/hires", json={**base, "title": "Kebele ID"}, headers=customer["headers"])
+    assert r.status_code == 201 and r.json()["payload"]["hire"]["client_telegram"] == "first_client"
+
+
+def test_join_needs_a_telegram_username(client, make_user):
+    user = make_user()
+    r = _join(client, user, telegram_username="")
+    assert r.status_code == 400 and "Telegram" in r.text

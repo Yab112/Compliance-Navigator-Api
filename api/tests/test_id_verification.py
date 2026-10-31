@@ -85,7 +85,7 @@ def test_same_id_cannot_verify_two_accounts(client, make_user):
 
 def test_agent_registration_requires_verification(client, make_user):
     admin, user = make_user("admin"), make_user()
-    data = {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Abebe Kebede",
+    data = {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Abebe Kebede", "telegram_username": "abebe_tg",
             "phone": "0911000000", "service_areas": ["bole"],
             "service_ids": [PASSPORT_RENEWAL], "national_id": "TYPED-123456"}
     from test_providers import _accept_agreement
@@ -124,7 +124,7 @@ def test_agent_registration_requires_verification(client, make_user):
 def test_name_mismatch_flagged(client, make_user):
     admin, user = make_user("admin"), make_user()
     assert sandbox_verify(client, user, name="Sara Tesfaye").status_code == 200
-    data = {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Abebe Kebede",
+    data = {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Abebe Kebede", "telegram_username": "abebe_tg",
             "phone": "0911000000", "service_areas": ["bole"], "service_ids": [PASSPORT_RENEWAL]}
     from test_providers import _accept_agreement
 
@@ -150,7 +150,7 @@ def test_typed_national_id_is_stored_only_as_hash_and_last4(client, make_user):
     admin, user = make_user("admin"), make_user()
     number = "FAN " + random_fin()
     provider = provider_service.join(
-        {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Typed Id Agent",
+        {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Typed Id Agent", "telegram_username": "typed_id_tg",
          "phone": "0911000000", "service_areas": ["bole"], "service_ids": [PASSPORT_RENEWAL],
          "national_id": number}, user_id=user["id"], actor=user["email"])
     clean = id_verification.normalize_id(number)

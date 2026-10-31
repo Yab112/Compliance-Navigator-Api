@@ -185,3 +185,25 @@ def test_an_abandoned_checkout_is_given_up_after_three_days(client, make_user, m
     assert fetch_one("select status from payments where tx_ref = %s", (tx,))["status"] == "cancelled"
     assert fetch_one("select payment_status from engagements where id = %s", (hire["id"],))["payment_status"] == "unpaid"
     assert _earnings(client, agent)["balance"] == 0.0
+
+
+def test_money_already_withdrawn_is_not_held_again(client, make_user, monkeypatch):
+    """Earning, full withdrawal, new earning, all inside the window: only the new earning is held (bug seen live:
+    the hold counted the withdrawn earnings too and showed a negative balance)."""
+    monkeypatch.setattr(earnings, "_hold_days", lambda: 7)
+    job = _paid_job(client, make_user)  # 885 ETB earned now
+    pid = job["provider"]["id"]
+    flag = fetch_one("select is_test from provider_ledger where provider_id = %s and kind = 'earning'", (pid,))["is_test"]
+    # Paid out in full a moment later (earlier money was released by staff), then a new 500 ETB earning arrives
+    execute("insert into provider_ledger (provider_id, kind, amount, note, is_test) values (%s, 'payout', -885, 'test', %s)",
+            (pid, flag))
+    execute("insert into provider_ledger (provider_id, kind, amount, note, is_test, created_at) "
+            "values (%s, 'earning', 500, 'test', %s, now() + interval '1 second')", (pid, flag))
+    e = _earnings(client, job["agent"])
+    assert e["balance"] == 500.0
+    assert e["held"] == 500.0 and e["available"] == 0.0  # never negative because of money already paid out
+    assert e["held_until"]
+    # The window has passed for everything: all of the remaining 500 can be withdrawn
+    execute("update provider_ledger set created_at = created_at - interval '8 days' where provider_id = %s", (pid,))
+    e = _earnings(client, job["agent"])
+    assert e["held"] == 0.0 and e["available"] == 500.0

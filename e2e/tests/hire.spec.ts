@@ -28,7 +28,13 @@ test.describe("hiring a provider", () => {
     // Name and phone start from the account
     await expect(page.getByLabel("Your name")).toHaveValue(client.fullname);
     await expect(page.getByLabel("Phone to call you on")).toHaveValue("0911000000");
-    await page.getByRole("button", { name: `Send request to ${provider.display_name}` }).click();
+    // Telegram is required: an empty one is refused, then a typed one goes through
+    await page.getByLabel("Telegram username").fill("");
+    const send = page.getByRole("button", { name: `Send request to ${provider.display_name}` });
+    await send.click();
+    await expect(page.getByText("Add your Telegram username so the provider can message you")).toBeVisible();
+    await page.getByLabel("Telegram username").fill("@e2e_suite_client");
+    await send.click();
     await expect(page.getByText(/Request sent/)).toBeVisible();
 
     const hires = await request.get(`${API}/hires`, { headers: bearer(client.token) });

@@ -236,7 +236,7 @@ def test_sandbox_ids_show_as_test_and_are_retired_when_live(client, make_user, m
     user = make_user()
     _accept_agreement(client, user)
     assert sandbox_verify(client, user, name="Abebe Kebede").status_code == 200
-    data = {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Abebe Kebede",
+    data = {"provider_type": "guday_geday", "entity_type": "individual", "display_name": "Abebe Kebede", "telegram_username": "abebe_tg",
             "phone": "0911000000", "service_areas": ["bole"], "service_ids": ["mesob-728"]}
     r = client.post(f"{API}/providers/join", data={"data": json.dumps(data)}, headers=user["headers"])
     assert r.status_code == 201, r.text

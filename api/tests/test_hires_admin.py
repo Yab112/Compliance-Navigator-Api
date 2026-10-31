@@ -12,7 +12,7 @@ H = f"{API}/admin/marketplace/engagements"
 def _open_request(client, customer) -> dict:
     """A request without a provider: staff find one."""
     r = client.post(f"{API}/hires", json={"service_id": PASSPORT_RENEWAL, "client_name": "Test Client",
-                                          "client_phone": "0922000000", "sub_city": "bole"}, headers=customer["headers"])
+                                          "client_phone": "0922000000", "client_telegram": "test_client", "sub_city": "bole"}, headers=customer["headers"])
     assert r.status_code == 201, r.text
     return r.json()["payload"]["hire"]
 
@@ -229,7 +229,7 @@ def test_hire_requests_are_limited(client, make_user, monkeypatch):
     _hire(client, customer, provider)
     _hire(client, customer, provider)
     r = client.post(f"{API}/hires", json={"provider_id": provider["slug"], "title": "Third",
-                                          "client_name": "Test Client", "client_phone": "0922000000"},
+                                          "client_name": "Test Client", "client_phone": "0922000000", "client_telegram": "test_client"},
                     headers=customer["headers"])
     assert r.status_code == 429
     assert fetch_all("select 1 from engagements where client_user_id = %s", (customer["id"],)).__len__() == 2

@@ -207,6 +207,7 @@ def seed() -> None:
             hire = svc.create_hire({
                 "provider_id": p["id"], "title": jobs[i % len(jobs)], "client_name": client["fullname"],
                 "client_phone": f"09{random.randint(10_000_000, 99_999_999)}",
+                "client_telegram": f"sample_client_{i:02d}",
                 "service_id": (p["service_ids"] or [None])[0],
             }, user_id=client["id"])
             owner_id = p["_owner"]["id"]

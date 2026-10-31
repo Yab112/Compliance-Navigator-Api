@@ -95,7 +95,7 @@ function HireFormFields({
         <p className="text-primary font-semibold">Request sent ✓ · ጥያቄዎ ተልኳል</p>
         <p className="text-sm">
           {created.provider_name
-            ? `${created.provider_name} will accept or decline. Once they accept you'll both see each other's phone${created.client_telegram ? " and Telegram" : ""} to agree on the details.`
+            ? `${created.provider_name} will accept or decline. Once they accept you'll both see each other's phone and Telegram to agree on the details.`
             : "Our staff will match you with a verified provider who will call you."}
         </p>
         <Link href="/account/requests">
@@ -110,7 +110,9 @@ function HireFormFields({
     if (!serviceId && title.trim().length < 3) next.title = "Say what you need";
     if (name.trim().length < 2) next.name = "Enter your name";
     if (!PHONE_RE.test(phone.replace(/\s/g, ""))) next.phone = "Use an Ethiopian mobile number, for example 0911223344";
-    if (telegram.trim() && !TELEGRAM_RE.test(cleanTelegram(telegram))) next.telegram = TELEGRAM_HINT;
+    // Both sides talk on Telegram once the provider accepts, so it is required like the phone
+    if (!telegram.trim()) next.telegram = "Add your Telegram username so the provider can message you";
+    else if (!TELEGRAM_RE.test(cleanTelegram(telegram))) next.telegram = TELEGRAM_HINT;
     setErrors(next);
     if (Object.keys(next).length) return;
     setSubmitError(null);
@@ -122,7 +124,7 @@ function HireFormFields({
         title: title.trim() || undefined,
         client_name: name.trim(),
         client_phone: phone.replace(/\s/g, ""),
-        client_telegram: telegram.trim() ? cleanTelegram(telegram) : undefined,
+        client_telegram: cleanTelegram(telegram),
         sub_city: subCity,
         details: details.trim() || undefined,
         budget: budget.trim() || undefined,
@@ -153,8 +155,8 @@ function HireFormFields({
         <Field label="Phone to call you on" htmlFor="hire-phone" required error={errors.phone}>
           <Input id="hire-phone" type="tel" placeholder="09XXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </Field>
-        <Field label="Telegram username" htmlFor="hire-telegram" error={errors.telegram}
-          hint="So the provider can message you on Telegram once they accept. Optional.">
+        <Field label="Telegram username" htmlFor="hire-telegram" required error={errors.telegram}
+          hint="The provider messages you here once they accept. We save it for your next request.">
           <Input id="hire-telegram" placeholder="@your_username" value={telegram} onChange={(e) => setTelegram(e.target.value)} />
         </Field>
       </div>

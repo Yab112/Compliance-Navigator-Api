@@ -29,7 +29,7 @@ test.describe("access from the browser", () => {
     const title = `e2e-suite: private hire ${Date.now()}`;
     const made = await request.post(`${API}/hires`, {
       headers: bearer(owner.token),
-      data: { provider_id: provider.slug, title, client_name: "E2E Suite Owner", client_phone: "0911000000" },
+      data: { provider_id: provider.slug, title, client_name: "E2E Suite Owner", client_phone: "0911000000", client_telegram: "e2e_suite_owner" },
     });
     expect(made.status(), await made.text()).toBe(201);
     const id = (await made.json()).payload.hire.id;
