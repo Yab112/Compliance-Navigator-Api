@@ -27,7 +27,7 @@ export function LandingHero() {
       <Image src={stockImages.hero} alt="" fill priority sizes="100vw" className="object-cover object-[50%_70%]" />
       <div className="from-primary via-primary/90 to-primary/60 absolute inset-0 bg-gradient-to-r" />
 
-      <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-12 md:py-16 lg:grid-cols-[1fr_320px] lg:items-center">
+      <div className="relative mx-auto max-w-6xl px-4 py-12 md:py-16">
         <div>
           <p className="text-gov-yellow text-sm font-semibold">የእያንዳንዱን ቢሮ መስፈርት ይወቁ። የሚታመን ሰው ይቅጠሩ።</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-balance md:text-5xl md:leading-tight">
@@ -57,9 +57,8 @@ export function LandingHero() {
               placeholder="What service do you need? · ምን አገልግሎት ይፈልጋሉ?"
               className="text-foreground min-w-0 flex-1 px-4 py-3.5 text-base outline-none"
             />
-            <button type="submit" className="bg-gov-yellow text-gov-ink flex items-center gap-2 px-5 font-semibold hover:brightness-95">
-              <HugeiconsIcon icon={Search01Icon} className="size-5" />
-              <span className="hidden sm:inline">Search</span>
+            <button type="submit" aria-label="Search" className="text-primary hover:text-gov-ink flex items-center px-4">
+              <HugeiconsIcon icon={Search01Icon} className="size-6" />
             </button>
           </form>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -85,6 +84,23 @@ export function LandingHero() {
             </Link>
           </div>
 
+          {/* Live counts: one still row under the actions */}
+          <dl aria-label="On the platform today · ዛሬ በመድረኩ ላይ" className="mt-10 flex max-w-xl flex-wrap gap-x-10 gap-y-4 border-t border-white/20 pt-5">
+            {[
+              { label: "Services", am: "አገልግሎቶች", value: stats?.services },
+              { label: "Institutions", am: "ተቋማት", value: stats?.institutions },
+              { label: "MESOB partner centers", am: "የመሶብ ማዕከላት", value: stats?.centers },
+            ].map((s) => (
+              <div key={s.label} className="flex flex-col-reverse">
+                <dt className="text-xs text-white/75">
+                  {s.label} · {s.am}
+                </dt>
+                <dd className="text-gov-yellow text-3xl font-bold tabular-nums">
+                  {s.value != null ? s.value.toLocaleString("en") : "-"}
+                </dd>
+              </div>
+            ))}
+          </dl>
           {user && (
             <p className="mt-6 text-sm text-white/85">
               Welcome back, {user.fullname}.{" "}
@@ -95,24 +111,6 @@ export function LandingHero() {
           )}
         </div>
 
-        {/* Live counts, floating over the skyline */}
-        <dl aria-label="On the platform today · ዛሬ በመድረኩ ላይ" className="grid grid-cols-3 gap-4 lg:grid-cols-1 lg:gap-7 lg:justify-self-end">
-          {[
-            { label: "Services", am: "አገልግሎቶች", value: stats?.services, delay: "0s" },
-            { label: "Institutions", am: "ተቋማት", value: stats?.institutions, delay: "-2s" },
-            { label: "MESOB partner centers", am: "የመሶብ ማዕከላት", value: stats?.centers, delay: "-4s" },
-          ].map((s) => (
-            <div key={s.label} className="hero-float text-center lg:text-right" style={{ animationDelay: s.delay }}>
-              <dt className="mt-1 text-xs font-medium text-white/85 lg:text-sm">
-                {s.label}
-                <span className="block text-white/60">{s.am}</span>
-              </dt>
-              <dd className="text-gov-yellow text-4xl font-bold tabular-nums drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)] lg:text-6xl">
-                {s.value != null ? s.value.toLocaleString("en") : "-"}
-              </dd>
-            </div>
-          ))}
-        </dl>
       </div>
     </section>
   );

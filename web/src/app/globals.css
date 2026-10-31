@@ -5,20 +5,6 @@
 /* Shared components live outside this app; Tailwind only scans what it is told about */
 @source "../../../packages";
 
-/* Landing hero counts drift gently; still for people who asked for less motion */
-@keyframes hero-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
-}
-.hero-float {
-  display: flex;
-  flex-direction: column-reverse;
-  animation: hero-float 6s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .hero-float { animation: none; }
-}
-
 /* Path finished: a short burst of flag-coloured confetti, none for people who asked for less motion */
 .confetti {
   pointer-events: none;

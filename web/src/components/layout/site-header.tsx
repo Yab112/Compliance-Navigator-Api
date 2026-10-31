@@ -26,7 +26,7 @@ function ServiceSearch({ className, onDone }: { className?: string; onDone?: () 
   return (
     <form
       role="search"
-      className={cn("flex", className)}
+      className={cn("relative flex", className)}
       onSubmit={(e) => {
         e.preventDefault();
         router.push(q.trim() ? `/services?q=${encodeURIComponent(q.trim())}` : "/services");
@@ -41,12 +41,12 @@ function ServiceSearch({ className, onDone }: { className?: string; onDone?: () 
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search services · አገልግሎት ይፈልጉ"
-        className="border-input bg-background focus:border-primary h-9 min-w-0 flex-1 rounded-l-md border px-3 text-sm outline-none"
+        className="border-input bg-background focus:border-primary h-9 min-w-0 flex-1 rounded-md border pr-9 pl-3 text-sm outline-none"
       />
       <button
         type="submit"
         aria-label="Search"
-        className="bg-primary text-primary-foreground hover:bg-primary/90 flex h-9 w-10 items-center justify-center rounded-r-md"
+        className="text-muted-foreground hover:text-primary absolute right-0 flex h-9 w-9 items-center justify-center"
       >
         <HugeiconsIcon icon={Search01Icon} className="size-4" />
       </button>

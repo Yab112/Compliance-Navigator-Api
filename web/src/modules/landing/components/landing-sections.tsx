@@ -53,9 +53,7 @@ export function PopularServices() {
             href={`/roadmap/new?goal=${s.id}`}
             className="group border-border bg-card hover:border-primary flex items-start gap-4 rounded-md border p-4 transition-colors"
           >
-            <span className="bg-secondary text-primary group-hover:bg-primary flex size-12 shrink-0 items-center justify-center rounded-md transition-colors group-hover:text-white">
-              <HugeiconsIcon icon={s.icon} className="size-6" />
-            </span>
+            <HugeiconsIcon icon={s.icon} className="text-primary mt-0.5 size-7 shrink-0" />
             <span className="min-w-0">
               <span className="block font-semibold">{s.label}</span>
               <span className="text-muted-foreground block text-sm">{s.am}</span>

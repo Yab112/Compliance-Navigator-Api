@@ -279,19 +279,13 @@ export function MarketplaceHome() {
       </div>
 
       <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="grid gap-8 lg:grid-cols-[250px_1fr]">
-          <aside aria-label="Filters" className="hidden lg:block">
-            <p className="text-muted-foreground mb-5 text-xs leading-relaxed">{TYPE_META[f.type].blurb}</p>
-            <FilterPanel f={f} setParam={setParam} />
-            <div className="border-border bg-secondary/40 mt-8 rounded-lg border p-4 text-xs leading-relaxed">
-              <p className="font-semibold">Are you a {TYPE_META[f.type].label.toLowerCase()}?</p>
-              <p className="text-muted-foreground mt-1">Get a verified profile and clients who already know what they need.</p>
-              <Link href={`/providers/join?type=${f.type}`} className="text-primary mt-2 inline-block font-semibold hover:underline">
-                List yourself or your agency →
-              </Link>
-            </div>
-          </aside>
-
+        <p className="text-muted-foreground mb-4 max-w-3xl text-xs leading-relaxed">
+          {TYPE_META[f.type].blurb}{" "}
+          <Link href={`/providers/join?type=${f.type}`} className="text-primary font-semibold hover:underline">
+            Are you a {TYPE_META[f.type].label.toLowerCase()}? List yourself →
+          </Link>
+        </p>
+        <div>
           <section aria-live="polite" className="min-w-0">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm">
@@ -306,7 +300,7 @@ export function MarketplaceHome() {
                 {isFetching && !isLoading ? <span className="text-muted-foreground"> · updating</span> : null}
               </p>
               <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" size="sm" className="lg:hidden" onClick={() => setSheet(true)}>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSheet(true)}>
                   <HugeiconsIcon icon={FilterHorizontalIcon} /> Filters
                 </Button>
                 <label className="flex items-center gap-2 text-xs">
@@ -402,11 +396,11 @@ export function MarketplaceHome() {
         </div>
       </div>
 
-      {/* Mobile filter sheet */}
+      {/* Filters: a sheet from the bottom on phones, a panel from the right on wider screens */}
       {sheet && (
-        <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Filters">
+        <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label="Filters">
           <button type="button" aria-label="Close filters" className="absolute inset-0 bg-black/40" onClick={() => setSheet(false)} />
-          <div className="bg-card absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl p-5 shadow-xl">
+          <div className="bg-card absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl p-5 shadow-xl md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-96 md:rounded-none">
             <div className="mb-4 flex items-center justify-between">
               <p className="font-semibold">Filters · ማጣሪያ</p>
               <button type="button" className="text-muted-foreground text-sm" onClick={() => setSheet(false)}>
