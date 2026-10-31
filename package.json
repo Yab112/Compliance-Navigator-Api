@@ -1,6 +1,7 @@
 {
   "name": "compliance-navigator",
   "private": true,
+  "packageManager": "pnpm@11.25.0",
   "scripts": {
     "dev:web": "pnpm --filter compliance-navigator-web dev",
     "dev:admin": "pnpm --filter compliance-navigator-admin dev",
