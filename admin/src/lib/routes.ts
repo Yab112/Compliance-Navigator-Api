@@ -10,6 +10,7 @@ const ADMIN_ROUTES: RouteDef[] = [
   { pattern: "/marketplace/hires/[id]", label: "Hire", parent: "/marketplace/hires" },
   { pattern: "/marketplace/payments", label: "Payments", parent: "/" },
   { pattern: "/marketplace/payouts", label: "Payouts", parent: "/" },
+  { pattern: "/marketplace/payment-health", label: "Payment health", parent: "/" },
   { pattern: "/marketplace/reviews", label: "Reviews", parent: "/" },
   { pattern: "/marketplace/[id]", label: "Provider", parent: "/marketplace" },
   { pattern: "/organizations", label: "Organizations", parent: "/" },

@@ -213,6 +213,11 @@ ROUTE_POLICY: dict[str, Policy] = {
     "GET /admin/marketplace/payouts": P("payouts.view"),
     "GET /admin/marketplace/payouts/{payout_id}": P("payouts.view"),
     "POST /admin/marketplace/payouts/{payout_id}": P("payouts.approve", approval="payout.large"),
+    # Payment health: how Chapa is answering, its errors, and money that needs a person. The check asks
+    # Chapa for its bank list once; it moves no money.
+    "GET /admin/marketplace/payment-health": P("payments.view"),
+    "GET /admin/marketplace/payment-health/errors": P("payments.view"),
+    "POST /admin/marketplace/payment-health/check": P("payments.view"),
     # organizations
     "GET /admin/organizations/stats": P("organizations.view"),
     "GET /admin/organizations": P("organizations.view"),

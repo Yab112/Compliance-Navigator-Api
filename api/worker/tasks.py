@@ -64,6 +64,14 @@ def check_processing_payouts(self) -> dict:
     return payment_service.check_processing_payouts()
 
 
+@celery_app.task(name="worker.tasks.check_paid_payouts", bind=True)
+def check_paid_payouts(self) -> dict:
+    """Flag paid transfers Chapa now reports failed or returned; changes no money."""
+    from services import payment_service
+
+    return payment_service.check_paid_payouts()
+
+
 @celery_app.task(name="worker.tasks.check_sending_refunds", bind=True)
 def check_sending_refunds(self) -> dict:
     """Settle refunds whose gateway answer was never recorded; never sends a refund again."""

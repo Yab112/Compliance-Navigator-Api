@@ -209,9 +209,11 @@ export type RefundActionInput = {
 
 // ---------------------------------------------------------------- provider earnings and payouts
 
-export type PayoutStatus = "requested" | "approved" | "paid" | "rejected" | "failed";
+/** returned: paid, then the bank sent it back; the amount is back in the provider's balance */
+export type PayoutStatus = "requested" | "approved" | "paid" | "rejected" | "failed" | "returned";
 
-export type LedgerKind = "earning" | "payout" | "adjustment" | "refund";
+/** payout_return: a paid transfer came back, credited once (+amount) */
+export type LedgerKind = "earning" | "payout" | "adjustment" | "refund" | "payout_return";
 
 export type LedgerEntry = {
   id: string;
@@ -253,6 +255,8 @@ export type Payout = {
   decided_by: string | null;
   decided_at: string | null;
   paid_at: string | null;
+  /** When staff recorded that the transfer came back (status returned) */
+  returned_at?: string | null;
   created_at: string;
   is_test?: boolean;
 };
@@ -290,6 +294,9 @@ export type AdminPayoutTotals = {
   /** Approved payouts whose transfer got an error: check with Chapa */
   needs_check?: number;
   paid_amount: number;
+  /** Paid payouts Chapa now reports failed or returned: check, then Transfer came back */
+  paid_needs_check?: number;
+  returned?: number;
   owed_to_providers: number;
 };
 
@@ -305,7 +312,14 @@ export type AdminPayouts = {
 /** hard: can't be approved at all. block: approving needs a written reason. */
 export type PayoutCheck = { level: "hard" | "block" | "warn" | "info"; code: string; text: string };
 
-export type StaffPayout = Payout & { bank_code?: string | null; needs_check?: boolean; check_note?: string | null };
+export type StaffPayout = Payout & {
+  bank_code?: string | null;
+  needs_check?: boolean;
+  check_note?: string | null;
+  /** Who asked for and who approved "Transfer came back" */
+  returned_by?: string | null;
+  return_note?: string | null;
+};
 
 /** Everything staff look at before sending a payout. */
 export type PayoutReview = {
@@ -351,7 +365,7 @@ export type PayoutReview = {
   checks: PayoutCheck[];
 };
 
-export type PayoutDecision = { decision: "approve" | "reject" | "refresh" | "mark_failed"; note?: string };
+export type PayoutDecision = { decision: "approve" | "reject" | "refresh" | "mark_failed" | "returned"; note?: string };
 
 // ---------------------------------------------------------------- receipts
 
@@ -428,4 +442,121 @@ export type PayoutReceipt = {
   amount: number;
   to: { bank: string | null; account_name: string | null; account_last4: string | null };
   transfer_reference: string | null;
+};
+
+// ---------------------------------------------------------------- payment health
+
+export type GatewayOperation =
+  | "initialize"
+  | "verify"
+  | "transfer"
+  | "verify_transfer"
+  | "refund"
+  | "verify_refund"
+  | "banks"
+  | "other";
+
+export type PaymentHealthState = "no_calls" | "healthy" | "degraded" | "down";
+
+export type PaymentHealthStatus = {
+  status: PaymentHealthState;
+  label: string;
+  /** Why, in plain words */
+  reason: string;
+  mode: PaymentsMode;
+  /** True with the simulated gateway or a Chapa TEST key: no real money moves */
+  test_mode: boolean;
+  last_success_at: string | null;
+  last_call_at: string | null;
+  last_fault: { error: string | null; http_status: number | null; operation: GatewayOperation; created_at: string } | null;
+  calls_last_hour: number;
+  faults_last_hour: number;
+  refusals_last_hour: number;
+  p95_ms_last_hour: number | null;
+};
+
+/** failures = faults (no answer, 5xx, key refused, rate limit) + refusals (any other 4xx: Chapa said no) */
+export type GatewayCallFigures = {
+  calls: number;
+  failures: number;
+  faults: number;
+  refusals: number;
+  failure_rate: number;
+  avg_ms: number | null;
+  p95_ms: number | null;
+};
+
+export type GatewayOperationSummary = GatewayCallFigures & {
+  operation: GatewayOperation;
+  uncertain: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_failure_message: string | null;
+  last_failure_http_status: number | null;
+};
+
+export type PaymentHealthSummary = {
+  hours: number;
+  operations: GatewayOperationSummary[];
+  totals: GatewayCallFigures & { test_calls: number };
+};
+
+export type PaymentAttentionItem = {
+  kind: "payment" | "payout" | "refund";
+  id: string;
+  reference: string;
+  /** The payment's tx_ref (payments and refunds) */
+  tx_ref?: string;
+  engagement_id?: string;
+  status: string;
+  /** needs_check: the money may have moved; returned: a paid transfer Chapa now reports failed or returned;
+   * failed: it did not move; stuck: a checkout still pending */
+  problem: "needs_check" | "returned" | "failed" | "stuck";
+  amount: number;
+  since: string;
+  age_seconds: number;
+  is_test: boolean;
+  who: string | null;
+  reason: string;
+};
+
+export type PaymentHealth = {
+  status: PaymentHealthStatus;
+  summary: PaymentHealthSummary;
+  attention: { items: PaymentAttentionItem[]; total: number };
+};
+
+export type GatewayCallError = {
+  id: number;
+  created_at: string;
+  operation: GatewayOperation;
+  method: string;
+  path: string;
+  reference: string | null;
+  http_status: number | null;
+  error: string | null;
+  /** The call may have been carried out anyway (no answer or a server error) */
+  uncertain: boolean;
+  fault: boolean;
+  is_test: boolean;
+  duration_ms: number;
+  belongs_to:
+    | { kind: "payment"; id: string; tx_ref: string; engagement_id: string; status: string }
+    | { kind: "payout"; id: string; status: string }
+    | { kind: "refund"; id: string; tx_ref: string; status: string }
+    | null;
+};
+
+export type GatewayCallErrors = { items: GatewayCallError[]; total: number; limit: number; offset: number };
+
+export type GatewayLiveCheck = {
+  /** null when nothing was sent (test mode or payments off) */
+  ok: boolean | null;
+  simulated: boolean;
+  mode: PaymentsMode;
+  latency_ms: number | null;
+  http_status: number | null;
+  uncertain?: boolean;
+  error: string | null;
+  message: string;
 };

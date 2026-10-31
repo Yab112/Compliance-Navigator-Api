@@ -41,7 +41,12 @@ def client():
 
     ratelimit.ENABLED = False  # tests/test_ratelimit.py switches it back on where it matters
     with TestClient(app) as c:
+        from services.db import fetch_one
+
+        # Tests fake Chapa answers with a test key; keep those calls off the Payment health page
+        first_call = fetch_one("select coalesce(max(id), 0) as id from gateway_calls")["id"]
         yield c
+        execute("delete from gateway_calls where id > %s and is_test", (first_call,))
 
 
 @pytest.fixture(scope="session")

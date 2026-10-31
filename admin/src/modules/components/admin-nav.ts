@@ -22,6 +22,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: "/marketplace/reviews", label: "Reviews", group: "Marketplace" },
   { href: "/marketplace/payments", label: "Payments and refunds", group: "Money" },
   { href: "/marketplace/payouts", label: "Payouts", group: "Money" },
+  { href: "/marketplace/payment-health", label: "Payment health", group: "Money" },
   { href: "/organizations", label: "Organizations", group: "Organizations" },
   { href: "/submissions", label: "Service submissions", group: "Organizations" },
   { href: "/data-sources", label: "Data sources", group: "Content and data" },

@@ -15,6 +15,9 @@ import type {
   AdminPaymentFilters,
   AdminPayments,
   AdminPayouts,
+  GatewayCallErrors,
+  GatewayLiveCheck,
+  PaymentHealth,
   PayoutReview,
   Bank,
   CheckoutStart,
@@ -36,6 +39,7 @@ import type {
   RefundInput,
   RefundReceipt,
   RefundStatus,
+  StaffPayout,
   TestCheckout,
 } from "../../types/payments";
 
@@ -339,7 +343,40 @@ export const useAdminPayoutReview = (id: string, enabled = true) =>
  * refresh a processing payout, or mark_failed (only once Chapa says it failed or never got it; needs a note).
  */
 export const useDecidePayout = () => {
-  const { run, isPending } = useAdminMutation<{ payout: Payout }, PayoutDecision>();
+  const { run, isPending } = useAdminMutation<{ payout: StaffPayout }, PayoutDecision>();
   const decide = (id: string, body: PayoutDecision) => run(apiPaths.admin.marketPayout(id), MTD.POST, body).then((p) => p.payout);
   return { decide, isPending };
+};
+
+/**
+ * A paid transfer came back from the bank. Chapa is asked first; then it waits for a second staff member:
+ * the answer is `{approval}` (sent to Approvals), or `{payout}` when nobody else could approve and it ran at once.
+ */
+export const useReturnPayout = () => {
+  const { run, isPending } = useAdminMutation<{ approval?: ApprovalRequestSummary; payout?: StaffPayout }, PayoutDecision>();
+  const markReturned = (id: string, note: string) => run(apiPaths.admin.marketPayout(id), MTD.POST, { decision: "returned", note });
+  return { markReturned, isPending };
+};
+
+// ---------------------------------------------------------------- payment health
+
+/** Chapa's status, the calls in the last `hours` by operation, and money that needs a person. Refreshed every minute. */
+export const usePaymentHealth = (hours: number) =>
+  useAdminQuery<PaymentHealth>(["market", "payment-health", hours], withQuery(apiPaths.admin.marketPaymentHealth, { hours }), {
+    refetchInterval: 60 * 1000,
+  });
+
+/** Failed Chapa calls, newest first. */
+export const usePaymentHealthErrors = (page = 0, size = ADMIN_MONEY_PAGE_SIZE) =>
+  useAdminQuery<GatewayCallErrors>(
+    ["market", "payment-health", "errors", page, size],
+    withQuery(apiPaths.admin.marketPaymentHealthErrors, { limit: size, offset: page * size }),
+    { refetchInterval: 60 * 1000 },
+  );
+
+/** Ask Chapa for its bank list now; the call is recorded, so the health figures refresh after it. */
+export const usePaymentHealthCheck = () => {
+  const { run, isPending } = useAdminMutation<GatewayLiveCheck, undefined>([["market", "payment-health"]]);
+  const check = () => run(apiPaths.admin.marketPaymentHealthCheck, MTD.POST);
+  return { check, isPending };
 };

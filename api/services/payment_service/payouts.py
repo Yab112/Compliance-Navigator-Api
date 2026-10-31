@@ -40,6 +40,118 @@ def _mark_failed(payout: dict, note: str) -> bool:
     return bool(done)
 
 
+RETURN_FLAG_NOTE = ("Chapa now reports this transfer failed or was returned after we recorded it as paid. Check the "
+                    "bank and Chapa, then use Transfer came back.")
+
+
+def _chapa_says_it_came_back(payout: dict) -> None:
+    """
+    Before money that was paid out goes back into a provider's balance, Chapa must say the transfer failed or
+    came back. "Still paid", no answer and "no such transfer" all refuse: on any doubt the money stays paid out.
+    """
+    try:
+        status = payment_service.gateway_named(payout["gateway"] or mode()).verify_transfer(payout["reference"])
+    except PaymentError as exc:
+        log.warning("Payout %s: could not ask the gateway whether it came back: %s", payout["id"], exc)
+        status = "unreachable"
+    if status == "failed":
+        return
+    if status == "paid":
+        raise PaymentError("Chapa still reports this transfer as paid, so it can't be recorded as returned. Check "
+                           "with the bank and Chapa first.", 409)
+    if status == "missing":
+        raise PaymentError("Chapa has no record of this transfer, so it can't confirm the money came back. Nothing "
+                           "was changed. Check with Chapa first.", 409)
+    raise PaymentError("Chapa could not confirm that this transfer failed or came back (no clear answer right now). "
+                       "Nothing was changed. Try again later.", 409)
+
+
+def _mark_returned(payout_id: str, note: str, actor: str) -> dict | None:
+    """
+    paid -> returned, and the amount back in the provider's balance as one 'payout_return' line, in one
+    transaction. The conditional update lets only one caller through; the unique index backs it up.
+    """
+    with connection() as conn, conn.transaction():
+        done = conn.execute(
+            "update payouts set status = 'returned', returned_at = now(), returned_by = %s, return_note = %s, "
+            "needs_check = false where id = %s and status = 'paid' "
+            "returning id::text, provider_id::text, amount, bank_name, account_last4, is_test",
+            (actor[:200], note[:500], payout_id),
+        ).fetchone()
+        if done:
+            conn.execute(
+                "insert into provider_ledger (provider_id, kind, amount, payout_id, note, is_test) "
+                "values (%s, 'payout_return', %s, %s, %s, %s)",
+                (done["provider_id"], Decimal(str(done["amount"])), payout_id,
+                 f"Transfer to {done['bank_name']} ••••{done['account_last4']} came back", done["is_test"]),
+            )
+    return done
+
+
+def execute_payout_return(payload: dict, actor: str) -> dict:
+    """
+    Carry out an approved "Transfer came back" (called by the approval workflow, or at once when nobody else
+    could approve). Chapa is asked again first: the approval may come days after the request.
+    """
+    payout_id = payload["payout_id"]
+    payout = fetch_one(f"select {PAYOUT_COLUMNS} from payouts po where po.id = %s", (payout_id,))
+    if not payout:
+        raise PaymentError("Payout not found", 404)
+    if payout["status"] != "paid":
+        raise PaymentError(_not_returnable(payout["status"]), 409)
+    _chapa_says_it_came_back(payout)
+    done = _mark_returned(payout_id, str(payload.get("note") or ""), actor)
+    if not done:
+        now = (fetch_one("select status from payouts where id = %s", (payout_id,)) or {}).get("status")
+        raise PaymentError(_not_returnable(now), 409)
+    log.warning("Payout %s recorded as returned by %s: %s ETB back in the provider's balance", payout_id, actor,
+                done["amount"])
+    _tell_provider(payout, f"Payout of {payout['amount']:,.2f} ETB came back",
+                   f"The transfer to {payout['bank_name']} ••••{payout['account_last4']} did not reach your account. "
+                   "The money is back in your balance. Check your bank details and ask again.")
+    return {"payout_id": payout_id, "status": "returned", "amount": float(done["amount"])}
+
+
+def _not_returnable(status: str | None) -> str:
+    return {
+        "returned": "This payout was already recorded as returned, so the money is already back in the provider's "
+                    "balance.",
+        "failed": "This payout failed before it was paid, so the money is already back in the provider's balance.",
+        "rejected": "This payout was refused and never sent.",
+        "requested": "This payout was never sent.",
+        "approved": "This payout is still on its way. Use Check with Chapa, or Mark failed once Chapa confirms it "
+                    "failed.",
+    }.get(status or "", "Only a paid payout can be recorded as returned.")
+
+
+def _ask_payout_return(payout: dict, note: str, staff, client) -> dict:
+    """A paid transfer came back: check with Chapa, then store it for a second staff member to approve."""
+    from services import approvals
+
+    if payout["status"] != "paid":
+        raise PaymentError(_not_returnable(payout["status"]), 409)
+    if len(note) < 10:
+        raise PaymentError("Write what you checked with the bank and Chapa (at least 10 characters)")
+    if staff is None:
+        raise PaymentError("Only a signed-in staff member can ask for this", 403)
+    _chapa_says_it_came_back(payout)
+    provider = fetch_one("select display_name from providers where id = %s", (payout["provider_id"],))
+    paid = f", paid {payout['paid_at']:%d %b %Y}" if payout["paid_at"] else ""
+    summary = (f"Transfer came back: put {payout['amount']:,.2f} ETB back in the balance of "
+               f"{provider['display_name'] if provider else 'a provider'} (payout {payout['reference']} to "
+               f"{payout['bank_name']} ••••{payout['account_last4']}{paid}). "
+               f"Chapa reports it failed or returned. Note: {note[:200]}")
+    try:
+        outcome = approvals.request("payout.returned", {"payout_id": payout["id"], "note": note[:500],
+                                                         "amount": payout["amount"]},
+                                    summary, staff, target=f"payout:{payout['id']}", client=client)
+    except approvals.ApprovalError as exc:
+        raise PaymentError(str(exc), exc.status_code) from exc
+    if "pending" in outcome:
+        raise approvals.PendingApproval(outcome["pending"])
+    return _public_staff_payout(payout["id"])
+
+
 def _tell_provider(payout: dict, title: str, body: str | None = None) -> None:
     owner = fetch_one("select user_id::text from providers where id = %s", (payout["provider_id"],))
     if owner and owner["user_id"]:
@@ -78,7 +190,8 @@ def payout_review(payout_id: str) -> dict:
         """
         select count(*) filter (where status = 'paid') as paid_count,
                coalesce(sum(amount) filter (where status = 'paid'), 0)::float as paid_total,
-               count(*) filter (where status in ('rejected', 'failed')) as refused_count
+               count(*) filter (where status in ('rejected', 'failed')) as refused_count,
+               count(*) filter (where status = 'returned') as returned_count
         from payouts where provider_id = %s and id <> %s
         """,
         (payout["provider_id"], payout_id),
@@ -135,6 +248,10 @@ def _payout_checks(payout: dict, provider: dict, history: dict, balances: dict, 
     if payout["needs_check"]:
         checks.append({"level": "warn", "code": "needs_check",
                        "text": payout["check_note"] or "The transfer could not be confirmed. Check with Chapa."})
+    if history["returned_count"]:
+        checks.append({"level": "warn", "code": "returned_before",
+                       "text": f"{history['returned_count']} earlier payout(s) to this provider came back from the "
+                               "bank. Make sure the account details are right this time."})
     if not history["paid_count"]:
         checks.append({"level": "info", "code": "first_payout", "text": "First payout to this provider."})
     if _test_money():
@@ -143,14 +260,19 @@ def _payout_checks(payout: dict, provider: dict, history: dict, balances: dict, 
     return checks
 
 
-def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str) -> dict:
+def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str, staff=None, client=None) -> dict:
     """
     approve:     claim the payout (only one approval wins), then send it to the account stored on it
                  (simulated: paid at once; Chapa: queued, then refresh)
     reject:      refuse a payout that is still waiting; the held money is released
-    refresh:     ask the gateway about an approved payout
+    refresh:     ask the gateway about an approved payout (or a paid one flagged as maybe returned)
     mark_failed: release an approved payout, only once the gateway says it failed or never received it
+    returned:    a paid transfer came back (needs a note and the staff member asking). Only once Chapa says it
+                 failed or was returned; then it waits for a second staff member (approvals "payout.returned",
+                 raises PendingApproval) and execute_payout_return puts the money back in the balance.
     A payout with a blocking check (name mismatch, unverified ID) is only approved with a written reason.
+
+    Statuses: requested -> approved -> paid -> returned; requested -> rejected; approved -> failed.
     """
     from core.crypto import decrypt
 
@@ -223,6 +345,14 @@ def decide_payout(payout_id: str, *, decision: str, note: str | None, actor: str
         else:
             execute("update payouts set gateway_reference = %s where id = %s", (result.get("reference"), payout_id))
             _tell_provider(payout, f"Payout of {payout['amount']:,.2f} ETB approved", "It is on its way to your bank.")
+    elif decision == "returned":
+        return _ask_payout_return(payout, note, staff, client)
+    elif decision == "refresh" and payout["status"] == "paid" and payout["needs_check"]:
+        # Flagged by the daily check as maybe returned: clear the flag only if Chapa says it is paid again
+        status = payment_service.gateway_named(payout["gateway"] or mode()).verify_transfer(payout["reference"])
+        if status == "paid":
+            execute("update payouts set needs_check = false, check_note = %s where id = %s and status = 'paid'",
+                    ("Chapa reports this transfer as paid again.", payout_id))
     elif decision in ("refresh", "mark_failed"):
         if payout["status"] != "approved":
             if decision == "mark_failed":
@@ -274,6 +404,40 @@ def check_processing_payouts(min_age_minutes: int = 5) -> dict:
         counts["checked"] += 1
         if after and after.get("status") in ("paid", "failed"):
             counts[after["status"]] += 1
+    return counts
+
+
+def check_paid_payouts(days: int = 30) -> dict:
+    """
+    Ask Chapa again about Chapa transfers paid in the last `days` days. A bank can send a transfer back after
+    Chapa said "success". When Chapa now says it failed or was returned, the payout is flagged for staff
+    (needs_check, shown on Payment health and the Payouts page). It stays paid and the ledger is not touched:
+    putting the money back needs "Transfer came back" and a second staff member. "missing" and errors change
+    nothing. Runs daily.
+    """
+    rows = fetch_all(
+        f"select {PAYOUT_COLUMNS} from payouts po where po.status = 'paid' and po.gateway = 'chapa' "
+        "and po.paid_at > now() - make_interval(days => %s) and not po.needs_check order by po.paid_at desc limit 500",
+        (days,),
+    )
+    counts = {"checked": 0, "flagged": 0, "errors": 0}
+    for payout in rows:
+        try:
+            status = payment_service.gateway_named(payout["gateway"]).verify_transfer(payout["reference"])
+        except Exception:
+            counts["errors"] += 1
+            log.exception("Daily check of paid payout %s failed", payout["id"])
+            continue
+        counts["checked"] += 1
+        if status == "failed":
+            if fetch_one("update payouts set needs_check = true, check_note = %s "
+                         "where id = %s and status = 'paid' and not needs_check returning id",
+                         (RETURN_FLAG_NOTE, payout["id"])):
+                counts["flagged"] += 1
+                log.warning("Payout %s (%s ETB) was paid but Chapa now reports it failed or returned",
+                            payout["id"], payout["amount"])
+        elif status != "paid":
+            log.info("Paid payout %s: Chapa answered %s; left as it is", payout["id"], status)
     return counts
 
 

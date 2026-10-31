@@ -99,6 +99,12 @@ def _exec_payout(payload: dict, actor: str):
     return {"payout_id": payout["id"], "status": payout["status"]}
 
 
+def _exec_payout_return(payload: dict, actor: str):
+    from services import payment_service
+
+    return payment_service.execute_payout_return(payload, actor)
+
+
 def _exec_refund(payload: dict, actor: str):
     from services import payment_service
 
@@ -126,6 +132,8 @@ RULES: dict[str, Rule] = {r.action: r for r in [
     Rule("settings.money", "Change money or tax settings", "settings.edit", _exec_settings),
     Rule("settings.money_reset", "Reset a money or tax setting", "settings.edit", _exec_settings_reset),
     Rule("payout.large", "Approve a large payout", "payouts.approve", _exec_payout),
+    Rule("payout.returned", "Put a payout that came back into the provider's balance", "payouts.approve",
+         _exec_payout_return),
     Rule("payment.refund", "Refund a client", "payments.refund", _exec_refund),
     Rule("data_source.delete", "Delete a staff-added data source", "data_sources.manage", _exec_data_source_delete),
     Rule("staff.create", "Invite a staff member", "staff.manage", _staff_exec("exec_create")),

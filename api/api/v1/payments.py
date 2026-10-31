@@ -7,13 +7,15 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from core.deps import get_current_user, require_admin
+from core.deps import client_info, get_current_user, require_admin
 from core.verified import get_verified_user
 from schemas.auth_user import AuthUser
 from services import payment_service, platform_settings
+from services.approvals import PendingApproval
 from services.payment_service import PaymentError
 
 router = APIRouter(tags=["Payments"])
@@ -171,7 +173,7 @@ class PayoutRequest(BaseModel):
 
 
 class PayoutDecision(BaseModel):
-    decision: Literal["approve", "reject", "refresh", "mark_failed"]
+    decision: Literal["approve", "reject", "refresh", "mark_failed", "returned"]
     note: str | None = Field(None, max_length=500)
 
 
@@ -318,7 +320,7 @@ def admin_refund_action(refund_id: UUID, body: RefundAction, user=Depends(requir
 
 
 @router.get("/admin/marketplace/payouts", dependencies=[Depends(require_admin)])
-def admin_payouts(status: Literal["requested", "approved", "paid", "rejected", "failed"] | None = "requested",
+def admin_payouts(status: Literal["requested", "approved", "paid", "rejected", "failed", "returned"] | None = "requested",
                   limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0)):
     return _ok(payment_service.admin_payouts(status, limit, offset))
 
@@ -332,9 +334,36 @@ def payout_review(payout_id: UUID):
 
 
 @router.post("/admin/marketplace/payouts/{payout_id}")
-def decide_payout(payout_id: UUID, body: PayoutDecision, user: AuthUser = Depends(require_admin)):
+def decide_payout(payout_id: UUID, body: PayoutDecision, request: Request, user: AuthUser = Depends(require_admin)):
+    """returned: a paid transfer came back. Once Chapa confirms it, it waits for a second staff member (202)."""
     try:
         return _ok({"payout": payment_service.decide_payout(str(payout_id), decision=body.decision, note=body.note,
-                                                            actor=user.email)})
+                                                            actor=user.email, staff=user, client=client_info(request))})
+    except PendingApproval as pending:
+        # Answered here, not by the app's handler, so the staff audit entry records it as asked for, not as an error
+        return JSONResponse(status_code=202, content={"message": "approval_required",
+                                                      "payload": {"approval": jsonable_encoder(pending.request)}})
     except PaymentError as exc:
         _raise(exc)
+
+
+# ---------------------------------------------------------------- payment health
+
+
+@router.get("/admin/marketplace/payment-health")
+def payment_health(hours: int = Query(24, ge=1, le=168, description="The period, in hours (up to 7 days)"),
+                   user: AuthUser = Depends(require_admin)):
+    """Chapa's status, every call in the period by operation, and money that needs a person now.
+    Payouts in the list need payouts.view as well."""
+    return _ok(payment_service.health_overview(hours, include_payouts=user.can("payouts.view")))
+
+
+@router.get("/admin/marketplace/payment-health/errors", dependencies=[Depends(require_admin)])
+def payment_health_errors(limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0)):
+    return _ok(payment_service.recent_errors(limit, offset))
+
+
+@router.post("/admin/marketplace/payment-health/check", dependencies=[Depends(require_admin)])
+def payment_health_check():
+    """Ask Chapa for its bank list now (never the cached copy) and say how long it took."""
+    return _ok(payment_service.live_check())

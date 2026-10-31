@@ -9,6 +9,7 @@ export const NAV_PERMISSIONS: Record<string, string> = {
   "/marketplace/hires": "hires.view",
   "/marketplace/payments": "payments.view",
   "/marketplace/payouts": "payouts.view",
+  "/marketplace/payment-health": "payments.view",
   "/marketplace/reviews": "reviews.view",
   "/organizations": "organizations.view",
   "/submissions": "submissions.view",
