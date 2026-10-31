@@ -31,3 +31,7 @@ web/.env.sentry-build-plugin
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Playwright output
+e2e/test-results/
+e2e/playwright-report/
