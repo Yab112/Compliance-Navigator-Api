@@ -27,7 +27,7 @@ const POPULAR = [
 function SectionTitle({ title, am, action }: { title: string; am: string; action?: React.ReactNode }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div className="border-gov-green border-l-4 pl-3">
+      <div>
         <h2 className="text-gov-ink text-xl font-bold md:text-2xl">{title}</h2>
         <p className="text-muted-foreground text-sm">{am}</p>
       </div>

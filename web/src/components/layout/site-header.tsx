@@ -210,8 +210,8 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
                       onClick={() => setOpen(false)}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "border-border flex items-center justify-between border-b border-l-4 px-4 py-3 text-sm",
-                        active ? "border-l-primary bg-secondary font-semibold" : "border-l-transparent",
+                        "border-border flex items-center justify-between border-b px-4 py-3 text-sm",
+                        active ? "bg-secondary text-primary font-semibold" : "",
                       )}
                     >
                       {item.label}

@@ -32,7 +32,7 @@ export function PageShell({
       <header className="border-border bg-secondary/60 border-b">
         <div className={cn("mx-auto px-4 py-6 md:py-8", maxWidthClass[maxWidth])}>
           <PageNav label={navLabel ?? title.split(" · ")[0]} />
-          <h1 className="text-gov-ink border-gov-green border-l-4 pl-3 text-2xl font-bold tracking-tight md:text-3xl">
+          <h1 className="text-gov-ink text-2xl font-bold tracking-tight md:text-3xl">
             {title}
           </h1>
           {description && (

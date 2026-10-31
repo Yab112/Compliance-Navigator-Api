@@ -8,7 +8,7 @@ import { stockImages } from "@/content/stock-images";
 function Heading({ title, am, lead }: { title: string; am: string; lead?: string }) {
   return (
     <div className="mb-8 max-w-3xl">
-      <div className="border-gov-green border-l-4 pl-3">
+      <div>
         <h2 className="text-gov-ink text-xl font-bold md:text-2xl">{title}</h2>
         <p className="text-muted-foreground text-sm">{am}</p>
       </div>

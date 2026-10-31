@@ -212,7 +212,7 @@ const TICKET_TONE: Record<string, string> = {
 
 function TicketCard({ card }: { card: Extract<AssistantCard, { kind: "ticket" }> }) {
   const body = (
-    <div className="border-gov-yellow bg-card rounded-md border-l-4 border-y border-r p-3">
+    <div className="border-border bg-card rounded-md border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-mono text-xs font-semibold">{card.ref}</p>
         <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", TICKET_TONE[card.status] ?? "bg-muted")}>

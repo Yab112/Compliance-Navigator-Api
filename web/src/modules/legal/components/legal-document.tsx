@@ -15,7 +15,7 @@ function Block({ block }: { block: LegalBlock }) {
     );
   }
   if ("note" in block) {
-    return <p className="border-gov-yellow bg-secondary/60 border-l-4 px-4 py-3">{block.note}</p>;
+    return <p className="bg-secondary/60 rounded-md px-4 py-3">{block.note}</p>;
   }
   return (
     <ul className="flex flex-wrap gap-2">

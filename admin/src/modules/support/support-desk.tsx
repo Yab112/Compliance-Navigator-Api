@@ -197,8 +197,8 @@ export function SupportDesk() {
         </>
       )}
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-[13rem_1fr]">
-        <nav aria-label="Queues" className="flex gap-1 overflow-x-auto text-xs lg:flex-col">
+      <div className="mt-6 flex flex-col gap-4">
+        <nav aria-label="Queues" className="border-border flex overflow-x-auto border-b text-xs">
           {views.map((v) => (
             <button
               key={v.key}
@@ -206,8 +206,8 @@ export function SupportDesk() {
               onClick={() => setParam({ ...v.params, page: null })}
               aria-current={activeView === v.key ? "true" : undefined}
               className={cn(
-                "flex shrink-0 items-center justify-between gap-3 border-l-[3px] border-transparent px-2 py-1.5 text-left whitespace-nowrap hover:bg-muted",
-                activeView === v.key && "border-primary bg-secondary text-primary font-semibold",
+                "-mb-px flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-2 whitespace-nowrap text-muted-foreground hover:text-foreground",
+                activeView === v.key && "border-primary text-primary font-semibold",
               )}
             >
               <span>{v.label}</span>

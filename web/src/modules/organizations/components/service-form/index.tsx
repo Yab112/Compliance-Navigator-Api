@@ -112,25 +112,21 @@ export function ServiceForm({ orgId, org, serviceId, loaded, services = [], onCr
   const current = SECTIONS[section];
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-      <aside className="space-y-4 lg:sticky lg:top-[calc(var(--nav-h)+1rem)] lg:self-start">
-        <div className="border-border bg-card rounded-md border p-3">
-          <p className="mb-2 text-xs font-semibold">Path data filled in</p>
-          <CompletenessMeter completeness={completeness} compact />
-          {status && <div className="mt-2"><ServiceStatusChip status={status} isLive={isLive} /></div>}
-        </div>
-        <nav aria-label="Service sections">
-          <ol className="space-y-1 text-sm">
+    <div className="space-y-4">
+      {/* Steps and progress sit above the form, not in a side column */}
+      <div className="border-border flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b pb-3">
+        <nav aria-label="Service sections" className="min-w-0 overflow-x-auto">
+          <ol className="flex gap-1 text-sm">
             {SECTIONS.map((s, i) => (
-              <li key={s.id}>
+              <li key={s.id} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => go(i)}
                   disabled={i > visited && !id}
                   aria-current={i === section ? "step" : undefined}
                   className={cn(
-                    "w-full rounded-md px-2 py-1.5 text-left disabled:opacity-50",
-                    i === section ? "bg-secondary text-primary font-semibold" : "hover:bg-muted",
+                    "-mb-[13px] border-b-2 px-2 py-2 whitespace-nowrap disabled:opacity-50",
+                    i === section ? "border-primary text-primary font-semibold" : "text-muted-foreground hover:text-foreground border-transparent",
                   )}
                 >
                   {i + 1}. {s.title}
@@ -139,7 +135,12 @@ export function ServiceForm({ orgId, org, serviceId, loaded, services = [], onCr
             ))}
           </ol>
         </nav>
-      </aside>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="font-semibold">Path data filled in</span>
+          <div className="w-40"><CompletenessMeter completeness={completeness} compact /></div>
+          {status && <ServiceStatusChip status={status} isLive={isLive} />}
+        </div>
+      </div>
 
       <div className="min-w-0 space-y-4">
         {status === "changes_requested" && loaded?.admin_note && (

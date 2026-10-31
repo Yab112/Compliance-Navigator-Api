@@ -8,7 +8,7 @@ import { BuiltForGrid } from "@/modules/about/components/built-for-grid";
 
 function SectionHeading({ title, am }: { title: string; am: string }) {
   return (
-    <div className="border-gov-green mb-8 border-l-4 pl-3">
+    <div className="mb-8">
       <h2 className="text-gov-ink text-2xl font-bold tracking-tight">{title}</h2>
       <p className="text-muted-foreground text-sm">{am}</p>
     </div>
@@ -81,7 +81,7 @@ export function AboutPage() {
           </p>
           <dl className="mt-8 grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
             {aboutSections.forOrganizations.map((f) => (
-              <div key={f.title} className="border-gov-yellow border-l-2 pl-4">
+              <div key={f.title} >
                 <dt className="font-semibold">{f.title}</dt>
                 <dd className="mt-1 text-sm leading-relaxed text-white/75">{f.body}</dd>
               </div>
