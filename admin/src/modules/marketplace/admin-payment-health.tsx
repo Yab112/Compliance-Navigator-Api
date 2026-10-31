@@ -63,6 +63,7 @@ const MODE_LABEL: Record<PaymentsMode, string> = {
 
 const PROBLEM: Record<PaymentAttentionItem["problem"], { label: string; className: string }> = {
   needs_check: { label: "Check with Chapa", className: "bg-red-100 text-red-900" },
+  returned: { label: "Transfer came back?", className: "bg-red-100 text-red-900" },
   failed: { label: "Failed", className: "bg-zinc-200 text-zinc-700" },
   stuck: { label: "Still pending", className: "bg-amber-100 text-amber-900" },
 };
@@ -149,7 +150,8 @@ function AttentionList({ items, showsPayouts }: { items: PaymentAttentionItem[];
     <section aria-labelledby="attention-h" className="mb-8">
       <h2 id="attention-h" className="mb-1 text-sm font-semibold">Needs attention</h2>
       <p className="text-muted-foreground mb-2 text-xs">
-        Payouts and refunds Chapa has not confirmed (the money may have moved), ones that failed in the last 7 days, and
+        Payouts and refunds Chapa has not confirmed (the money may have moved), paid transfers Chapa now reports failed or returned, ones that failed in
+        the last 7 days, and
         checkouts still pending after 30 minutes.{!showsPayouts && " Payouts are left out: you can't see payouts."}
       </p>
       {!items.length ? (

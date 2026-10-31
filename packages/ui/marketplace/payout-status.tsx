@@ -7,6 +7,7 @@ export const PAYOUT_STATUS: Record<PayoutStatus, { label: string; className: str
   paid: { label: "Paid", className: "bg-emerald-100 text-emerald-900" },
   rejected: { label: "Rejected", className: "bg-red-100 text-red-900" },
   failed: { label: "Failed", className: "bg-red-100 text-red-900" },
+  returned: { label: "Came back", className: "bg-orange-100 text-orange-900" },
 };
 
 export function PayoutStatusBadge({ status }: { status: PayoutStatus }) {

@@ -203,6 +203,11 @@ function PayoutHistory({ payouts, pager }: { payouts: Payout[]; pager: PageContr
                     <PayoutStatusBadge status={p.status} />
                     {p.status === "rejected" && p.note && <span className="text-muted-foreground mt-1 block max-w-xs text-[11px]">{p.note}</span>}
                     {p.status === "failed" && <span className="text-muted-foreground mt-1 block text-[11px]">Our team will contact you.</span>}
+                    {p.status === "returned" && (
+                      <span className="text-muted-foreground mt-1 block max-w-xs text-[11px]">
+                        Your bank sent it back. The money is back in your balance; check your bank details and ask again.
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 pr-3 font-mono text-[11px] break-all">{p.gateway_reference ?? p.reference ?? ""}</td>
                   <td className="py-2 text-right">
@@ -243,6 +248,9 @@ function describe(entry: LedgerEntry, payouts: Payout[]): string {
   }
   if (entry.kind === "refund") {
     return `Refund to the client · ${entry.job_title ?? "a job"}`;
+  }
+  if (entry.kind === "payout_return") {
+    return `${entry.note ?? "A payout came back"}. The money is back in your balance`;
   }
   return entry.note ?? "Adjustment";
 }
