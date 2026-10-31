@@ -91,6 +91,11 @@ class SimulatedGateway:
 # Connect fails fast when Chapa is down; a slow answer still gets a fair wait. A timeout stays "uncertain".
 CHAPA_TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 
+# Transfer statuses that mean the money did not reach the bank account or came back to our Chapa balance,
+# also after Chapa first said "success" (a bank that bounces it a day later)
+TRANSFER_FAILED = frozenset({"failed", "failure", "cancelled", "canceled", "reversed", "returned", "bounced",
+                             "refunded", "rejected", "declined"})
+
 # Domains Chapa refuses as an email (reserved test domains, and any it refused before in this process)
 _RESERVED_EMAIL = re.compile(r"(^|\.)(example\.(com|net|org)|example|test|invalid|localhost)$")
 _rejected_email_domains: set[str] = set()
@@ -174,7 +179,10 @@ class ChapaGateway:
         return {"status": "approved", "reference": reference}
 
     def verify_transfer(self, reference: str) -> str:
-        """paid | failed | approved (still on its way, or Chapa unreachable) | missing (Chapa has no such transfer)."""
+        """
+        paid | failed (failed, or bounced and returned after it was paid) | approved (still on its way, or Chapa
+        unreachable) | missing (Chapa answered 404 or "not found": it has no such transfer).
+        """
         try:
             body = self._call("GET", f"/transfers/verify/{reference}")
         except PaymentError as exc:
@@ -190,7 +198,7 @@ class ChapaGateway:
             # test payout would wait forever. Test keys can't move real money; treat it as delivered.
             log.info("Chapa test mode transfer %s has no status; recording it as paid", reference)
             return "paid"
-        return "paid" if status == "success" else "failed" if status in ("failed", "cancelled", "reversed") else "approved"
+        return "paid" if status == "success" else "failed" if status in TRANSFER_FAILED else "approved"
 
     def refund(self, *, tx_ref: str, amount: Decimal, reason: str, reference: str) -> dict:
         """POST /v1/refund/{tx_ref} (form fields reason, amount, reference). Chapa's own fees are not refunded."""
