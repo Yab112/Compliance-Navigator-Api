@@ -38,6 +38,13 @@ REFUSAL = f"(not c.ok and not {FAULT})"
 STATUS_LABELS = {"no_calls": "No calls yet", "healthy": "Healthy", "degraded": "Degraded", "down": "Down"}
 
 
+def _test_key() -> bool:
+    """True when no real money moves: the simulated gateway, or Chapa with a CHASECK_TEST key."""
+    from .earnings import _test_money
+
+    return _test_money()
+
+
 def _rate(part: int, whole: int) -> float:
     return round(part / whole, 4) if whole else 0.0
 
@@ -142,7 +149,7 @@ def status(*, gateway: str = "chapa") -> dict:
     last_fault = fetch_one(
         f"select c.error, c.http_status, c.operation, c.created_at from gateway_calls c where c.gateway = %s and {FAULT} "
         "order by c.created_at desc, c.id desc limit 1", (gateway,))
-    out = {"mode": mode(), "last_success_at": row["last_success_at"], "last_call_at": row["last_call_at"],
+    out = {"mode": mode(), "test_mode": _test_key(), "last_success_at": row["last_success_at"], "last_call_at": row["last_call_at"],
            "last_fault": last_fault, "calls_last_hour": row["calls_hour"], "faults_last_hour": row["faults_hour"],
            "refusals_last_hour": row["refusals_hour"], "p95_ms_last_hour": _ms(row["p95_hour"])}
 

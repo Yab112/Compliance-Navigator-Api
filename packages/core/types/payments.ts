@@ -450,6 +450,8 @@ export type PaymentHealthStatus = {
   /** Why, in plain words */
   reason: string;
   mode: PaymentsMode;
+  /** True with the simulated gateway or a Chapa TEST key: no real money moves */
+  test_mode: boolean;
   last_success_at: string | null;
   last_call_at: string | null;
   last_fault: { error: string | null; http_status: number | null; operation: GatewayOperation; created_at: string } | null;

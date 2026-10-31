@@ -58,7 +58,7 @@ const OPERATION: Record<GatewayOperation, string> = {
 const MODE_LABEL: Record<PaymentsMode, string> = {
   off: "Online payments are off, so nothing is sent to Chapa.",
   simulated: "Test mode (simulated gateway): nothing is sent to Chapa, so there are no calls to show.",
-  chapa: "Live with Chapa.",
+  chapa: "Chapa with a live key: real money moves.",
 };
 
 const PROBLEM: Record<PaymentAttentionItem["problem"], { label: string; className: string }> = {
@@ -122,7 +122,7 @@ function StatusLine({ status }: { status: PaymentHealthStatus }) {
             ) : (
               "never"
             )}
-            {status.last_call_at && <> · last call {timeAgo(status.last_call_at)}</>} · {MODE_LABEL[status.mode]}
+            {status.last_call_at && <> · last call {timeAgo(status.last_call_at)}</>} · {status.mode === "chapa" && status.test_mode ? "Chapa with a TEST key: no real money moves." : MODE_LABEL[status.mode]}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1 text-right">
