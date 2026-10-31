@@ -103,16 +103,31 @@ def list_audit(*, actor: str | None = None, action: str | None = None, target: s
 def _recent_failures(column: str, value: str | None) -> int:
     if not value:
         return 0
-    expr = "lower(actor_email) = lower(%s)" if column == "email" else "ip = %s"
-    # A sign-in resets the counter; for an address, so does a completed password reset or invite
-    resets = "('auth.login', 'auth.password_reset', 'auth.invite_accepted')" if column == "email" else "('auth.login')"
+    if column == "ip":
+        # Fixed window per network; a sign-in only forgives that same address's earlier failures from it,
+        # so signing in to one account between guesses at others does not clear the count (see auth/service.py)
+        return fetch_one(
+            """
+            select count(*) as c from staff_audit_log f
+            where f.action = 'auth.login_failed' and f.ip = %s
+              and f.created_at > now() - make_interval(mins => %s)
+              and not exists (
+                select 1 from staff_audit_log s
+                where s.action = 'auth.login' and s.ip = f.ip and lower(s.actor_email) = lower(f.actor_email)
+                  and s.created_at > f.created_at
+              )
+            """,
+            (value, LOCKOUT_MINUTES),
+        )["c"]
+    # A sign-in resets an address's counter, and so does a completed password reset or invite
     return fetch_one(
-        f"""
+        """
         select count(*) as c from staff_audit_log
-        where action = 'auth.login_failed' and {expr}
+        where action = 'auth.login_failed' and lower(actor_email) = lower(%s)
           and created_at > now() - make_interval(mins => %s)
           and created_at > coalesce((
-            select max(created_at) from staff_audit_log where action in {resets} and {expr}
+            select max(created_at) from staff_audit_log
+            where action in ('auth.login', 'auth.password_reset', 'auth.invite_accepted') and lower(actor_email) = lower(%s)
           ), '-infinity')
         """,
         (value, LOCKOUT_MINUTES, value),

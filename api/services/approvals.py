@@ -10,7 +10,9 @@ approval, is executed on the server. Rules:
   - a request expires after EXPIRY_HOURS
   - every step is written to the staff audit log
   - when nobody else could approve (for example the very first Super admin setting up the team),
-    the action runs at once and the audit log records that the second approval was waived
+    the action runs at once and the audit log records that the second approval was waived. In
+    production only inviting staff (TEAM_BOOTSTRAP_ACTIONS) can be waived, so a fresh install can
+    still build its team; everything else waits for a second person
 
 Two kinds of rules:
   route rules  attached to an admin route in services/access.ROUTE_POLICY; core.deps checks them
@@ -31,6 +33,7 @@ from psycopg.errors import UniqueViolation
 
 from auth.service import ClientInfo
 from auth.staff_service import audit
+from config.config import settings
 from schemas.staff_user import StaffActor
 from services import access
 from services.db import Jsonb, fetch_all, fetch_one
@@ -39,10 +42,14 @@ log = logging.getLogger(__name__)
 
 EXPIRY_HOURS = 72
 
+# The only actions that may skip the second person in production, and only while nobody else could
+# approve: without them the first Super admin of a fresh install could never invite a second one
+TEAM_BOOTSTRAP_ACTIONS = frozenset({"staff.create", "staff.super_admin"})
+
 # Settings that move money or change tax: changing them needs a second person
 MONEY_SETTING_KEYS = frozenset({
     "commission_percent", "vat_rate_percent", "platform_vat_registered", "min_payout_etb",
-    "payout_approval_threshold_etb", "tin", "vat_number",
+    "payout_approval_threshold_etb", "payout_hold_days", "tin", "vat_number",
 })
 
 
@@ -182,6 +189,11 @@ def eligible_approvers(rule: Rule, requester_id: str, beneficiaries: list[str] |
     return [s for s in access.holders_of(rule.approver_permission) if s["id"] in deciders and s["id"] not in excluded]
 
 
+def may_waive(action: str) -> bool:
+    """Whether this action may run without a second person when nobody else could approve it."""
+    return not settings.is_production or action in TEAM_BOOTSTRAP_ACTIONS
+
+
 def request(action: str, payload: dict, summary: str, actor: StaffActor, *, target: str | None = None,
             beneficiaries: list[str] | None = None, client: ClientInfo | None = None,
             execute_if_waived: bool = True) -> dict:
@@ -193,7 +205,11 @@ def request(action: str, payload: dict, summary: str, actor: StaffActor, *, targ
     """
     rule = RULES[action]
     payload = {**payload, "beneficiaries": beneficiaries or []}
-    if not eligible_approvers(rule, actor.id, beneficiaries):
+    nobody_else = not eligible_approvers(rule, actor.id, beneficiaries)
+    if nobody_else and not may_waive(action):
+        # Production: store the request anyway; it waits until a second approver has been added
+        log.warning("No second approver for %s; it waits for approval (waiving is off in production)", action)
+    elif nobody_else:
         audit("approval.waived", actor=actor, target=target, client=client,
               details={"action": action, "summary": summary, "reason": "no other staff member can approve this"})
         if not execute_if_waived:

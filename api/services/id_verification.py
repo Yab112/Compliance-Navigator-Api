@@ -106,6 +106,25 @@ def _hash_id(number: str) -> str:
     return hmac.new(pepper, number.encode(), hashlib.sha256).hexdigest()
 
 
+def normalize_id(number: str) -> str:
+    """Letters and digits only, upper case, so "fan 1234-5678" and "FAN12345678" hash the same.
+    A Fayda FIN or FCN is all digits, so this matches what verification hashes."""
+    return re.sub(r"[^0-9A-Za-z]", "", number or "").upper()
+
+
+def id_hash_and_last4(number: str) -> tuple[str | None, str | None]:
+    """The keyed hash and last four characters of an ID number someone typed. Never store the number itself."""
+    clean = normalize_id(number)
+    if not clean:
+        return None, None
+    return _hash_id(clean), clean[-4:]
+
+
+def verified_hash(user_id: str) -> str | None:
+    row = fetch_one("select id_hash from id_verifications where user_id = %s and status = 'verified'", (user_id,))
+    return row["id_hash"] if row else None
+
+
 def masked(id_type: str | None, last4: str | None) -> str:
     return f"{id_type or 'ID'} •••• {last4 or '????'}"
 
@@ -125,6 +144,7 @@ def _live_config_missing() -> list[str]:
         "FAYDA_USERINFO_URL": settings.fayda_userinfo_url,
         "FAYDA_JWKS_URL": settings.fayda_jwks_url,
         "FAYDA_PRIVATE_KEY": settings.fayda_private_key,
+        "FAYDA_ISSUER": settings.fayda_issuer,
     }
     return [k for k, v in needed.items() if not v]
 
@@ -310,14 +330,39 @@ def _client_assertion() -> str:
     )
 
 
-def _verify_jws(token: str, *, audience: str | None = None) -> dict:
-    key = jwt.PyJWKClient(settings.fayda_jwks_url).get_signing_key_from_jwt(token)
-    issuer = settings.fayda_issuer or None
-    return jwt.decode(
-        token, key.key, algorithms=["RS256", "PS256", "ES256"],
-        audience=audience, issuer=issuer,
-        options={"verify_aud": audience is not None, "verify_iss": issuer is not None},
-    )
+JWS_ALGORITHMS = ["RS256", "PS256", "ES256"]
+
+
+def _verify_jws(token: str, *, id_token: bool) -> dict:
+    """Check a Fayda JWT strictly: signature against the eSignet JWKS, issuer equal to FAYDA_ISSUER and, for
+    the ID token, audience equal to our client id. Signed userinfo may leave out iss/aud; when present they
+    must match too. Any failure is a VerificationError with a plain reason."""
+    issuer, client_id = settings.fayda_issuer, settings.fayda_client_id
+    if not issuer or not client_id:
+        raise VerificationError("Fayda is not configured: FAYDA_ISSUER and FAYDA_CLIENT_ID are required", 503)
+    required = ["iss", "aud", "sub", "exp", "iat"] if id_token else []
+    try:
+        key = jwt.PyJWKClient(settings.fayda_jwks_url).get_signing_key_from_jwt(token)
+        claims = jwt.decode(
+            token, key.key, algorithms=JWS_ALGORITHMS,
+            options={"verify_aud": False, "verify_iss": False, "require": required},
+        )
+    except jwt.InvalidSignatureError as exc:
+        raise VerificationError("Fayda's response signature is not valid", 502) from exc
+    except jwt.ExpiredSignatureError as exc:
+        raise VerificationError("Fayda's response has expired, please try again", 502) from exc
+    except jwt.PyJWKClientError as exc:
+        raise VerificationError("Fayda's response is signed with a key Fayda does not publish", 502) from exc
+    except jwt.PyJWTError as exc:
+        raise VerificationError("Fayda's response could not be verified", 502) from exc
+
+    if (id_token or "iss" in claims) and claims.get("iss") != issuer:
+        raise VerificationError("Fayda's response came from an unexpected issuer", 502)
+    if id_token or "aud" in claims:
+        aud = claims.get("aud")
+        if client_id not in (aud if isinstance(aud, list) else [aud]):
+            raise VerificationError("Fayda's response was not issued for this service", 502)
+    return claims
 
 
 def _exchange(row: dict, code: str) -> dict:
@@ -337,18 +382,18 @@ def _exchange(row: dict, code: str) -> dict:
         if tok.status_code != 200:
             raise VerificationError("Fayda rejected the sign-in, please try again", 502)
         tokens = tok.json()
-        id_claims = _verify_jws(tokens["id_token"], audience=settings.fayda_client_id)
+        id_claims = _verify_jws(tokens["id_token"], id_token=True)
         if id_claims.get("nonce") != row["nonce"]:
             raise VerificationError("Fayda response did not match this request", 400)
         info = http.get(settings.fayda_userinfo_url, headers={"Authorization": f"Bearer {tokens['access_token']}"})
         if info.status_code != 200:
             raise VerificationError("Could not read your Fayda details", 502)
-    # eSignet returns userinfo as a signed JWT
+    # eSignet returns userinfo as a signed JWT; its signature is checked like the ID token's
     body = info.text.strip()
-    claims = _verify_jws(body) if body.count(".") == 2 else info.json()
+    claims = _verify_jws(body, id_token=False) if body.count(".") == 2 else info.json()
     # The details must belong to the person who signed in
-    if claims.get("sub") and id_claims.get("sub") and claims["sub"] != id_claims["sub"]:
-        raise VerificationError("Fayda response did not match this request", 400)
+    if not claims.get("sub") or claims["sub"] != id_claims["sub"]:
+        raise VerificationError("Fayda details did not match the person who signed in", 400)
     return claims
 
 

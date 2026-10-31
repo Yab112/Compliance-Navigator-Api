@@ -183,7 +183,7 @@ def seed() -> None:
         owner = _user(f"sample-{key}@sample.invalid", spec["display_name"])
         spec.setdefault("phone", f"09{random.randint(10_000_000, 99_999_999)}")
         provider = svc.join({
-            **spec, "national_id": f"FIN •••• {random.randint(1000, 9999)}", "national_id_verified": True,
+            **spec, "national_id_last4": str(random.randint(1000, 9999)), "national_id_verified": True,
             "id_verification_method": "fayda_sandbox", "verified_name": spec["display_name"], "is_sample": True,
         }, user_id=owner["id"], actor="seed")
         make_ready(provider["id"])

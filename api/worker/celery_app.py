@@ -37,6 +37,15 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.check_processing_payouts",
         "schedule": 60 * 15,
     },
+    # Refunds whose gateway answer was lost, and checkouts whose webhook was lost
+    "refunds-sending-15min": {
+        "task": "worker.tasks.check_sending_refunds",
+        "schedule": 60 * 15,
+    },
+    "payments-pending-15min": {
+        "task": "worker.tasks.check_pending_payments",
+        "schedule": 60 * 15,
+    },
     "custom-sources-hourly": {
         "task": "worker.tasks.run_scheduled_custom_sources",
         "schedule": 60 * 60,

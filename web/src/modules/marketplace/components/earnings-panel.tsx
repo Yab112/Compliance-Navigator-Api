@@ -42,7 +42,13 @@ function Summary({ e }: { e: Earnings }) {
           What clients paid you, after the {e.commission_percent}% platform commission and the VAT on it, minus what you already withdrew or asked for
           {e.refunded ? ", and minus refunds to clients" : ""}.
         </p>
-        {e.available < 0 && (
+        {!!e.held && e.held > 0 && (
+          <p className="text-muted-foreground mt-1 text-xs" role="note">
+            {formatETB(e.held)} on hold (dispute window) · በክርክር ጊዜ የተያዘ. New earnings can be withdrawn {e.hold_days} days
+            after the client pays; the next release is on {formatDate(e.held_until)}.
+          </p>
+        )}
+        {e.balance - e.in_payout < 0 && (
           <p className="mt-1 text-xs text-amber-800" role="note">
             A refund to a client took back more than you had. This is taken from your next earnings before you can withdraw again.
           </p>

@@ -16,6 +16,11 @@ from services.db import execute  # noqa: E402
 # Tests never talk to a real payment gateway, whatever .env says
 settings.payments_mode = "simulated"
 
+# Earnings are withdrawable at once in tests; tests/test_payment_reconcilers.py turns the dispute-window hold on
+import importlib  # noqa: E402
+
+importlib.import_module("services.payment_service.earnings")._hold_days = lambda: 0
+
 API = "/api/v1"
 
 # What the sign-up form sends when every legal box is ticked
@@ -27,10 +32,11 @@ LEGAL_ACCEPT = client_acceptance()
 @pytest.fixture(scope="session")
 def client():
     # Every test request comes from the same "IP", so lift the per-network limits
-    from auth import service
+    from auth import service, staff_service
 
     service.MAX_REGISTRATIONS_PER_IP_HOUR = 10_000
     service.MAX_FAILED_PER_IP = 10_000
+    staff_service.MAX_FAILED_PER_IP = 10_000
     from core import ratelimit
 
     ratelimit.ENABLED = False  # tests/test_ratelimit.py switches it back on where it matters

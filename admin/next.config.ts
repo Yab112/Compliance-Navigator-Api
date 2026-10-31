@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -54,6 +55,11 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Shared code is TypeScript source in the workspace packages
   transpilePackages: ["@cn/core", "@cn/ui"],
+  // Docker images (Dockerfile.next) run the small self-contained server; the workspace root is traced
+  // so the shared packages are included
+  ...(process.env.NEXT_STANDALONE
+    ? { output: "standalone" as const, outputFileTracingRoot: path.join(process.cwd(), "..") }
+    : {}),
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

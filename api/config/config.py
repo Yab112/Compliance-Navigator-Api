@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     fayda_token_url: str | None = os.environ.get("FAYDA_TOKEN_URL")
     fayda_userinfo_url: str | None = os.environ.get("FAYDA_USERINFO_URL")
     fayda_jwks_url: str | None = os.environ.get("FAYDA_JWKS_URL")
-    # Expected "iss" of Fayda tokens (the eSignet base URL); checked when set
+    # Expected "iss" of Fayda tokens (the eSignet base URL); required in live mode
     fayda_issuer: str | None = os.environ.get("FAYDA_ISSUER")
     fayda_private_key: str | None = os.environ.get("FAYDA_PRIVATE_KEY")  # PEM text or file path
     fayda_redirect_uri: str = os.environ.get(
@@ -170,6 +170,7 @@ class Settings(BaseSettings):
             "FAYDA_CLIENT_ID": self.fayda_client_id, "FAYDA_AUTHORIZE_URL": self.fayda_authorize_url,
             "FAYDA_TOKEN_URL": self.fayda_token_url, "FAYDA_USERINFO_URL": self.fayda_userinfo_url,
             "FAYDA_JWKS_URL": self.fayda_jwks_url, "FAYDA_PRIVATE_KEY": self.fayda_private_key,
+            "FAYDA_ISSUER": self.fayda_issuer,
         }.items() if not value]
         if fayda_missing:
             problems.append(f"Fayda live settings missing: {', '.join(fayda_missing)}")

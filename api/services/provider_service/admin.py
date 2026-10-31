@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from services import platform_settings, vetting
+from services import id_verification, platform_settings, vetting
 from services.db import connection, execute, fetch_all, fetch_one
 
 from .common import (
@@ -74,12 +74,16 @@ def admin_list(
         where.append("p.accepting_work = %(acc)s")
         params["acc"] = accepting_work
     if q:
-        # Staff may search by national ID or TIN, but the list never sends them back
+        # Staff may search by national ID or TIN, but the list never sends them back. Only a hash of the
+        # ID is stored, so the full number must match exactly; four characters match the last four.
+        id_hash, _ = id_verification.id_hash_and_last4(q)
+        clean_id = id_verification.normalize_id(q)
         where.append(
             "(p.display_name ilike %(q)s or p.legal_name ilike %(q)s or p.phone ilike %(q)s "
-            "or p.registration_no ilike %(q)s or p.national_id ilike %(q)s or p.tin ilike %(q)s)"
+            "or p.registration_no ilike %(q)s or p.tin ilike %(q)s or p.national_id_hash = %(id_hash)s "
+            "or (length(%(id_last4)s) = 4 and p.national_id_last4 = %(id_last4)s))"
         )
-        params["q"] = f"%{q}%"
+        params |= {"q": f"%{q}%", "id_hash": id_hash or "", "id_last4": clean_id if len(clean_id) == 4 else ""}
     clause = " and ".join(where)
     total = fetch_one(f"select count(*) as c from providers p where {clause}", params)["c"]
     items = fetch_all(

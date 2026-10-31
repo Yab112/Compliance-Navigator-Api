@@ -261,6 +261,11 @@ export type Earnings = {
   balance: number;
   available: number;
   in_payout: number;
+  /** New earnings still inside the dispute window: not withdrawable yet */
+  held?: number;
+  /** When the oldest held earning is released (ISO date) */
+  held_until?: string | null;
+  hold_days?: number;
   earned_total: number;
   earned_this_month: number;
   paid_out: number;

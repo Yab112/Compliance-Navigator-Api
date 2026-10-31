@@ -28,6 +28,13 @@ def _client():
     )
 
 
+def _put_object(key: str, content: bytes, content_type: str | None) -> None:
+    """Store one object. No ACL is sent, so it stays private to the bucket owner; only a bucket policy
+    on guday/public/ (photos and logos) may make anything readable without our credentials."""
+    extra = {"ContentType": content_type} if content_type else {}
+    _client().put_object(Bucket=settings.s3_bucket, Key=key, Body=content, **extra)
+
+
 def upload_file(
     content: bytes,
     filename: str,
@@ -43,13 +50,7 @@ def upload_file(
     key = f"{prefix}/{uuid.uuid4()}_{safe_name}"
 
     if is_s3_configured():
-        extra = {"ContentType": content_type} if content_type else {}
-        _client().put_object(
-            Bucket=settings.s3_bucket,
-            Key=key,
-            Body=content,
-            **extra,
-        )
+        _put_object(key, content, content_type)
         if settings.s3_public_base_url:
             return f"{settings.s3_public_base_url.rstrip('/')}/{key}"
         return f"s3://{settings.s3_bucket}/{key}"
@@ -62,6 +63,9 @@ def upload_file(
 
 
 UPLOAD_ROOT = Path("uploads")
+S3_PUBLIC_PREFIX = "guday/public/"
+S3_PRIVATE_PREFIX = "guday/private/"
+S3_VETTING_PREFIX = "vetting/"
 ALLOWED_UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 _EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "application/pdf": ".pdf"}
@@ -86,8 +90,13 @@ def save_agent_file(content: bytes, filename: str, content_type: str | None, *, 
         raise ValueError("Files must be 5 MB or smaller")
     safe_name = f"{uuid.uuid4()}{_EXT[detected]}"
     if is_s3_configured():
-        return upload_file(content, safe_name, prefix="guday/public" if public else "guday/private",
-                           content_type=detected)
+        key = f"{S3_PUBLIC_PREFIX if public else S3_PRIVATE_PREFIX}{safe_name}"
+        _put_object(key, content, detected)
+        if public and settings.s3_public_base_url:
+            return f"{settings.s3_public_base_url.rstrip('/')}/{key}"
+        # Private files never get a public URL: they are read back with our credentials through
+        # the signed-in file endpoints (read_admin_file, read_private_file)
+        return f"s3://{settings.s3_bucket}/{key}"
 
     folder = "public" if public else "private"
     dest = UPLOAD_ROOT / folder / safe_name
@@ -136,6 +145,37 @@ def private_file_path(key: str) -> Path | None:
     return path
 
 
+def _read_s3(key: str, prefixes: tuple[str, ...]) -> tuple[bytes, str] | None:
+    """Bytes and type of an s3://<our bucket>/<key> object under one of `prefixes`, or None."""
+    if not key.startswith("s3://") or not is_s3_configured():
+        return None
+    bucket, _, obj = key.removeprefix("s3://").partition("/")
+    if bucket != settings.s3_bucket or not obj.startswith(prefixes) or ".." in obj.split("/"):
+        return None
+    try:
+        body = _client().get_object(Bucket=bucket, Key=obj)["Body"].read()
+    except Exception:
+        return None
+    return body, sniff_type(body) or "application/octet-stream"
+
+
+def read_admin_file(key: str) -> tuple[bytes, str, str] | None:
+    """
+    An ID document or licence copy for the admin file endpoint: (bytes, type, filename), or None.
+    Local 'private/<name>' files and private S3 objects only; vetting files are never served here.
+    """
+    if key.startswith("s3://"):
+        found = _read_s3(key, (S3_PRIVATE_PREFIX,))
+        if not found:
+            return None
+        return found[0], found[1], key.rsplit("/", 1)[-1]
+    path = private_file_path(key)
+    if not path:
+        return None
+    # The type comes from an allowlist, never from whatever extension was stored; anything else downloads
+    return path.read_bytes(), SAFE_MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream"), path.name
+
+
 # ---------------------------------------------------------------- vetting documents
 
 # Vetting files (police clearance, certificates) live outside uploads/private so the generic
@@ -170,8 +210,8 @@ def save_vetting_file(content: bytes, *, images_only: bool = False) -> tuple[str
                          else "Upload a JPG, PNG or WEBP photo, or a PDF")
     name = f"{uuid.uuid4()}{_EXT[kind]}"
     if is_s3_configured():
-        key = f"vetting/{name}"
-        _client().put_object(Bucket=settings.s3_bucket, Key=key, Body=content, ContentType=kind)
+        key = f"{S3_VETTING_PREFIX}{name}"
+        _put_object(key, content, kind)
         return f"s3://{settings.s3_bucket}/{key}", kind
     VETTING_ROOT.mkdir(parents=True, exist_ok=True)
     (VETTING_ROOT / name).write_bytes(content)
@@ -189,15 +229,8 @@ def read_private_file(key: str) -> tuple[bytes, str] | None:
         path = private_file_path(key)
         if not path:
             return None
-    elif key.startswith("s3://") and is_s3_configured():
-        bucket, _, obj = key.removeprefix("s3://").partition("/")
-        if bucket != settings.s3_bucket or not obj:
-            return None
-        try:
-            body = _client().get_object(Bucket=bucket, Key=obj)["Body"].read()
-        except Exception:
-            return None
-        return body, sniff_type(body) or "application/octet-stream"
+    elif key.startswith("s3://"):
+        return _read_s3(key, (S3_VETTING_PREFIX, S3_PRIVATE_PREFIX))
     else:
         return None
     content = path.read_bytes()

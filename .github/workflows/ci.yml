@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: navigator
+          POSTGRES_PASSWORD: ci-postgres-password
+          POSTGRES_DB: compliance_navigator
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U navigator -d compliance_navigator"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      neo4j:
+        # Same image as docker-compose.yml
+        image: neo4j:latest
+        env:
+          NEO4J_AUTH: neo4j/ci-neo4j-password
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p ci-neo4j-password 'RETURN 1'"
+          --health-interval 10s --health-timeout 10s --health-retries 30 --health-start-period 20s
+    # Dummy values for CI only; tests set payment and Fayda settings themselves
+    env:
+      ENVIRONMENT: development
+      SECRET_KEY: ci-only-secret-key-not-used-anywhere-else-0123456789
+      ID_HASH_PEPPER: ci-only-pepper
+      DATABASE_URL: postgresql://navigator:ci-postgres-password@localhost:5432/compliance_navigator
+      NEO4J_URI: bolt://localhost:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ci-neo4j-password
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      PAYMENTS_MODE: simulated
+      FAYDA_MODE: sandbox
+      LLM_PROVIDER: ollama
+      LOG_FILE: ""
+      LOG_LEVEL: INFO
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - name: Set up Python
+        run: uv python install 3.13
+      - name: Install dependencies (uv.lock, with the dev group for pytest)
+        run: uv sync --frozen
+      # Postgres tables come from db/migrations, applied by the app on start (and by seed_providers)
+      - name: Seed the compliance graph
+        run: uv run python -m scripts.seed_graph
+      - name: Seed sample providers
+        run: |
+          uv run python -m scripts.seed_providers
+          uv run python -m scripts.seed_providers --make-ready
+      - name: Run tests
+        run: uv run pytest -q
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080/api/v1
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Type check
+        run: |
+          pnpm --dir packages/core exec tsc --noEmit -p .
+          pnpm --dir web exec tsc --noEmit -p .
+          pnpm --dir admin exec tsc --noEmit -p .
+      - name: Lint
+        run: |
+          pnpm --dir web exec eslint
+          pnpm --dir admin exec eslint
+      - name: Build web
+        run: pnpm --dir web exec next build
+      - name: Build admin
+        run: pnpm --dir admin exec next build

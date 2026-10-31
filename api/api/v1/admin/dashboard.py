@@ -5,7 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from auth import service as auth_service
@@ -23,7 +23,7 @@ from services import (
     user_store,
 )
 from services.db import fetch_all, fetch_one
-from services.storage_service import SAFE_MEDIA_TYPES, private_file_path, safe_file_headers
+from services.storage_service import read_admin_file, safe_file_headers
 
 router = APIRouter(prefix="/admin", tags=["Admin Dashboard"], dependencies=[Depends(require_admin)])
 
@@ -222,12 +222,11 @@ def delete_custom_source(source_id: UUID):
 @router.get("/files")
 def admin_private_file(key: str):
     """ID documents uploaded during agent registration (never public)."""
-    path = private_file_path(key)
-    if not path:
+    found = read_admin_file(key)  # local private/ files or private S3 objects, never vetting files
+    if not found:
         raise HTTPException(status_code=404, detail="File not found")
-    # The type comes from an allowlist, never from whatever extension was stored; anything else downloads
-    media_type = SAFE_MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
-    return FileResponse(path, media_type=media_type, headers=safe_file_headers(media_type, filename=path.name))
+    content, media_type, filename = found
+    return Response(content, media_type=media_type, headers=safe_file_headers(media_type, filename=filename))
 
 
 # ---------------------------------------------------------------- users

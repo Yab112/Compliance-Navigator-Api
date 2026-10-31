@@ -147,7 +147,8 @@ export type Provider = PublicProvider & {
   /** Every rule holds (listing, vetting, agreements, profile); not_ready_reasons says what is missing */
   ready_to_work?: boolean;
   not_ready_reasons?: NotReadyReason[];
-  national_id?: string | null;
+  /** Last four characters of the national ID; the full number is never stored */
+  national_id_last4?: string | null;
   tin?: string | null;
   trade_license_no?: string | null;
   license_document_url?: string | null;

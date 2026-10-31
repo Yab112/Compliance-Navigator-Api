@@ -19,6 +19,10 @@ def _min_payout() -> Decimal:
     return Decimal(str(platform_settings.get("min_payout_etb")))
 
 
+def _hold_days() -> int:
+    return platform_settings.get_int("payout_hold_days")
+
+
 PAYOUT_COLUMNS = """
   po.id::text, po.provider_id::text, po.amount::float, po.status, po.bank_code, po.bank_name, po.account_name,
   po.account_last4, po.reference, po.gateway, po.gateway_reference, po.note, po.decided_by, po.decided_at, po.paid_at,
@@ -58,8 +62,32 @@ def _balances(provider_id: str) -> dict:
     )
     if not live:
         row["test_balance"] = 0.0
-    # Money already asked for is held until the payout is paid or refused
-    row["available"] = round(row["balance"] - row["in_payout"], 2)
+    # Dispute window: an earning can be withdrawn only some days after it was credited. Refunds already taken
+    # from that payment count against its hold, so the same money is never subtracted twice.
+    days = _hold_days()
+    hold = fetch_one(
+        f"""
+        with recent as (
+          select l.created_at,
+                 greatest(l.amount + coalesce((select sum(r.amount) from provider_ledger r
+                                               where r.payment_id = l.payment_id and r.provider_id = l.provider_id
+                                                 and r.kind in ('refund', 'adjustment')), 0), 0) as net
+          from provider_ledger l
+          where l.provider_id = %(p)s and l.kind = 'earning' and l.created_at > now() - make_interval(days => %(d)s)
+                {only.replace("is_test", "l.is_test")}
+        )
+        select coalesce(sum(net), 0)::float as held,
+               min(created_at) filter (where net > 0) + make_interval(days => %(d)s) as held_until
+        from recent
+        """,
+        {"p": provider_id, "d": days},
+    )
+    row["held"] = round(hold["held"], 2) if days > 0 else 0.0
+    row["held_until"] = hold["held_until"] if days > 0 and row["held"] > 0 else None
+    row["hold_days"] = days
+    # Money already asked for is held until the payout is paid or refused, and new earnings until the window
+    # ends. The hold only ever lowers what can be withdrawn, so a negative balance still blocks payouts.
+    row["available"] = round(row["balance"] - row["in_payout"] - row["held"], 2)
     row["live"] = live
     return row
 
@@ -141,9 +169,12 @@ def request_payout(user_id: str, amount: float) -> dict:
         ).fetchone()
         if not acct or not acct["payout_account_enc"]:
             raise PaymentError("Add the bank account to send your money to first", 409)
-        available = Decimal(str(_balances(provider["id"])["available"]))
+        bal = _balances(provider["id"])
+        available = Decimal(str(bal["available"]))
         if amount > available:
-            raise PaymentError(f"You can withdraw up to {max(available, Decimal(0)):,.2f} ETB", 409)
+            held = (f". {bal['held']:,.2f} ETB of new earnings is on hold until {bal['held_until']:%d %b %Y} "
+                    "(dispute window)") if bal["held"] > 0 and bal["held_until"] else ""
+            raise PaymentError(f"You can withdraw up to {max(available, Decimal(0)):,.2f} ETB{held}", 409)
         row = conn.execute(
             """
             insert into payouts (provider_id, amount, bank_code, bank_name, account_name, account_last4, reference,

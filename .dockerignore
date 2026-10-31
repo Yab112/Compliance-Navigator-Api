@@ -1,0 +1,10 @@
+# Used by Dockerfile.next (the API has its own api/.dockerignore)
+**/node_modules
+**/.next
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+!**/.env.example
+.git
+api
+Doc
