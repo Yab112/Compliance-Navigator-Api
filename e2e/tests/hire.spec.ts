@@ -55,12 +55,19 @@ test.describe("hiring a provider", () => {
     let answer = null as { status: number; body: string } | null;
     await page.route(/\/hires\/[^/]+\/pay$/, async (route) => {
       if (route.request().method() !== "POST") return route.continue();
-      const response = await route.fetch();
+      let response = await route.fetch();
+      // Chapa's test API throttles back-to-back checkouts ("Please try again in 22 seconds"); wait as told
+      for (let tries = 0; tries < 2 && response.status() === 502; tries++) {
+        const wait = /try again in (\d+) seconds/.exec(await response.text());
+        if (!wait) break;
+        await new Promise((r) => setTimeout(r, (Number(wait[1]) + 1) * 1000));
+        response = await route.fetch();
+      }
       answer = { status: response.status(), body: await response.text() };
       await route.fulfill({ response });
     });
     await pay.click();
-    await expect.poll(() => answer, { message: "the pay request answered" }).not.toBeNull();
+    await expect.poll(() => answer, { message: "the pay request answered", timeout: 75_000 }).not.toBeNull();
     const { status, body } = answer!;
     expect(status, body).toBe(200);
     const checkout = JSON.parse(body).payload;
