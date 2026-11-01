@@ -98,6 +98,7 @@ export const apiPaths = {
     meEarnings: "providers/me/earnings",
     mePayouts: "providers/me/payouts",
     meEarningsLedger: "providers/me/earnings/ledger",
+    meEarningsReport: "providers/me/earnings/report.xlsx",
     reply: (reviewId: string) => `providers/me/reviews/${reviewId}/reply`,
     invite: "providers/me/team/invite",
     joinAgency: "providers/me/agency",

@@ -1,5 +1,5 @@
 import type { HirePaymentStatus } from "../payments";
-import type { ProviderType, HireStatus } from "./profile";
+import type { DeliveryMode, ProviderType, HireStatus } from "./profile";
 
 export type Hire = {
   id: string;
@@ -17,6 +17,7 @@ export type Hire = {
   sub_city?: string | null;
   details?: string | null;
   budget?: string | null;
+  delivery_mode?: DeliveryMode | null;
   status: HireStatus;
   admin_note?: string | null;
   created_at: string;
@@ -174,6 +175,7 @@ export type HireInput = {
   sub_city?: string;
   details?: string;
   budget?: string;
+  delivery_mode?: DeliveryMode;
 };
 
 export type ReviewInput = {

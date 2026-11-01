@@ -71,6 +71,45 @@ T: dict[str, dict[str, str]] = {
         "en": "For two or more linked companies, each company is registered on its own (commercial registration, TIN, trade license), and the link between them is recorded in the memorandum of association. I can show the commercial registration path, or find an agency that handles group structures.",
         "am": "ለሁለት ወይም ከዚያ በላይ የተያያዙ ድርጅቶች እያንዳንዱ ድርጅት ራሱን ችሎ ይመዘገባል (የንግድ ምዝገባ፣ ቲን፣ የንግድ ፈቃድ)፤ በመካከላቸው ያለው ግንኙነት በመመስረቻ ጽሑፉ ላይ ይመዘገባል። የንግድ ምዝገባ መንገዱን ላሳይዎ ወይም ይህን የሚያስፈጽም ኤጀንሲ ላገኝልዎ እችላለሁ።",
     },
+    # Starting a business: general information about the steps, never advice on the person's own case
+    "start_business": {
+        "en": "Starting a business in Ethiopia usually goes in this order:\n"
+              "1. Choose the business form: sole proprietor (you alone), private limited company (PLC, "
+              "also one-member PLC) or share company. A PLC first reserves its trade name and has its "
+              "memorandum and articles of association authenticated.\n"
+              "2. Get a TIN (taxpayer number) from the Ministry of Revenues.\n"
+              "3. Register with the Ministry of Trade and Regional Integration (commercial registration).\n"
+              "4. Get the trade licence, within one year of registering. Some sectors (for example health, "
+              "education, finance, import and export) first need a certificate of competence from their regulator.\n"
+              "Source: Commercial Registration and Business Licensing Proclamation No. 980/2016, amended by No. 1150/2019.\n\n"
+              "This is general information about the steps, not legal or tax advice. Which form fits you "
+              "depends on your partners, your capital and how you will be taxed, so a licensed tax agent "
+              "or accountant can look at your case. Pick a step to see its documents, fees and offices.",
+        "am": "በኢትዮጵያ ንግድ መጀመር በአብዛኛው በዚህ ቅደም ተከተል ይሄዳል፦\n"
+              "1. የንግድ አይነቱን ይምረጡ፦ የግል ነጋዴ (እርስዎ ብቻ)፣ ኃላፊነቱ የተወሰነ የግል ማህበር (ኃ/የተ/የግ/ማ፣ "
+              "የአንድ ሰው ኃ/የተ/የግ/ማም ጭምር) ወይም አክሲዮን ማህበር። ኃ/የተ/የግ/ማ መጀመሪያ የንግድ ስሙን ያስይዛል፤ "
+              "የመመስረቻ ጽሑፉንና መተዳደሪያ ደንቡን ያስረጋግጣል።\n"
+              "2. ከገቢዎች ሚኒስቴር ቲን (የግብር ከፋይ መለያ ቁጥር) ያውጡ።\n"
+              "3. በንግድና ቀጠናዊ ትስስር ሚኒስቴር ይመዝገቡ (የንግድ ምዝገባ)።\n"
+              "4. ከተመዘገቡ በአንድ ዓመት ውስጥ የንግድ ፈቃድ ያውጡ። አንዳንድ ዘርፎች (ለምሳሌ ጤና፣ ትምህርት፣ ፋይናንስ፣ "
+              "ወጪና ገቢ ንግድ) አስቀድመው ከተቆጣጣሪያቸው የብቃት ማረጋገጫ ይፈልጋሉ።\n"
+              "ምንጭ፦ የንግድ ምዝገባና ፈቃድ አዋጅ ቁጥር 980/2008 (በአዋጅ ቁጥር 1150/2011 እንደተሻሻለ)።\n\n"
+              "ይህ ስለ ደረጃዎቹ አጠቃላይ መረጃ ነው እንጂ የሕግ ወይም የግብር ምክር አይደለም። የትኛው አይነት እንደሚስማማዎ "
+              "በአጋሮችዎ፣ በካፒታልዎና በሚከፍሉት ግብር ይወሰናል፤ ፈቃድ ያለው የታክስ ወኪል ወይም የሂሳብ ባለሙያ ጉዳይዎን "
+              "ሊያይልዎ ይችላል። ሰነዶቹን፣ ክፍያዎቹንና ቢሮዎቹን ለማየት አንድ ደረጃ ይምረጡ።",
+    },
+    # Investment advice needs a licence from the Ethiopian Capital Market Authority (Proclamation No.
+    # 1248/2021), and automated advice a separate robo-adviser licence. The assistant never gives it.
+    "no_investment_advice": {
+        "en": "I can't advise you on what to invest in or which shares to buy. In Ethiopia only investment "
+              "advisers licensed by the Ethiopian Capital Market Authority (ECMA) may give that advice. "
+              "I can help with the office side of a business: registration, TIN, trade licence and tax "
+              "filing, or find you a verified tax agent or accountant.",
+        "am": "በምን ኢንቨስት እንደሚያደርጉ ወይም የትኛውን አክሲዮን እንደሚገዙ ልመክርዎ አልችልም። በኢትዮጵያ ይህን ምክር "
+              "መስጠት የሚችሉት በኢትዮጵያ ካፒታል ገበያ ባለስልጣን ፈቃድ ያገኙ የኢንቨስትመንት አማካሪዎች ብቻ ናቸው። "
+              "በንግዱ የቢሮ ጉዳዮች ማለትም ምዝገባ፣ ቲን፣ የንግድ ፈቃድና የግብር ማሳወቅ ላግዝዎ ወይም የተረጋገጠ የታክስ ወኪል "
+              "ወይም የሂሳብ ባለሙያ ላገኝልዎ እችላለሁ።",
+    },
     "resume": {"en": "Good, let's pick up from where you are.", "am": "ጥሩ፣ ካሉበት እንቀጥል።"},
     "language_choice": {"en": "Would you like me to reply in English or Amharic?", "am": "በእንግሊዝኛ ወይስ በአማርኛ ልመልስልዎ?"},
     "answer_free_text": {"en": "Please type your answer.", "am": "እባክዎ መልስዎን ይጻፉ።"},
@@ -86,6 +125,8 @@ CHIPS: dict[str, dict[str, str]] = {
     "tin": {"en": "TIN certificate", "am": "ቲን"},
     "kebele_id": {"en": "Kebele ID", "am": "የቀበሌ መታወቂያ"},
     "hire": {"en": "Hire an agent", "am": "ወኪል ልቅጠር"},
+    "advisor": {"en": "Find a tax or business advisor", "am": "የታክስ ወይም የንግድ አማካሪ ፈልግ"},
+    "commercial_registration": {"en": "Commercial registration", "am": "የንግድ ምዝገባ"},
     "fee": {"en": "How much is it?", "am": "ስንት ያስከፍላል?"},
     "documents": {"en": "What do I bring?", "am": "ምን ይዤ ልሂድ?"},
     "time": {"en": "How long does it take?", "am": "ስንት ጊዜ ይፈጃል?"},

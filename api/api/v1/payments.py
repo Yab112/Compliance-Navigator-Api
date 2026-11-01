@@ -11,6 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from core import ratelimit
 from core.deps import client_info, get_current_user, require_admin
 from core.verified import get_verified_user
 from schemas.auth_user import AuthUser
@@ -202,6 +203,20 @@ def my_earnings(user: AuthUser = Depends(get_current_user)):
         return _ok(payment_service.earnings(user.id))
     except PaymentError as exc:
         _raise(exc)
+
+
+@router.get("/providers/me/earnings/report.xlsx", dependencies=[Depends(ratelimit.limit("earnings_report"))])
+def my_earnings_report(date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
+                       user: AuthUser = Depends(get_current_user)):
+    """The provider's own financial report for a period (Addis Ababa dates), as an Excel file."""
+    from services.payment_service import report
+
+    try:
+        content, name = report.build(user.id, date_from, date_to)
+    except PaymentError as exc:
+        _raise(exc)
+    return Response(content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
 @router.get("/providers/me/earnings/ledger")

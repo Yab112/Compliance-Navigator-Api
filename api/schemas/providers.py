@@ -44,10 +44,13 @@ class ProviderProfile(BaseModel):
     representative_title: str | None = Field(None, max_length=80)
     external_license_type: str | None = Field(None, max_length=80)
     external_license_no: str | None = Field(None, max_length=60)
+    # Advisors: where they work with clients, and what a visit to the client's office costs
+    delivery_modes: list[str] | None = Field(None, max_length=3)
+    visit_fee: float | None = Field(None, ge=0, le=1_000_000)
 
 
 class ProviderJoin(ProviderProfile):
-    provider_type: str = Field(..., pattern="^(guday_geday|agency)$")
+    provider_type: str = Field(..., pattern="^(guday_geday|agency|advisor)$")
     entity_type: str = Field(..., pattern="^(individual|company)$")
     display_name: str = Field(..., min_length=3, max_length=120)
     phone: str = Field(..., pattern=PHONE_PATTERN)
@@ -77,6 +80,7 @@ class HireCreate(BaseModel):
     sub_city: str | None = Field(None, pattern=SUB_CITY_PATTERN)
     details: str | None = Field(None, max_length=2000)
     budget: str | None = Field(None, max_length=120)
+    delivery_mode: str | None = Field(None, pattern="^(client_office|provider_office|online)$")
 
 
 class JobAction(BaseModel):

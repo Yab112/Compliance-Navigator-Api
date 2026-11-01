@@ -5,7 +5,16 @@ from __future__ import annotations
 import re
 
 from assistant import agent, entities, nlu, references, resolver
-from assistant.dialogue.answers import BROKER, LOOKING, PROPERTY_HUNT, _answer, _hire
+from assistant.dialogue.answers import (
+    BROKER,
+    INVESTMENT_ADVICE,
+    LOOKING,
+    NAMES_STEP,
+    PROPERTY_HUNT,
+    START_BUSINESS,
+    _answer,
+    _hire,
+)
 from assistant.dialogue.base import (
     HIRE,
     LOW_CONFIDENCE,
@@ -164,6 +173,11 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
     # Brokers and house or car hunting: say plainly that we don't do it, and what we do instead
     if not task and (BROKER.search(text) or (PROPERTY_HUNT.search(text) and LOOKING.search(text))):
         intent = "no_brokers"
+    elif not task and INVESTMENT_ADVICE.search(text):
+        intent = "no_investment_advice"
+    elif not task and intent not in ("thanks", "goodbye", "start_over") and START_BUSINESS.search(text) \
+            and not NAMES_STEP.search(text):
+        intent = "start_business"
 
     lang = state["lang"]
     if task:
@@ -171,6 +185,17 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
     elif intent == "no_brokers":
         reply = _reply(state, t("no_brokers", lang), quick_replies=[
             {"label": chip("hire", lang), "action": {"type": "hire"}}, *_popular_chips(lang)[:4]])
+    elif intent == "start_business":
+        reply = _reply(state, t("start_business", lang), quick_replies=[
+            {"label": chip("tin", lang), "action": _msg_action("TIN certificate")},
+            {"label": chip("commercial_registration", lang), "action": _msg_action("commercial registration")},
+            {"label": chip("trade_license", lang), "action": _msg_action("trade license")},
+            {"label": chip("advisor", lang), "action": _msg_action("find me a business advisor")},
+        ])
+    elif intent == "no_investment_advice":
+        reply = _reply(state, t("no_investment_advice", lang), quick_replies=[
+            {"label": chip("advisor", lang), "action": _msg_action("find me a tax agent")},
+            *_popular_chips(lang)[:3]])
     elif intent in agent.INTENT_TASKS:  # the model's guess without explicit wording: treat as unclear
         reply = _resolve_and_start(text, state, user)
     elif intent == "greeting":

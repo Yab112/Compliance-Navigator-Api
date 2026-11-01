@@ -62,6 +62,7 @@ function JobRow({ job }: { job: Hire }) {
             <span className="text-muted-foreground block text-xs">
               {job.client_name} · {formatDateTime(job.created_at)}
               {job.sub_city ? ` · ${job.sub_city.replace(/_/g, " ")}` : ""}
+              {job.delivery_mode === "client_office" ? " · at the client's office" : job.delivery_mode === "provider_office" ? " · at your office" : job.delivery_mode === "online" ? " · online" : ""}
             </span>
           </span>
         </span>

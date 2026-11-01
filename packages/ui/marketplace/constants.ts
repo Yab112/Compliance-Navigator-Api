@@ -1,5 +1,5 @@
 import { ADDIS_SUB_CITIES } from "@cn/core/constants/addis-locations";
-import type { FeeUnit, HireStatus, ProviderType, PublicProvider } from "@cn/core/types/provider";
+import type { DeliveryMode, FeeUnit, HireStatus, ProviderType, PublicProvider } from "@cn/core/types/provider";
 
 export const TYPE_META: Record<ProviderType, { label: string; am: string; plural: string; blurb: string }> = {
   guday_geday: {
@@ -14,9 +14,15 @@ export const TYPE_META: Record<ProviderType, { label: string; am: string; plural
     plural: "Agencies",
     blurb: "Licensed companies: customs clearing, travel and visa, employment and more.",
   },
+  advisor: {
+    label: "Tax and business advisor",
+    am: "የታክስና የንግድ አማካሪ",
+    plural: "Tax and business advisors",
+    blurb: "Licensed tax agents, accountants and auditors, and help starting a business. At your office, theirs or online.",
+  },
 };
 
-export const TYPE_ORDER: ProviderType[] = ["guday_geday", "agency"];
+export const TYPE_ORDER: ProviderType[] = ["guday_geday", "agency", "advisor"];
 
 export const SPECIALTY_LABELS: Record<string, string> = {
   customs_clearing: "Customs clearing · የጉምሩክ አስተላላፊ",
@@ -25,11 +31,30 @@ export const SPECIALTY_LABELS: Record<string, string> = {
   legal_accounting: "Legal and accounting · ሕግና ሂሳብ",
   consultancy: "Consultancy · ማማከር",
   other: "Other · ሌላ",
+  tax_agent: "Tax agent (licensed) · የታክስ ወኪል",
+  accountant: "Accountant · የሂሳብ ባለሙያ",
+  auditor: "Auditor (AABE) · ኦዲተር",
+  business_setup: "Starting a business · ንግድ ማስጀመር",
 };
+
+/** Advisor specialties that need a licence staff verify before the profile is listed */
+export const LICENSED_SPECIALTIES: Record<string, string> = {
+  tax_agent: "Tax agent licence from the Ministry of Revenues",
+  auditor: "Auditor registration with the Accounting and Auditing Board of Ethiopia (AABE)",
+  accountant: "Accounting degree, diploma or professional certificate (ACCA, CPA, CIMA)",
+};
+
+export const DELIVERY_LABELS: Record<DeliveryMode, { label: string; short: string }> = {
+  client_office: { label: "At the client's office (I visit)", short: "Comes to your office" },
+  provider_office: { label: "At my office", short: "At their office" },
+  online: { label: "Online (phone, Telegram, video)", short: "Online" },
+};
+export const DELIVERY_ORDER: DeliveryMode[] = ["client_office", "provider_office", "online"];
 
 export const SPECIALTIES: Record<ProviderType, string[]> = {
   guday_geday: [],
   agency: ["customs_clearing", "travel_visa", "employment", "legal_accounting", "consultancy", "other"],
+  advisor: ["tax_agent", "accountant", "auditor", "business_setup"],
 };
 
 export function specialtyLabel(key: string, short = false): string {

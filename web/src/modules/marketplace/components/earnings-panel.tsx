@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
-import { MONEY_PAGE_SIZE, formatETB, useMyEarnings, useMyLedger, useMyPayouts, useRequestPayout } from "@cn/core/api/payments";
+import { MONEY_PAGE_SIZE, formatETB, useEarningsReport, useMyEarnings, useMyLedger, useMyPayouts, useRequestPayout } from "@cn/core/api/payments";
 import { Button } from "@cn/ui/button";
 import { Input } from "@cn/ui/input";
 import { Pager, useUrlPage } from "@cn/ui/pager";
@@ -439,6 +439,77 @@ function HistoryTabs({ e }: { e: Earnings }) {
 }
 
 /** Provider balance, withdrawals and the money ledger. */
+/** YYYY-MM-DD for a local date */
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function reportPresets() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  return [
+    { key: "month", label: "This month", from: iso(new Date(y, m, 1)), to: iso(now) },
+    { key: "last", label: "Last month", from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) },
+    { key: "year", label: "This year", from: iso(new Date(y, 0, 1)), to: iso(now) },
+  ];
+}
+
+/** Excel report of the provider's money for a period, for their own records or the tax office. */
+function ReportDownload() {
+  const download = useEarningsReport();
+  const presets = reportPresets();
+  const [from, setFrom] = useState(presets[2].from);
+  const [to, setTo] = useState(presets[2].to);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const fromId = useId(), toId = useId();
+  const go = async () => {
+    setErr(null);
+    if (from > to) return setErr("The start date must be on or before the end date");
+    setBusy(true);
+    try {
+      await download(from, to);
+    } catch (e) {
+      setErr(getErrorMessage(e, "Could not make the report. Try a shorter period."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section title="Financial report · የገንዘብ ሪፖርት">
+      <p className="text-muted-foreground mb-3 text-xs">
+        An Excel file with a summary, every earning with the commission and VAT, and your withdrawals. Useful for your own
+        records and your tax filing.
+      </p>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {presets.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => { setFrom(p.from); setTo(p.to); }}
+            className={cn("rounded-full border px-3 py-1 text-xs",
+              from === p.from && to === p.to ? "border-primary bg-secondary text-primary font-medium" : "border-border")}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label htmlFor={fromId} className="text-xs">
+          <span className="mb-1 block">From</span>
+          <Input id={fromId} type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40" />
+        </label>
+        <label htmlFor={toId} className="text-xs">
+          <span className="mb-1 block">To</span>
+          <Input id={toId} type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="h-9 w-40" />
+        </label>
+        <Button type="button" onClick={go} loading={busy} disabled={!from || !to}>
+          Download Excel
+        </Button>
+      </div>
+      {err && <p role="alert" className="text-destructive mt-2 text-xs">{err}</p>}
+    </Section>
+  );
+}
+
 export function EarningsPanel() {
   const { data, isLoading, isError, error, refetch } = useMyEarnings();
   const e = data?.payload;
@@ -450,6 +521,7 @@ export function EarningsPanel() {
       <Summary e={e} />
       <Withdraw e={e} />
       <HistoryTabs e={e} />
+      <ReportDownload />
     </div>
   );
 }

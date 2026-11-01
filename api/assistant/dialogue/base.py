@@ -14,7 +14,8 @@ POPULAR = [("passport", "passport"), ("trade_license", "trade license"), ("tin",
 QA_INTENTS = {"ask_fee", "ask_documents", "ask_time", "ask_location", "ask_online", "ask_proxy"}
 LOW_CONFIDENCE = 0.35
 # Explicit marketplace words decide the intent on their own
-HIRE = re.compile(r"\b(hire|agent|agents|agency|guday geday|guday|errand|do it for me|handle it for me)\b|ጉዳይ ገዳይ|ወኪል|ኤጀንሲ|ቅጠር|ይቅጠሩ")
+HIRE = re.compile(r"\b(hire|agent|agents|agency|guday geday|guday|errand|do it for me|handle it for me"
+                  r"|advis[eo]rs?|accountants?|auditors?|tax agents?)\b|ጉዳይ ገዳይ|ወኪል|ኤጀንሲ|ቅጠር|ይቅጠሩ|አማካሪ")
 
 EMPTY_STATE = {
     "lang": "en", "lang_locked": False, "lang_offered": False,
