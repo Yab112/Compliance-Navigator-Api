@@ -107,7 +107,7 @@ async def _store(file: UploadFile | None, *, public: bool) -> str | None:
 
 @router.get("/providers")
 def list_providers(
-    type: str | None = Query(None, pattern="^(guday_geday|agency)$"),
+    type: str | None = Query(None, pattern="^(guday_geday|agency|advisor)$"),
     entity: str | None = Query(None, pattern="^(individual|company)$"),
     specialty: str | None = None,
     service_id: str | None = None,
@@ -139,9 +139,15 @@ def provider_options():
 
 
 @router.get("/providers/vetting-requirements")
-def vetting_requirements(entity: str = Query("individual", pattern="^(individual|company)$")):
-    """What the join form asks for: the documents, the oldest police clearance accepted, the lowest education."""
-    return _ok({"vetting": vetting.template(entity)})
+def vetting_requirements(
+    entity: str = Query("individual", pattern="^(individual|company)$"),
+    type: str | None = Query(None, pattern="^(guday_geday|agency|advisor)$"),
+    specialties: str | None = Query(None, max_length=200),
+):
+    """What the join form asks for: the documents, the oldest police clearance accepted, the lowest
+    education, and for advisors the licences their specialties need (specialties comma separated)."""
+    chosen = [s for s in (specialties or "").split(",") if s]
+    return _ok({"vetting": vetting.template(entity, type, chosen)})
 
 
 # ---------------------------------------------------------------- my provider profile

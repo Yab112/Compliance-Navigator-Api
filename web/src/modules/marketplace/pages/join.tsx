@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft01Icon,
   Building03Icon,
+  Calculator01Icon,
   Briefcase01Icon,
   UserIcon,
   UserGroupIcon,
@@ -41,6 +42,7 @@ const ENTITY_META: Record<EntityType, { label: string; am: string; blurb: string
 const TYPE_ICON: Record<ProviderType, IconSvgElement> = {
   guday_geday: Briefcase01Icon,
   agency: Building03Icon,
+  advisor: Calculator01Icon,
 };
 const ENTITY_ICON: Record<EntityType, IconSvgElement> = { individual: UserIcon, company: UserGroupIcon };
 

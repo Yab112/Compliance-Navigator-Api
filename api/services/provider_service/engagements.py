@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 ENGAGEMENT_COLUMNS = """
   e.id::text, e.client_user_id::text, e.client_name, e.client_phone, e.provider_id::text,
-  e.title, e.service_id, e.service_name, e.specialty, e.sub_city, e.details, e.budget, e.status,
+  e.title, e.service_id, e.service_name, e.specialty, e.sub_city, e.details, e.budget, e.delivery_mode, e.status,
   e.admin_note, e.created_at, e.updated_at, e.accepted_at, e.completed_at, e.client_confirmed_at,
   e.declined_reason, e.disputed, e.dispute_reason, e.dispute_status, e.dispute_note,
   p.display_name as provider_name, p.slug as provider_slug, p.phone as provider_phone,
@@ -152,6 +152,13 @@ def create_hire(data: dict, *, user_id: str) -> dict:
         provider_id = provider["id"]
     elif not service:
         raise MarketplaceError("Choose a provider, or a service so staff can find one for you")
+    mode = data.get("delivery_mode")
+    if provider_id:
+        offered = provider.get("delivery_modes") or []
+        if mode and offered and mode not in offered:
+            raise MarketplaceError("This provider doesn't work that way. Choose one of the options on their profile.")
+        if not mode and provider["provider_type"] == "advisor" and offered:
+            raise MarketplaceError("Choose where you want to meet: at your office, at theirs, or online.")
     title = (data.get("title") or (service["name"] if service else "")).strip()
     if not title:
         raise MarketplaceError("Describe what you need")
@@ -165,14 +172,14 @@ def create_hire(data: dict, *, user_id: str) -> dict:
     row = fetch_one(
         """
         insert into engagements (client_user_id, client_name, client_phone, client_telegram, provider_id, title,
-          service_id, service_name, specialty, sub_city, details, budget, status)
-        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          service_id, service_name, specialty, sub_city, details, budget, delivery_mode, status)
+        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         returning id::text
         """,
         (user_id, data["client_name"], data["client_phone"], telegram, provider_id, title[:200],
          service["id"] if service else None, service["name"] if service else None,
          data.get("specialty"), data.get("sub_city"), data.get("details"), data.get("budget"),
-         "requested" if provider_id else "open"),
+         mode, "requested" if provider_id else "open"),
     )
     _event(None, row["id"], "created", who="client", to_status="requested" if provider_id else "open",
            provider_id=provider_id)
@@ -182,8 +189,11 @@ def create_hire(data: dict, *, user_id: str) -> dict:
     if provider_id:
         first = (eng["client_name"] or "A client").split()[0]
         where = f" in {eng['sub_city'].replace('_', ' ').title()}" if eng.get("sub_city") else ""
+        how = {"client_office": " They want you to come to their office.",
+               "provider_office": " They will come to your office.",
+               "online": " They want to work online."}.get(mode or "", "")
         _tell(eng, "provider", f"New request: {eng['title']}",
-              f"{first}{where} wants to hire you. Accept to see their phone number.")
+              f"{first}{where} wants to hire you.{how} Accept to see their phone number.")
     return eng
 
 

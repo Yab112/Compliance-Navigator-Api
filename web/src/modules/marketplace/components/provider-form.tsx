@@ -7,8 +7,8 @@ import { Textarea } from "@cn/ui/textarea";
 import { cn } from "@cn/core/lib/utils";
 import { ServiceMultiPicker } from "@/modules/guday/components/service-picker";
 import { Field, LANGUAGE_OPTIONS, NativeSelect, PHONE_RE } from "@cn/ui/guday/shared";
-import type { EntityType, FeeUnit, Provider, ProviderFormValues, ProviderService, ProviderType } from "@cn/core/types/provider";
-import { AREA_OPTIONS, REGIONS, SPECIALTIES, specialtyLabel } from "@cn/ui/marketplace/constants";
+import type { DeliveryMode, EntityType, FeeUnit, Provider, ProviderFormValues, ProviderService, ProviderType } from "@cn/core/types/provider";
+import { AREA_OPTIONS, DELIVERY_LABELS, DELIVERY_ORDER, LICENSED_SPECIALTIES, REGIONS, SPECIALTIES, specialtyLabel } from "@cn/ui/marketplace/constants";
 import { cleanTelegram, TELEGRAM_HINT, TELEGRAM_RE } from "@/lib/telegram";
 
 export const EMPTY_PROVIDER_FORM: ProviderFormValues = {
@@ -53,6 +53,8 @@ export function providerToForm(p: Provider): ProviderFormValues {
     external_license_no: p.external_license_no ?? "",
     vat_registered: p.vat_registered ?? false,
     vat_number: p.vat_number ?? "",
+    delivery_modes: p.delivery_modes ?? [],
+    visit_fee: p.visit_fee ?? null,
   };
 }
 
@@ -69,6 +71,7 @@ export function cleanForm(v: ProviderFormValues): ProviderFormValues {
 const LICENSE_HINT: Record<ProviderType, string> = {
   guday_geday: "Optional. For example a power-of-attorney registration.",
   agency: "Customs clearing permit, travel agency licence, employment agency licence, and so on.",
+  advisor: "Optional. Your tax agent licence, AABE registration or qualification is uploaded in Vetting.",
 };
 
 type ProviderFormProps = {
@@ -146,6 +149,7 @@ export function ProviderForm({
     if (!v.service_areas.length) e.service_areas = "Pick at least one area";
     if (providerType === "guday_geday" && !services.length) e.service_ids = "Pick at least one service";
     if (providerType !== "guday_geday" && !v.specialties.length) e.specialties = "Pick at least one specialty";
+    if (providerType === "advisor" && !(v.delivery_modes ?? []).length) e.delivery_modes = "Pick at least one";
     if (v.tin && !/^\d{10}$/.test(v.tin.trim())) e.tin = "TIN is 10 digits";
     if (company) {
       if (!v.legal_name?.trim()) e.legal_name = "Required for companies";
@@ -231,6 +235,30 @@ export function ProviderForm({
               <CheckGrid idPrefix="pf-spec" value={v.specialties} onChange={(x) => set("specialties", x)}
                 options={SPECIALTIES[providerType].map((s) => ({ value: s, label: specialtyLabel(s) }))} />
               {errors.specialties && <p className="text-destructive mt-1 text-[11px]">{errors.specialties}</p>}
+              {providerType === "advisor" && v.specialties.some((s) => LICENSED_SPECIALTIES[s]) && (
+                <div className="text-muted-foreground mt-2 space-y-0.5 text-[11px]">
+                  <p>You will upload these in Vetting. Staff check them before your profile is listed:</p>
+                  <ul className="list-disc pl-4">
+                    {v.specialties.filter((s) => LICENSED_SPECIALTIES[s]).map((s) => <li key={s}>{LICENSED_SPECIALTIES[s]}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          {providerType === "advisor" && (
+            <div>
+              <p className="mb-2 text-xs font-medium">Where you work with clients <span className="text-destructive">*</span></p>
+              <CheckGrid idPrefix="pf-delivery" value={v.delivery_modes ?? []}
+                onChange={(x) => set("delivery_modes", x as DeliveryMode[])}
+                options={DELIVERY_ORDER.map((m) => ({ value: m, label: DELIVERY_LABELS[m].label }))} />
+              {errors.delivery_modes && <p className="text-destructive mt-1 text-[11px]">{errors.delivery_modes}</p>}
+              {(v.delivery_modes ?? []).includes("client_office") && (
+                <Field label="Visit fee (ETB)" htmlFor="pf-visit" className="mt-3 max-w-48"
+                  hint="Added to your quote when you go to the client's office. Leave empty if it is included.">
+                  <Input id="pf-visit" type="number" min={0} value={v.visit_fee ?? ""}
+                    onChange={(e) => set("visit_fee", e.target.value === "" ? null : Number(e.target.value))} />
+                </Field>
+              )}
             </div>
           )}
           <div>

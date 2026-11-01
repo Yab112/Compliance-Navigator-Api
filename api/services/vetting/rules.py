@@ -86,6 +86,37 @@ KINDS: dict[str, Kind] = {
         "stronger; prefer it when available.",
         reference_label="ID number",
     ),
+    # Professional licences for tax and business advisors, asked for by the specialties they choose.
+    # Tax agents: Federal Tax Administration Proclamation No. 983/2016, Part 14 (a licence from the
+    # Ministry of Revenues). Auditors: registered with the Accounting and Auditing Board of Ethiopia
+    # (AABE) under Financial Reporting Proclamation No. 847/2014.
+    "tax_agent_licence": Kind(
+        "Tax agent licence", "የታክስ ወኪል ፈቃድ",
+        "Your tax agent licence from the Ministry of Revenues, showing the licence number and the date "
+        "it is valid until.",
+        "Check the name matches the Fayda name (or the company name), the licence number and the "
+        "valid-until date. Confirm the licence with the Ministry of Revenues branch that issued it "
+        "before you verify it. Without a valid licence the person may not "
+        "prepare or file tax declarations for others.",
+        reference_label="Licence number", needs_reference=True, needs_expires_on=True,
+    ),
+    "audit_licence": Kind(
+        "Auditor registration (AABE)", "የኦዲተር ምዝገባ (የኢትዮጵያ ሂሳብ አያያዝና ኦዲት ቦርድ)",
+        "Your certificate of registration or practising licence as an auditor from the Accounting and "
+        "Auditing Board of Ethiopia (AABE), with its number and valid-until date.",
+        "Check the name, the registration number and the valid-until date, and confirm it with AABE "
+        "(aabe.gov.et or their office) before you verify it.",
+        reference_label="Registration number", needs_reference=True, needs_expires_on=True,
+    ),
+    "accounting_qualification": Kind(
+        "Accounting qualification", "የሂሳብ ሙያ ማስረጃ",
+        "Your accounting qualification: a degree or diploma in accounting, or a professional "
+        "certificate such as ACCA, CPA or CIMA, with its number.",
+        "Check the name, the institution or professional body and the number. Degrees: the Education "
+        "and Training Authority (ETA, call 9799) authenticates them. ACCA, CPA and CIMA members can be "
+        "looked up in the body's public register.",
+        reference_label="Certificate or membership number", needs_reference=True,
+    ),
     # The guarantor's papers. A guarantee (suretyship) falls under the Civil Code; Article 1922 asks
     # for the most the guarantor answers for to be stated, so staff check the letter names an amount.
     "guarantee_letter": Kind(
@@ -186,10 +217,29 @@ def _is_company(provider: dict) -> bool:
     return provider["entity_type"] == "company"
 
 
+# The licence each advisor specialty needs before it is listed. Business set-up help (the
+# registration and licensing steps) needs no extra licence.
+LICENCE_FOR_SPECIALTY = {
+    "tax_agent": "tax_agent_licence",
+    "auditor": "audit_licence",
+    "accountant": "accounting_qualification",
+}
+LICENCE_KINDS = tuple(LICENCE_FOR_SPECIALTY.values())
+
+
+def licence_kinds(provider: dict) -> list[str]:
+    """The professional licences this provider needs, from its specialties (advisors only)."""
+    if provider.get("provider_type") != "advisor":
+        return []
+    chosen = provider.get("specialties") or []
+    return [kind for spec, kind in LICENCE_FOR_SPECIALTY.items() if spec in chosen]
+
+
 def document_kinds(provider: dict) -> list[str]:
     """Kinds this provider may upload, required ones first."""
     kinds = ["trade_licence", "tin_certificate", "police_clearance"] if _is_company(provider) \
         else ["police_clearance", "education", "photo"]
+    kinds += licence_kinds(provider)
     if not _fayda_on():
         kinds.append("id_copy")
     if guarantor_applies(provider):
