@@ -25,9 +25,11 @@ from services import catalog_service
 
 log = logging.getLogger(__name__)
 
+COSINE_FLOOR = 0.80
 ACCEPT = 0.60
 MARGIN = 0.06
-SUGGEST = 0.36
+SUGGEST = 0.42
+OPTION_SPREAD = 0.15  # only offer options close to the best one
 SOURCE_BONUS = {"org": 0.04, "path": 0.03, "mesob": 0.0}
 RESOLVER_EMBEDDERS = ("intfloat/multilingual-e5-small", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
@@ -119,6 +121,7 @@ class ServiceIndex:
     def __init__(self) -> None:
         self.candidates = _path_candidates() + _org_candidates() + _mesob_candidates()
         self.signature = hashlib.sha1("|".join(c.key for c in self.candidates).encode()).hexdigest()
+        self.idf = _idf(self.candidates)
         self.embedder: str | None = None
         self.vectors: np.ndarray | None = None
         self._embed()
@@ -140,10 +143,11 @@ class ServiceIndex:
         q_tokens = [t for t in query.split() if t not in STOP]
         if not q_tokens:
             return []
-        lexical = np.array([_lexical(q_tokens, query, c) for c in self.candidates])
+        lexical = np.array([_lexical(q_tokens, query, c, self.idf) for c in self.candidates])
         if self.vectors is not None and self.embedder:
             qv = _unit(nlu.embed(self.embedder, [" ".join(q_tokens)]))[0]
-            cosine = self.vectors @ qv
+            # These embedders put any two texts at about 0.8; only what is above that says they mean the same
+            cosine = np.clip((self.vectors @ qv - COSINE_FLOOR) / (1 - COSINE_FLOOR), 0, 1)
             score = 0.5 * cosine + 0.5 * lexical
         else:
             score = lexical
@@ -174,19 +178,54 @@ def _trigrams(s: str) -> set[str]:
     return {s[i:i + 3] for i in range(len(s) - 2)}
 
 
-def _lexical(q_tokens: list[str], query: str, c: Candidate) -> float:
+def _tokens(text: str) -> list[str]:
+    return [w for w in nlu.normalize(text).split() if w not in STOP]
+
+
+def _idf(candidates: list[Candidate]) -> dict[str, float]:
+    """Rare words tell services apart ("driving", "VAT"); common ones ("license", "registration") don't."""
+    counts: dict[str, int] = {}
+    for c in candidates:
+        for w in {w for text in c.texts for w in _tokens(text)}:
+            counts[w] = counts.get(w, 0) + 1
+    n = max(1, len(candidates))
+    return {w: float(np.log((n + 1) / (k + 0.5))) for w, k in counts.items()}
+
+
+def _same_word(a: str, b: str) -> bool:
+    if a == b:
+        return True
+    if len(a) > 3 and len(b) > 3 and (a in b or b in a):
+        return True
+    # driving / driver, registration / register: a shared stem
+    stem = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        stem += 1
+    return stem >= max(4, min(len(a), len(b)) - 3)
+
+
+def _lexical(q_tokens: list[str], query: str, c: Candidate, idf: dict[str, float] | None = None) -> float:
+    idf = idf or {}
+    default = float(np.mean(list(idf.values()))) if idf else 1.0  # a word no service uses: an average word
+
+    def weight(w: str) -> float:
+        return idf.get(w, default)
+
+    q_weight = sum(weight(q) for q in q_tokens) or 1.0
     best = 0.0
     for text in c.texts:
-        t = nlu.normalize(text)
-        t_tokens = [w for w in t.split() if w not in STOP]
+        t_tokens = _tokens(text)
         if not t_tokens:
             continue
-        hits = sum(1 for w in t_tokens if any(w == q or (len(w) > 3 and (w in q or q in w)) for q in q_tokens))
-        coverage = hits / len(t_tokens)
-        precision = hits / len(q_tokens)
+        t_weight = sum(weight(w) for w in t_tokens) or 1.0
+        covered = sum(weight(w) for w in t_tokens if any(_same_word(w, q) for q in q_tokens))
+        found = sum(weight(q) for q in q_tokens if any(_same_word(w, q) for w in t_tokens))
+        coverage, precision = covered / t_weight, found / q_weight
         tri_q, tri_t = _trigrams(" ".join(q_tokens)), _trigrams(" ".join(t_tokens))
         jaccard = len(tri_q & tri_t) / max(1, len(tri_q | tri_t))
-        best = max(best, 0.45 * coverage + 0.25 * precision + 0.3 * jaccard)
+        best = max(best, 0.4 * coverage + 0.4 * precision + 0.2 * jaccard)
     return best
 
 
@@ -247,5 +286,5 @@ def resolve(text: str, language: str) -> dict:
         return {"status": "resolved", "candidate": top.candidate, "options": [], "score": top.score}
     options = [{"label": (m.candidate.title_am if language == "am" and m.candidate.title_am else m.candidate.title),
                 "key": m.candidate.key, "score": round(m.score, 3)}
-               for m in matches[:3] if m.score >= SUGGEST]
+               for m in matches[:3] if m.score >= max(SUGGEST, top.score - OPTION_SPREAD)]
     return {"status": "ambiguous", "candidate": None, "options": options, "score": top.score}

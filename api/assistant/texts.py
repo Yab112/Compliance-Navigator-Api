@@ -17,8 +17,13 @@ T: dict[str, dict[str, str]] = {
     },
     "start_over": {"en": "Sure, let's start again. What do you need to get done?", "am": "እሺ፣ እንደገና እንጀምር። ምን ማስፈጸም ይፈልጋሉ?"},
     "not_found": {
-        "en": "I couldn't find a service matching \"{text}\". Could you say it another way, or pick one of these?",
-        "am": "\"{text}\" የሚል አገልግሎት አላገኘሁም። በሌላ መንገድ ሊገልጹት ወይም ከእነዚህ አንዱን ሊመርጡ ይችላሉ?",
+        "en": "I don't have \"{text}\" in my guide yet, so I won't guess at it. Try saying it another way, ask a person on our team, or pick one of these:",
+        "am": "\"{text}\" እስካሁን በመመሪያዬ ውስጥ የለም፤ ስለዚህ አልገምትም። በሌላ መንገድ ይግለጹት፣ የቡድናችንን ሰው ይጠይቁ፣ ወይም ከእነዚህ አንዱን ይምረጡ፦",
+    },
+    "did_you_mean": {"en": "Did you mean {title}?", "am": "{title} ማለትዎ ነው?"},
+    "not_found_long": {
+        "en": "I don't have that service in my guide yet, so I won't guess at it. Try naming just the service (for example \"trade license\"), ask a person on our team, or pick one of these:",
+        "am": "ያንን አገልግሎት እስካሁን በመመሪያዬ ውስጥ የለም፤ ስለዚህ አልገምትም። የአገልግሎቱን ስም ብቻ ይጻፉ (ለምሳሌ \"የንግድ ፈቃድ\")፣ የቡድናችንን ሰው ይጠይቁ፣ ወይም ከእነዚህ አንዱን ይምረጡ፦",
     },
     "which_service": {"en": "Which service do you mean?", "am": "የትኛውን አገልግሎት ማለትዎ ነው?"},
     "which_passport": {"en": "Which passport service do you need?", "am": "የትኛው የፓስፖርት አገልግሎት ያስፈልግዎታል?"},
@@ -65,6 +70,32 @@ T: dict[str, dict[str, str]] = {
     "no_brokers": {
         "en": "We don't list property or car brokers (delala). Compliance Navigator is for getting things done with offices: licences, permits, IDs, tax and documents. If you're buying or renting, I can still show you the office side, for example a title deed transfer, a lease registration or a vehicle ownership transfer.",
         "am": "የቤት ወይም የመኪና ደላሎችን አንዘረዝርም። ኮምፕላያንስ ናቪጌተር ከቢሮዎች ጋር ጉዳይ ለማስፈጸም ነው፦ ፈቃዶች፣ መታወቂያዎች፣ ግብር እና ሰነዶች። እየገዙ ወይም እየተከራዩ ከሆነ የቢሮውን ክፍል ላሳይዎ እችላለሁ፤ ለምሳሌ የካርታ ስም ዝውውር፣ የኪራይ ውል ምዝገባ ወይም የተሽከርካሪ ባለቤትነት ዝውውር።",
+    },
+    "hire_none_type": {
+        "en": "No verified {plural} are listed yet, and I won't send you to someone we haven't checked. Post a request on the Hire page, or ask our team to find one for you.",
+        "am": "እስካሁን የተረጋገጡ {plural} አልተመዘገቡም፤ ያልፈተሽነውን ሰው አልጠቁምዎትም። በቅጥር ገጹ ላይ ጥያቄ ያቅርቡ፣ ወይም ቡድናችን እንዲያገኝልዎ ይጠይቁ።",
+    },
+    "business_forms": {
+        "en": "The main business forms, in short (general information from the Commercial Code, Proclamation 1243/2021):\n"
+              "• Sole proprietor: you alone own the business. Simplest to register, but you are personally liable "
+              "for its debts, including with your own property. While yearly sales stay under 2 million ETB you "
+              "may be taxed on the simpler presumptive (Category B) rules.\n"
+              "• Private limited company (PLC): a company separate from you, with one owner (one-member PLC) or "
+              "several. Owners risk only what they put in. It reserves a trade name, has its memorandum and articles "
+              "authenticated, keeps proper books from day one and pays 30% tax on profit.\n"
+              "• Share company: for larger businesses that raise money from many shareholders. More rules, "
+              "usually set up with a lawyer.\n"
+              "Which one fits depends on your risk, partners, capital and plans. This is general information, "
+              "not legal or tax advice; a licensed advisor can look at your case.",
+        "am": "ዋና ዋናዎቹ የንግድ አደረጃጀቶች በአጭሩ (አጠቃላይ መረጃ ከንግድ ሕግ፣ አዋጅ ቁጥር 1243/2013)፦\n"
+              "• የግል ነጋዴ፦ ንግዱ የእርስዎ ብቻ ነው። ለመመዝገብ ቀላሉ ነው፤ ግን ለንግዱ ዕዳ በግል ንብረትዎ ጭምር ኃላፊ ነዎት። "
+              "ዓመታዊ ሽያጭዎ ከ2 ሚሊዮን ብር በታች እስከሆነ በቀላሉ የግምት (ደረጃ ለ) ግብር ሊከፍሉ ይችላሉ።\n"
+              "• ኃላፊነቱ የተወሰነ የግል ማህበር (ኃ/የተ/የግ/ማ)፦ ከእርስዎ የተለየ ድርጅት ነው፤ አንድ ባለቤት (የአንድ ሰው ኃ/የተ/የግ/ማ) "
+              "ወይም ብዙ ሊኖሩት ይችላል። ባለቤቶች የሚያጡት ያዋጡትን ብቻ ነው። የንግድ ስም ያስይዛል፣ የመመስረቻ ጽሑፉንና መተዳደሪያ ደንቡን "
+              "ያስረጋግጣል፣ ከመጀመሪያው ቀን ትክክለኛ የሂሳብ መዝገብ ይይዛል፣ ከትርፉ 30% ግብር ይከፍላል።\n"
+              "• አክሲዮን ማህበር፦ ከብዙ ባለአክሲዮኖች ገንዘብ ለሚያሰባስቡ ትላልቅ ንግዶች። ብዙ ደንቦች አሉት፤ ብዙውን ጊዜ በጠበቃ ይቋቋማል።\n"
+              "የሚስማማዎት እንደ አደጋው፣ አጋሮችዎ፣ ካፒታልዎና ዕቅድዎ ይወሰናል። ይህ አጠቃላይ መረጃ እንጂ የሕግ ወይም የግብር ምክር አይደለም፤ "
+              "ፈቃድ ያለው አማካሪ ጉዳይዎን ሊያይ ይችላል።",
     },
     "hire_none": {"en": "No verified provider lists this service yet. You can still post a request on the Hire page.", "am": "ይህን አገልግሎት የሚሰጥ የተረጋገጠ አገልግሎት ሰጪ እስካሁን የለም። በቅጥር ገጹ ላይ ጥያቄ ማቅረብ ይችላሉ።"},
     "multi_entity": {
@@ -175,6 +206,9 @@ CHIPS: dict[str, dict[str, str]] = {
     "hire": {"en": "Hire an agent", "am": "ወኪል ልቅጠር"},
     "advisor": {"en": "Find a tax or business advisor", "am": "የታክስ ወይም የንግድ አማካሪ ፈልግ"},
     "start_costs": {"en": "What will it cost?", "am": "ስንት ያስከፍላል?"},
+    "business_forms": {"en": "PLC or sole proprietor?", "am": "ኃ/የተ/የግ/ማ ወይስ የግል ነጋዴ?"},
+    "vat_registration": {"en": "VAT registration", "am": "የተጨማሪ እሴት ታክስ ምዝገባ"},
+    "talk_to_person": {"en": "Ask a person", "am": "ሰው ልጠይቅ"},
     "business_taxes": {"en": "Taxes I'll pay", "am": "የምከፍላቸው ግብሮች"},
     "commercial_registration": {"en": "Commercial registration", "am": "የንግድ ምዝገባ"},
     "fee": {"en": "How much is it?", "am": "ስንት ያስከፍላል?"},

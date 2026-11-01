@@ -116,9 +116,27 @@ PROPERTY_HUNT = re.compile(
     r"|ኪራይ ቤት|የሚከራይ|ቤት (መግዛት|መሸጥ|መከራየት)|መኪና (መግዛት|መሸጥ)", re.I)
 # "I'm about to start a business but I don't know what to do": the steps in order, not one service.
 # A message that names a step (TIN, trade licence, registration) goes to that step's path instead.
+_VENTURE_EN = (r"business|company|shop|plc|firm|enterprise|cafe|caf\u00e9|coffee shop|restaurant|hotel|store|boutique"
+               r"|salon|barber\w*|garage|bakery|supermarket|mini ?market|pharmacy|clinic|school|factory|workshop|import"
+               r"|export\w*|trading|startup|start-up")
+_VENTURE_AM = r"ንግድ|ቢዝነስ|ድርጅት|ሱቅ|ካፌ|ምግብ ቤት|ሬስቶራንት|ሆቴል|ኩባንያ|ፋብሪካ|ሱፐርማርኬት|ሚኒ ማርኬት|ቡቲክ|ጋራዥ|ዳቦ ቤት|ፀጉር ቤት|ፋርማሲ|መደብር"
+_START_AM = r"ለ?መክፈት|ለ?መጀመር|ልጀምር|ልከፍት|ልክፈት|ማቋቋም|ለማቋቋም|ማቋቋሚያ|ልመሰርት|ለመመስረት|ልቋቋም|ልጀምረው|ልከፍተው"
 START_BUSINESS = re.compile(
-    r"\b(start\w*|open\w*|launch\w*|set\w* up|begin\w*)\b.{0,40}\b(business|company|shop|plc|firm|enterprise)\b"
-    r"|\bnew (business|company)\b|ንግድ (ለ?መክፈት|ለ?መጀመር|ልጀምር|ልከፍት)|ድርጅት (መክፈት|ማቋቋም|ማቋቋሚያ)|nigd (mekfet|mejemer)", re.I)
+    rf"\b(start\w*|open\w*|launch\w*|set\w* up|begin\w*|establish\w*)\b.{{0,40}}\b({_VENTURE_EN})\b"
+    rf"|\bnew (business|company)\b|({_VENTURE_AM})\s*(\S+\s+){{0,2}}({_START_AM})|nigd (mekfet|mejemer)", re.I)
+# "PLC or sole proprietor?": a comparison of business forms, not the registration of one
+BUSINESS_FORMS = re.compile(
+    r"(\b(plc|sole (proprietor\w*|trader)|one[- ]member|share company|partnership|business (form|type|structure)"
+    r"|type of (business|company))\b.*\b(or|vs|versus|difference|better|which|should)\b"
+    r"|\b(or|vs|versus|difference|better|which|should)\b.*\b(plc|sole (proprietor\w*|trader)|one[- ]member|share company)\b)"
+    r"|(የግል ነጋዴ|ኃ/የተ|ኃላፊነቱ የተወሰነ|አክሲዮን ማህበር).*(ወይስ|ልዩነት|የትኛው|ይሻላል)", re.I)
+# A rules question about tax ("do I need to register for VAT", "when do I pay my annual tax"),
+# answered with the general tax basics rather than one office's service
+TAX_WORD = re.compile(r"\b(tax|taxes|vat|income tax|profit tax|turnover tax|withholding)\b|ግብር|ታክስ|ቫት", re.I)
+TAX_RULE_Q = re.compile(
+    r"\b(do i (need|have) to|have to|must i|should i|am i required|required to|when (do|should|must|is|are)|how much"
+    r"|how often|what (tax|taxes)|which tax\w*|rates?|deadline|due|penalt\w*|every (month|year)|monthly|yearly|annual)\b"
+    r"|አለብኝ|መቼ|ስንት|በየወሩ|በየዓመቱ|ቅጣት|የትኛው", re.I)
 NAMES_STEP = re.compile(
     r"\b(tin|trade licen[cs]e|business licen[cs]e|commercial registration|competenc\w*|name reservation)\b"
     r"|ቲን|የንግድ ፈቃድ|የንግድ ምዝገባ|የብቃት", re.I)
@@ -183,7 +201,9 @@ def _hire(state: dict, text: str = "") -> dict:
     } for p in items]
     references.remember(state, providers)
     title = _title(rec, lang) if rec else None
-    if not providers:
+    if not providers and want:
+        text_out = t("hire_none_type", lang, plural=PROVIDER_PLURAL[want["type"]][1 if lang == "am" else 0])
+    elif not providers:
         text_out = t("hire_none", lang)
     elif want:
         plural = PROVIDER_PLURAL[want["type"]][1 if lang == "am" else 0]

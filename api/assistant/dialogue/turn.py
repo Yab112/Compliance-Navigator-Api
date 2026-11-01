@@ -9,7 +9,10 @@ from assistant.dialogue.answers import (
     ASKS_FEE,
     ASKS_TAX,
     BROKER,
+    BUSINESS_FORMS,
     START_STEPS,
+    TAX_RULE_Q,
+    TAX_WORD,
     INVESTMENT_ADVICE,
     LOOKING,
     NAMES_STEP,
@@ -17,6 +20,7 @@ from assistant.dialogue.answers import (
     START_BUSINESS,
     _answer,
     _hire,
+    _provider_want,
     start_business_costs,
 )
 from assistant.dialogue.base import (
@@ -30,6 +34,7 @@ from assistant.dialogue.base import (
     new_state,
 )
 from assistant.dialogue.data import _service_record, _title
+from assistant.dialogue import typed
 from assistant.dialogue.slots import _advance, _set_service
 from assistant.texts import chip, t
 
@@ -46,12 +51,19 @@ def _resolve_and_start(text: str, state: dict, user, prefix: str | None = None) 
         return _advance(state, user, " ".join(x for x in (prefix, intro) if x) or None)
     if result["status"] == "ambiguous":
         state["pending"] = {"kind": "service_choice"}
-        question = t("which_passport" if result.get("family") == "passport" else "which_service", lang)
+        if result.get("family") == "passport":
+            question = t("which_passport", lang)
+        elif len(result["options"]) == 1:
+            question = t("did_you_mean", lang, title=result["options"][0]["label"])
+        else:
+            question = t("which_service", lang)
         return _reply(state, f"{prefix} {question}" if prefix else question, widget={
             "kind": "choice", "key": "service",
             "options": [{"value": o["key"], "label": _option_label(o, lang)} for o in result["options"]],
         }, quick_replies=[{"label": chip("start_over", lang), "action": {"type": "start_over"}}])
-    return _missed(state, t("not_found", lang, text=text[:60]))
+    # Quote a short name back; a whole sentence quoted reads like a parrot
+    short = len(text.split()) <= 4 and len(text) <= 40
+    return _missed(state, t("not_found", lang, text=text) if short else t("not_found_long", lang))
 
 
 def _missed(state: dict, text: str) -> dict:
@@ -90,6 +102,26 @@ def _apply_entities(text: str, state: dict) -> None:
     applicant = entities.applicant_type(text)
     if applicant:
         state["applicant"] = applicant
+
+
+# Small talk the model may guess for text it doesn't understand ("asdkjh", "new"). Ending or
+# restarting someone's conversation on a guess loses their place, so these need the words.
+SOCIAL_WORDS = {
+    "goodbye": re.compile(r"\b(bye|goodbye|good bye|see you|ciao|chao|later|that'?s all|done|nothing else)\b"
+                          r"|ደህና|ቻው|በቃ|ይበቃኛል|ደና", re.I),
+    "start_over": re.compile(r"\b(start (over|again)|restart|reset|from the (beginning|start)|new (chat|conversation))\b"
+                             r"|እንደገና|ከመጀመሪያ", re.I),
+    "thanks": re.compile(r"\b(thank\w*|thx|thanx|ty|appreciate\w*|ameseginalehu|amesegnalehu|great|perfect)\b"
+                         r"|አመሰግና|እናመሰግና|ግሩም|በጣም ጥሩ", re.I),
+    "greeting": re.compile(r"\b(hi|hii+|hello|hey|selam|salam|good (morning|afternoon|evening)|tena yistilign|howdy)\b"
+                           r"|ሰላም|ጤና ይስጥልኝ|እንደምን", re.I),
+}
+SOCIAL_SURE = 0.6
+
+
+def _social_unsupported(intent: str, confidence: float | None, text: str) -> bool:
+    words = SOCIAL_WORDS.get(intent)
+    return bool(words) and (confidence or 0) < SOCIAL_SURE and not words.search(text)
 
 
 YES = re.compile(r"^\s*(yes|yeah|yep|ok|okay|sure|send|send it|go ahead|confirm)\b|^\s*(አዎ|እሺ|ላክ|ይላክ)", re.I)
@@ -134,6 +166,11 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
         state["answers"][pending["key"]] = text
         state["pending"] = None
         return _advance(state, user), info
+    # "new", "2", "bole": a typed pick of one of the buttons we just showed
+    picked = typed.pick(text, state.get("offered"))
+    if picked:
+        info["routed_intent"] = "typed_choice"
+        return _handle_action(state, picked, user, ctx), info
     _apply_entities(text, state)
     if pending.get("kind") == "sub_city" and state.get("sub_city"):
         state["pending"] = None
@@ -171,6 +208,9 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
         if probe["status"] == "resolved" or names_service:
             intent = "service_request"
 
+    if _social_unsupported(intent, confidence, text):
+        intent = "service_request"  # look it up; if nothing fits, say so and offer help
+
     task = agent.detect(text, intent, state, confidence)
     if not task and HIRE.search(nlu.normalize(text)) and intent not in ("thanks", "goodbye", "start_over"):
         intent = "hire_agent"
@@ -179,6 +219,8 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
         intent = "no_brokers"
     elif not task and INVESTMENT_ADVICE.search(text):
         intent = "no_investment_advice"
+    elif not task and intent not in ("thanks", "goodbye", "start_over", "hire_agent") and BUSINESS_FORMS.search(text):
+        intent = "business_forms"
     elif not task and intent not in ("thanks", "goodbye", "start_over") and (ASKS_FEE.search(text) or ASKS_TAX.search(text)) \
             and (START_BUSINESS.search(text) or (state.get("subject") == "start_business" and _about_starting(text, state))):
         # "How much will the government charge me", "what taxes will I pay": about the whole start-up
@@ -186,6 +228,9 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
     elif not task and intent not in ("thanks", "goodbye", "start_over") and START_BUSINESS.search(text) \
             and not NAMES_STEP.search(text):
         intent = "start_business"
+    elif not task and intent not in ("thanks", "goodbye", "start_over", "hire_agent") and TAX_WORD.search(text) \
+            and TAX_RULE_Q.search(text) and not _provider_want(text)[0]:
+        intent = "tax_rules"
 
     lang = state["lang"]
     if task:
@@ -217,6 +262,22 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
             {"label": chip("advisor", lang), "action": _msg_action("find me a business advisor")},
         ]
         reply = _reply(state, "\n\n".join(parts), quick_replies=chips)
+    elif intent == "business_forms":
+        state["subject"] = "start_business"
+        reply = _reply(state, t("business_forms", lang), quick_replies=[
+            {"label": chip("advisor", lang), "action": _msg_action("find me a business advisor")},
+            {"label": chip("business_taxes", lang), "action": _msg_action(
+                "what taxes will my business pay" if lang == "en" else "ንግዴ ምን ግብሮች ይከፍላል")},
+            {"label": chip("commercial_registration", lang), "action": _msg_action("commercial registration")},
+            {"label": chip("trade_license", lang), "action": _msg_action("trade license")},
+        ])
+    elif intent == "tax_rules":
+        reply = _reply(state, t("business_taxes", lang), quick_replies=[
+            {"label": chip("vat_registration", lang), "action": _msg_action("VAT registration")},
+            {"label": chip("tin", lang), "action": _msg_action("TIN certificate")},
+            {"label": chip("advisor", lang), "action": _msg_action("find me a tax agent")},
+            {"label": chip("business_forms", lang), "action": _msg_action("should I be a PLC or sole proprietor")},
+        ])
     elif intent == "no_investment_advice":
         reply = _reply(state, t("no_investment_advice", lang), quick_replies=[
             {"label": chip("advisor", lang), "action": _msg_action("find me a tax agent")},
@@ -244,8 +305,9 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
             {"label": chip("hire", lang), "action": {"type": "hire"}},
         ])
     elif intent == "hire_agent":
-        probe = resolver.resolve(entities.want_text(text), lang)
-        if probe["status"] == "resolved":
+        # "I need an accountant" asks for a kind of person, not a service ("Account Opening")
+        probe = None if _provider_want(text)[0] else resolver.resolve(entities.want_text(text), lang)
+        if probe and probe["status"] == "resolved":
             _set_service(state, probe["candidate"].key)
         reply = _hire(state, text)
     elif intent in QA_INTENTS:
@@ -265,7 +327,8 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
         state["held_asked"] = False
         reply = _advance(state, user, t("resume", lang))
     else:  # service_request, resume_progress without a service, low-confidence fallbacks
-        prefix = t("resume", lang) if intent == "resume_progress" else None
+        sure = confidence is not None and confidence >= LOW_CONFIDENCE
+        prefix = t("resume", lang) if intent == "resume_progress" and sure else None
         reply = _resolve_and_start(text, state, user, prefix)
 
     if offer_language:
