@@ -14,6 +14,7 @@ from services.db import connection, fetch_one
 
 from .common import (
     AREAS,
+    DELIVERY_MODES,
     ENTITY_TYPES,
     NULLABLE_FIELDS,
     PROFILE_FIELDS,
@@ -71,6 +72,13 @@ def _validate(fields: dict, provider_type: str, entity_type: str) -> dict:
         bad = [a for a in out["service_areas"] if a not in AREAS]
         if bad:
             raise MarketplaceError(f"Unknown areas: {', '.join(bad)}")
+    if "delivery_modes" in out and out["delivery_modes"] is not None:
+        bad = [m for m in out["delivery_modes"] if m not in DELIVERY_MODES]
+        if bad:
+            raise MarketplaceError(f"Unknown ways of working: {', '.join(bad)}")
+        out["delivery_modes"] = [m for m in DELIVERY_MODES if m in out["delivery_modes"]]
+    if out.get("visit_fee") is not None and out["visit_fee"] < 0:
+        raise MarketplaceError("The visit fee can't be negative")
     if out.get("fee_from") is not None and out.get("fee_to") is not None and out["fee_to"] < out["fee_from"]:
         raise MarketplaceError("The highest fee can't be lower than the lowest fee")
     return out
@@ -81,8 +89,10 @@ def _requirements(provider: dict) -> None:
     t, e = provider["provider_type"], provider["entity_type"]
     if t == "guday_geday" and not provider.get("service_ids"):
         raise MarketplaceError("Pick at least one service you handle")
-    if t == "agency" and not provider.get("specialties"):
+    if t in ("agency", "advisor") and not provider.get("specialties"):
         raise MarketplaceError("Pick at least one specialty")
+    if t == "advisor" and not provider.get("delivery_modes"):
+        raise MarketplaceError("Say where you work with clients: at their office, at yours, or online")
     if not provider.get("service_areas"):
         raise MarketplaceError("Pick at least one area you work in")
     if e == "company":
@@ -127,7 +137,8 @@ def join(data: dict, *, user_id: str, actor: str) -> dict:
         "id_document_url": data.get("id_document_url"),
         "is_sample": bool(data.get("is_sample")),
     }
-    for arr in ("service_ids", "institution_ids", "service_areas", "specialties", "languages", "highlights"):
+    for arr in ("service_ids", "institution_ids", "service_areas", "specialties", "languages", "highlights",
+                "delivery_modes"):
         fields[arr] = fields.get(arr) or []
     fields["experience_years"] = fields.get("experience_years") or 0
     fields["fee_unit"] = fields.get("fee_unit") or "negotiable"

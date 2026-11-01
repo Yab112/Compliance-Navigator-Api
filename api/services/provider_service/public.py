@@ -82,6 +82,7 @@ def public_profile(slug: str) -> dict | None:
     provider["services"] = _services(provider["service_ids"])
     provider["team"] = team(provider["id"]) if provider["provider_type"] == "agency" else []
     provider["agency"] = agency_of(provider["id"])
+    provider["licences"] = licences(provider["id"]) if provider["provider_type"] == "advisor" else []
     provider["reviews"] = list_reviews(provider["id"], limit=10)
     provider["is_new"] = provider["rating_count"] < trust_score.NEW_UNTIL_REVIEWS
     provider["rating_breakdown"] = fetch_one(
@@ -103,6 +104,20 @@ def public_profile(slug: str) -> dict | None:
     }
     provider["rating_distribution"] = {str(n): counts.get(n, 0) for n in range(5, 0, -1)}
     return provider
+
+
+def licences(provider_id: str) -> list[dict]:
+    """Professional licences staff verified and still in date: what, and until when. Never the copy
+    itself or its number."""
+    from services.vetting.rules import KINDS, LICENCE_KINDS
+
+    rows = fetch_all(
+        "select d.kind, d.expires_on as valid_until, d.reviewed_at as verified_at from provider_documents d "
+        "where d.provider_id = %s and d.status = 'verified' and d.kind = any(%s) "
+        "and (d.expires_on is null or d.expires_on >= current_date) order by d.kind",
+        (provider_id, list(LICENCE_KINDS)),
+    )
+    return [{**r, "label": KINDS[r["kind"]].label} for r in rows]
 
 
 REVIEW_SORTS = {

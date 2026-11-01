@@ -75,6 +75,9 @@ def _vet(provider_id: str) -> None:
         "education": {"level": "grade_12"},
         "trade_licence": {"reference_no": "AA/14/1234", "expires_on": today + timedelta(days=300)},
         "tin_certificate": {"reference_no": "0012345678"},
+        "tax_agent_licence": {"reference_no": "MOR-TA-0001", "expires_on": today + timedelta(days=300)},
+        "audit_licence": {"reference_no": "AABE-0001", "expires_on": today + timedelta(days=300)},
+        "accounting_qualification": {"reference_no": "ACCA-0001"},
     }
     items = vetting.checklist(provider_service.get(provider_id))["items"]
     # The guarantor's papers sit inside the guarantor item

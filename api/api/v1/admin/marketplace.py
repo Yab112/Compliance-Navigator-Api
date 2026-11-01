@@ -47,7 +47,7 @@ def stats():
 
 @router.get("/providers")
 def list_providers(
-    type: str | None = Query(None, pattern="^(guday_geday|agency)$"),
+    type: str | None = Query(None, pattern="^(guday_geday|agency|advisor)$"),
     status_: str | None = Query(None, alias="status"),
     license_status: str | None = Query(None, pattern="^(none|pending|verified|rejected)$"),
     q: str | None = Query(None, max_length=100),

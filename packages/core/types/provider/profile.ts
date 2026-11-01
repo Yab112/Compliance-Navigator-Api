@@ -1,6 +1,10 @@
 import type { NotReadyReason } from "./vetting";
 
-export type ProviderType = "guday_geday" | "agency";
+export type ProviderType = "guday_geday" | "agency" | "advisor";
+/** Where an advisor works with a client */
+export type DeliveryMode = "client_office" | "provider_office" | "online";
+/** A professional licence staff verified and still in date (advisors) */
+export type ProviderLicence = { kind: string; label: string; valid_until?: string | null; verified_at?: string | null };
 export type EntityType = "individual" | "company";
 export type ProviderStatus = "pending" | "approved" | "rejected" | "suspended";
 export type FeeUnit = "per_job" | "percent" | "per_hour" | "negotiable";
@@ -121,9 +125,13 @@ export type PublicProvider = {
   approved_at?: string | null;
   created_at: string;
   is_sample?: boolean;
+  delivery_modes?: DeliveryMode[];
+  /** What a visit to the client's office costs on top of the work (ETB) */
+  visit_fee?: number | null;
 };
 
 export type ProviderProfileView = PublicProvider & {
+  licences?: ProviderLicence[];
   services: ProviderService[];
   team: TeamMember[];
   agency: AgencyLink | null;
@@ -201,6 +209,8 @@ export type ProviderFormValues = {
   external_license_no?: string;
   vat_registered?: boolean;
   vat_number?: string | null;
+  delivery_modes?: DeliveryMode[];
+  visit_fee?: number | null;
 };
 
 export type ProviderJoinInput = ProviderFormValues & {

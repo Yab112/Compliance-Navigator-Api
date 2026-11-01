@@ -94,7 +94,13 @@ PROVIDER_WANTS = [
     (re.compile(r"\b(customs|clearing|forwarding|import|export)\b|ጉምሩክ", re.I), "agency", "customs_clearing"),
     (re.compile(r"\b(visa|travel)\b|ቪዛ", re.I), "agency", "travel_visa"),
     (re.compile(r"\b(employment|recruit|recruitment|job abroad)\b|ቅጥር ኤጀንሲ", re.I), "agency", "employment"),
-    (re.compile(r"\b(lawyer|legal|accountant|accounting|audit)\b|ጠበቃ|ሂሳብ", re.I), "agency", "legal_accounting"),
+    # Tax and business advisors (licensed tax agents, auditors, accountants)
+    (re.compile(r"\b(tax agents?|tax advis[eo]rs?|tax consultants?|tax returns?|tax filing)\b|የታክስ ወኪል|የግብር አማካሪ", re.I),
+     "advisor", "tax_agent"),
+    (re.compile(r"\b(audit|auditors?|auditing)\b|ኦዲተር|ኦዲት", re.I), "advisor", "auditor"),
+    (re.compile(r"\b(accountants?|accounting|bookkeep\w*)\b|የሂሳብ ባለሙያ|ሂሳብ ሰራተኛ|አካውንታንት", re.I), "advisor", "accountant"),
+    (re.compile(r"\b(business advis[eo]rs?|business consultants?|advis[eo]rs?)\b|አማካሪ", re.I), "advisor", None),
+    (re.compile(r"\b(lawyer|legal)\b|ጠበቃ", re.I), "agency", "legal_accounting"),
     (re.compile(r"\b(agency|agencies)\b|ኤጀንሲ", re.I), "agency", None),
     (re.compile(r"\b(guday|errand|runner)\b|ጉዳይ ገዳይ", re.I), "guday_geday", None),
 ]
@@ -104,9 +110,21 @@ BROKER = re.compile(r"\b(broker|brokers|delala|dalala|real estate agent)\b|ደ�
 PROPERTY_HUNT = re.compile(
     r"\b(for rent|to rent|rent an?|apartment|condo|condominium|studio)\b|\b(buy|sell|find)\b.*\b(house|home|villa|plot|land|car|vehicle)\b"
     r"|ኪራይ ቤት|የሚከራይ|ቤት (መግዛት|መሸጥ|መከራየት)|መኪና (መግዛት|መሸጥ)", re.I)
+# "I'm about to start a business but I don't know what to do": the steps in order, not one service.
+# A message that names a step (TIN, trade licence, registration) goes to that step's path instead.
+START_BUSINESS = re.compile(
+    r"\b(start\w*|open\w*|launch\w*|set\w* up|begin\w*)\b.{0,40}\b(business|company|shop|plc|firm|enterprise)\b"
+    r"|\bnew (business|company)\b|ንግድ (መክፈት|መጀመር|ልጀምር|ልከፍት)|ድርጅት (መክፈት|ማቋቋም|ማቋቋሚያ)|nigd (mekfet|mejemer)", re.I)
+NAMES_STEP = re.compile(
+    r"\b(tin|trade licen[cs]e|business licen[cs]e|commercial registration|competenc\w*|name reservation)\b"
+    r"|ቲን|የንግድ ፈቃድ|የንግድ ምዝገባ|የብቃት", re.I)
+INVESTMENT_ADVICE = re.compile(
+    r"\b(should i (invest|buy)|what (should|can) i invest|which (stocks?|shares?)|invest (my|in)|stock market|buy shares"
+    r"|investment advice)\b|ኢንቨስት ላድርግ|አክሲዮን ልግዛ|በምን ኢንቨስት", re.I)
 LOOKING = re.compile(r"\b(need|looking|look for|find|want|searching|search|show me)\b|እፈልጋለሁ|ፈልግ|ፈልጉ", re.I)
 PROVIDER_PLURAL = {
     "agency": ("agencies", "ኤጀንሲዎች"),
+    "advisor": ("tax and business advisors", "የታክስና የንግድ አማካሪዎች"),
     "guday_geday": ("errand agents (Guday Geday)", "ጉዳይ ገዳዮች"),
 }
 

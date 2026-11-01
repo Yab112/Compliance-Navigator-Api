@@ -4,19 +4,25 @@ from __future__ import annotations
 
 from services.db import fetch_one
 
-PROVIDER_TYPES = ("guday_geday", "agency")
+PROVIDER_TYPES = ("guday_geday", "agency", "advisor")
 ENTITY_TYPES = ("individual", "company")
 SPECIALTIES = {
     "guday_geday": (), # Guday Geday list MESOB / organisation services instead
     "agency": ("customs_clearing", "travel_visa", "employment",
                "legal_accounting", "consultancy", "other"),
+    # Tax and business advisors, people or firms. tax_agent, auditor and accountant need a verified
+    # licence or qualification first (vetting LICENCE_FOR_SPECIALTY). Investment advice is not offered:
+    # it needs a licence from the Ethiopian Capital Market Authority (Proclamation No. 1248/2021).
+    "advisor": ("tax_agent", "accountant", "auditor", "business_setup"),
 }
+# Where the work happens. client_office: the advisor visits the client.
+DELIVERY_MODES = ("client_office", "provider_office", "online")
 SUB_CITIES = ("addis_ketema", "akaki", "arada", "bole", "gulele", "kirkos", "kolfe",
               "lideta", "nifas_silk", "yeka")
 REGIONS = ("adama", "bahir_dar", "dire_dawa", "hawassa", "mekelle", "gondar", "jimma",
            "dessie", "harar", "bishoftu", "nationwide")
 AREAS = SUB_CITIES + REGIONS
-REG_PREFIX = {"guday_geday": "GG", "agency": "AG"}
+REG_PREFIX = {"guday_geday": "GG", "agency": "AG", "advisor": "AD"}
 
 # Status transitions an admin may apply, and the resulting status
 ADMIN_ACTIONS = {
@@ -44,7 +50,7 @@ PUBLIC_COLUMNS = """
   -- Badge only once staff have approved the profile (that is when the TIN and trade licence are checked)
   (p.tin is not null and (p.entity_type = 'individual' or p.trade_license_no is not null)
     and p.approved_at is not null) as registered_business,
-  p.license_expires_at, p.approved_at, p.created_at, p.is_sample
+  p.license_expires_at, p.approved_at, p.created_at, p.is_sample, p.delivery_modes, p.visit_fee::float
 """
 
 PRIVATE_COLUMNS = PUBLIC_COLUMNS + """,
@@ -77,13 +83,14 @@ PROFILE_FIELDS = (
     "experience_years", "fee_from", "fee_to", "fee_unit", "pricing_notes", "highlights",
     "accepting_work", "legal_name", "tin", "trade_license_no", "representative_title",
     "external_license_type", "external_license_no", "photo_url", "license_document_url",
+    "delivery_modes", "visit_fee",
 )
 NULLABLE_FIELDS = {
     "display_name_am", "headline", "bio", "telegram_username", "email", "website", "sub_city", "address",
     "vat_number",
     "fee_from", "fee_to", "pricing_notes", "legal_name", "tin", "trade_license_no",
     "representative_title", "external_license_type", "external_license_no", "photo_url",
-    "license_document_url",
+    "license_document_url", "visit_fee",
 }
 
 

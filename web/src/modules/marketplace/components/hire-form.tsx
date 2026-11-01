@@ -10,7 +10,8 @@ import { getErrorMessage } from "@cn/core/lib/errors";
 import { AxiosError } from "axios";
 import { Field, PHONE_RE } from "@cn/ui/guday/shared";
 import { useUserStore } from "@/store";
-import type { Hire } from "@cn/core/types/provider";
+import type { DeliveryMode, Hire } from "@cn/core/types/provider";
+import { DELIVERY_LABELS } from "@cn/ui/marketplace/constants";
 import { cleanTelegram, TELEGRAM_HINT, TELEGRAM_RE } from "@/lib/telegram";
 
 type HireFormProps = {
@@ -22,6 +23,9 @@ type HireFormProps = {
   defaultTitle?: string;
   defaultDetails?: string;
   subCity?: string;
+  /** Where the provider works with clients (advisors); the client picks one */
+  deliveryModes?: DeliveryMode[];
+  visitFee?: number | null;
   returnTo: string;
   submitLabel?: string;
   onCreated?: (hire: Hire) => void;
@@ -57,6 +61,8 @@ function HireFormFields({
   defaultTitle = "",
   defaultDetails = "",
   subCity,
+  deliveryModes = [],
+  visitFee,
   returnTo,
   submitLabel,
   onCreated,
@@ -69,6 +75,7 @@ function HireFormFields({
   const [telegram, setTelegram] = useState(user?.telegramUsername ? `@${user.telegramUsername}` : "");
   const [details, setDetails] = useState(defaultDetails);
   const [budget, setBudget] = useState("");
+  const [mode, setMode] = useState<DeliveryMode | null>(deliveryModes.length === 1 ? deliveryModes[0] : null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [created, setCreated] = useState<Hire | null>(null);
@@ -113,6 +120,7 @@ function HireFormFields({
     // Both sides talk on Telegram once the provider accepts, so it is required like the phone
     if (!telegram.trim()) next.telegram = "Add your Telegram username so the provider can message you";
     else if (!TELEGRAM_RE.test(cleanTelegram(telegram))) next.telegram = TELEGRAM_HINT;
+    if (deliveryModes.length && !mode) next.mode = "Choose where you want to meet";
     setErrors(next);
     if (Object.keys(next).length) return;
     setSubmitError(null);
@@ -128,6 +136,7 @@ function HireFormFields({
         sub_city: subCity,
         details: details.trim() || undefined,
         budget: budget.trim() || undefined,
+        delivery_mode: mode ?? undefined,
       });
       setCreated(res.hire);
       onCreated?.(res.hire);
@@ -160,6 +169,24 @@ function HireFormFields({
           <Input id="hire-telegram" placeholder="@your_username" value={telegram} onChange={(e) => setTelegram(e.target.value)} />
         </Field>
       </div>
+      {deliveryModes.length > 0 && (
+        <fieldset>
+          <legend className="mb-1.5 text-xs font-medium">Where do you want to meet? <span className="text-destructive">*</span></legend>
+          <div className="space-y-1.5">
+            {deliveryModes.map((m) => (
+              <label key={m} className="flex items-center gap-2 text-sm">
+                <input type="radio" name="hire-mode" className="accent-primary size-4" checked={mode === m} onChange={() => setMode(m)} />
+                {m === "client_office" ? "At my office" : m === "provider_office" ? "At their office" : DELIVERY_LABELS[m].short}
+                {m === "client_office" && visitFee ? <span className="text-muted-foreground text-xs">· visit fee {visitFee.toLocaleString("en")} ETB</span> : null}
+              </label>
+            ))}
+          </div>
+          {mode === "client_office" && (
+            <p className="text-muted-foreground mt-1 text-[11px]">Share your exact address on Telegram once they accept.</p>
+          )}
+          {errors.mode && <p className="text-destructive mt-1 text-[11px]">{errors.mode}</p>}
+        </fieldset>
+      )}
       <Field label="Details" htmlFor="hire-details" hint="Dates, documents you already have, anything the provider should know.">
         <Textarea id="hire-details" rows={3} value={details} onChange={(e) => setDetails(e.target.value)} />
       </Field>

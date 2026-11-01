@@ -87,11 +87,13 @@ def checklist(provider: dict, *, for_staff: bool = False) -> dict:
     }
 
 
-def template(entity_type: str) -> dict:
-    """The documents someone joining will be asked for, before they have a profile (the join form)."""
+def template(entity_type: str, provider_type: str | None = None, specialties: list[str] | None = None) -> dict:
+    """The documents someone joining will be asked for, before they have a profile (the join form).
+    Advisors also see the licences their chosen specialties need."""
     company = entity_type == "company"
     items = []
-    for kind in document_kinds({"entity_type": entity_type}):
+    draft = {"entity_type": entity_type, "provider_type": provider_type, "specialties": specialties or []}
+    for kind in document_kinds(draft):
         meta = KINDS[kind]
         if meta.guarantor:
             continue  # one guarantor item below

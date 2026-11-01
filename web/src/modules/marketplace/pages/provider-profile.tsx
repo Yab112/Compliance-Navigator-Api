@@ -18,7 +18,7 @@ import type { ProviderProfileView, Review } from "@cn/core/types/provider";
 import { HireForm } from "@/modules/marketplace/components/hire-form";
 import { ProviderAvatar, verifiedLevel } from "@cn/ui/marketplace/provider-avatar";
 import { ScoreBadge, ScoreBreakdown, Stars, TypeBadge, VerificationBadges } from "@cn/ui/marketplace/trust";
-import { SUB_RATINGS, areaLabel, formatFee, memberSince, responseLabel, specialtyLabel } from "@cn/ui/marketplace/constants";
+import { DELIVERY_LABELS, SUB_RATINGS, areaLabel, formatFee, memberSince, responseLabel, specialtyLabel } from "@cn/ui/marketplace/constants";
 import { PageNav } from "@cn/ui/layout/page-nav";
 
 function Section({ id, title, am, children, aside }: { id?: string; title: string; am?: string; children: React.ReactNode; aside?: React.ReactNode }) {
@@ -370,6 +370,25 @@ export function ProviderProfile({ slug }: { slug: string }) {
                   ))}
                 </div>
               )}
+              {(p.licences ?? []).length > 0 && (
+                <ul className="mb-4 space-y-1.5">
+                  {(p.licences ?? []).map((l) => (
+                    <li key={l.kind} className="text-sm">
+                      <span className="font-medium">{l.label}</span>{" "}
+                      <span className="text-muted-foreground text-xs">
+                        · checked by staff{l.valid_until ? `, valid until ${new Date(l.valid_until).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(p.delivery_modes ?? []).length > 0 && (
+                <p className="mb-4 text-sm">
+                  <span className="text-muted-foreground">Works </span>
+                  {(p.delivery_modes ?? []).map((m) => DELIVERY_LABELS[m].short.toLowerCase()).join(", ")}
+                  {p.visit_fee ? <span className="text-muted-foreground"> · visit fee {p.visit_fee.toLocaleString("en")} ETB</span> : null}
+                </p>
+              )}
               {p.services.length > 0 ? (
                 <ul className="divide-border divide-y">
                   {p.services.map((s) => (
@@ -469,6 +488,8 @@ export function ProviderProfile({ slug }: { slug: string }) {
                   providerId={p.slug}
                   providerName={p.display_name}
                   serviceId={p.services.length === 1 ? p.services[0].id : undefined}
+                  deliveryModes={p.delivery_modes}
+                  visitFee={p.visit_fee}
                   returnTo={`/providers/${p.slug}#hire`}
                 />
               ) : (
