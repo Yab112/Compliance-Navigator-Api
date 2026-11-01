@@ -176,6 +176,16 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
         state["pending"] = None
         return _advance(state, user), info
 
+    # The agentic assistant takes free-text turns when it is switched on; it answers None to hand back
+    from assistant import llm_agent
+
+    if llm_agent.enabled():
+        agentic = llm_agent.run(state, text, user, ctx, _reply)
+        if agentic:
+            state["misses"] = 0
+            info.update(routed_intent="agentic", service=(state.get("service") or {}).get("key"))
+            return agentic, info
+
     # "What did Meron do", "the first one", "her reviews": a provider we just showed
     slug, candidates = references.resolve(text, state, prev_topic)
     if slug or candidates:

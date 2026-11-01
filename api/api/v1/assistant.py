@@ -81,7 +81,8 @@ def turn(body: TurnBody, request: Request, user: AuthUser | None = Depends(get_o
     store.add_message(conversation["id"], "user", user_text, None if body.message else {"tap": True})
     reply, info = dialogue.handle(state, message=body.message, action=body.action, user=user,
                                   ctx={"conversation_id": conversation["id"], "ip": client_info(request).ip})
-    reply["text"] = rephrase.maybe_rephrase(reply["text"], state["lang"])
+    if not reply.get("agentic"):  # the agent already wrote it; templates may be reworded
+        reply["text"] = rephrase.maybe_rephrase(reply["text"], state["lang"])
     reply.update(intent=info.get("routed_intent") or info["intent"], confidence=info["confidence"])
     store.add_message(conversation["id"], "assistant", reply["text"], reply)
     store.save_state(conversation["id"], state["lang"], state)
