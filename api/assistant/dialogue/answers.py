@@ -21,7 +21,8 @@ from assistant.texts import chip, t
 
 
 # A question that asks both, e.g. "how much does it cost and how long does it take?"
-ASKS_FEE = re.compile(r"\b(cost|costs|fee|fees|price|pay|how much(?! time))\b|ክፍያ|ስንት ብር|ያስከፍላል", re.I)
+ASKS_FEE = re.compile(r"\b(cost|costs|fee|fees|price|pay|charge|charges|how much(?! time))\b|ክፍያ|ስንት ብር|ያስከፍላል", re.I)
+ASKS_TAX = re.compile(r"\b(tax|taxes|taxed|vat|income tax|pension|truth|obligations?)\b|ግብር|ታክስ|ቫት|ጡረታ", re.I)
 ASKS_TIME = re.compile(r"\b(how long|time|days|take|takes|duration|wait)\b|ጊዜ|ይፈጃል|ቀን", re.I)
 
 
@@ -42,6 +43,9 @@ def _answer(intent: str, rec: dict, state: dict, question: str = "") -> dict:
     if intent == "ask_fee" or (intent == "ask_time" and ASKS_FEE.search(question or "")):
         fee = raw.get("fee_text") if src == "mesob" else _org_fee_text(raw, state.get("applicant")) if src == "org" else (
             _fmt_money(raw.get("fee_etb")) if raw.get("fee_etb") is not None else None)
+        if fee and src == "path":
+            # Path data is ours, not the office's: never state it as the office's fee
+            fee += ", not yet confirmed by the office" if lang == "en" else "፣ ገና በቢሮው ያልተረጋገጠ"
         text = t("fee", lang, title=title, fee=fee) if fee else t("fee_unknown", lang, title=title)
         if src == "org" and raw.get("payment_methods"):
             text += " " + ("Payment: " if lang == "en" else "የክፍያ መንገድ፦ ") + ", ".join(raw["payment_methods"]) + "."
@@ -114,7 +118,7 @@ PROPERTY_HUNT = re.compile(
 # A message that names a step (TIN, trade licence, registration) goes to that step's path instead.
 START_BUSINESS = re.compile(
     r"\b(start\w*|open\w*|launch\w*|set\w* up|begin\w*)\b.{0,40}\b(business|company|shop|plc|firm|enterprise)\b"
-    r"|\bnew (business|company)\b|ንግድ (መክፈት|መጀመር|ልጀምር|ልከፍት)|ድርጅት (መክፈት|ማቋቋም|ማቋቋሚያ)|nigd (mekfet|mejemer)", re.I)
+    r"|\bnew (business|company)\b|ንግድ (ለ?መክፈት|ለ?መጀመር|ልጀምር|ልከፍት)|ድርጅት (መክፈት|ማቋቋም|ማቋቋሚያ)|nigd (mekfet|mejemer)", re.I)
 NAMES_STEP = re.compile(
     r"\b(tin|trade licen[cs]e|business licen[cs]e|commercial registration|competenc\w*|name reservation)\b"
     r"|ቲን|የንግድ ፈቃድ|የንግድ ምዝገባ|የብቃት", re.I)
@@ -201,3 +205,25 @@ def _hire(state: dict, text: str = "") -> dict:
                   actions=[{"kind": "link", "label": chip("hire", lang), "href": href},
                            {"kind": "action", "label": agent.staff_match_chip(lang)["label"], "action": agent.staff_match_chip(lang)["action"]}],
                   quick_replies=about or (_qa_chips(state) if rec else _popular_chips(lang)))
+
+
+# ---------------------------------------------------------------- starting a business: costs and taxes
+
+START_STEPS = ("path:tin", "path:commercial_registration", "path:trade_license")
+
+
+def start_business_costs(state: dict) -> str:
+    """The government fee for each start-up step, from the same records every other answer uses,
+    each labelled with whether the office confirmed it."""
+    lang = state["lang"]
+    lines = []
+    for key in START_STEPS:
+        rec = _service_record(key)
+        if not rec:
+            continue
+        amount = rec["raw"].get("fee_etb")
+        fee = ("Free" if lang == "en" else "ነፃ") if amount == 0 else _fmt_money(amount) if amount is not None else (
+            "not recorded yet" if lang == "en" else "ገና አልተመዘገበም")
+        lines.append(f"• {_title(rec, lang)}: {fee}")
+    head = t("start_costs_head", lang)
+    return head + "\n" + "\n".join(lines) + "\n" + t("start_costs_tail", lang)

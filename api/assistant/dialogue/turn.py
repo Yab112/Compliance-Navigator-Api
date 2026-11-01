@@ -6,7 +6,10 @@ import re
 
 from assistant import agent, entities, nlu, references, resolver
 from assistant.dialogue.answers import (
+    ASKS_FEE,
+    ASKS_TAX,
     BROKER,
+    START_STEPS,
     INVESTMENT_ADVICE,
     LOOKING,
     NAMES_STEP,
@@ -14,6 +17,7 @@ from assistant.dialogue.answers import (
     START_BUSINESS,
     _answer,
     _hire,
+    start_business_costs,
 )
 from assistant.dialogue.base import (
     HIRE,
@@ -175,6 +179,10 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
         intent = "no_brokers"
     elif not task and INVESTMENT_ADVICE.search(text):
         intent = "no_investment_advice"
+    elif not task and intent not in ("thanks", "goodbye", "start_over") and (ASKS_FEE.search(text) or ASKS_TAX.search(text)) \
+            and (START_BUSINESS.search(text) or (state.get("subject") == "start_business" and _about_starting(text, state))):
+        # "How much will the government charge me", "what taxes will I pay": about the whole start-up
+        intent = "start_business_more"
     elif not task and intent not in ("thanks", "goodbye", "start_over") and START_BUSINESS.search(text) \
             and not NAMES_STEP.search(text):
         intent = "start_business"
@@ -185,13 +193,30 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
     elif intent == "no_brokers":
         reply = _reply(state, t("no_brokers", lang), quick_replies=[
             {"label": chip("hire", lang), "action": {"type": "hire"}}, *_popular_chips(lang)[:4]])
-    elif intent == "start_business":
-        reply = _reply(state, t("start_business", lang), quick_replies=[
+    elif intent in ("start_business", "start_business_more"):
+        fresh = state.get("subject") != "start_business"
+        intent = "start_business" if fresh else "start_business_more"
+        state["subject"] = "start_business"
+        wants_cost, wants_tax = bool(ASKS_FEE.search(text)), bool(ASKS_TAX.search(text))
+        parts = [t("start_business", lang)] if fresh else []
+        if wants_cost:
+            parts.append(start_business_costs(state))
+        if wants_tax:
+            parts.append(t("business_taxes", lang))
+        chips = []
+        if not wants_cost:
+            chips.append({"label": chip("start_costs", lang), "action": _msg_action(
+                "how much will starting a business cost" if lang == "en" else "ንግድ ለመጀመር ስንት ያስከፍላል")})
+        if not wants_tax:
+            chips.append({"label": chip("business_taxes", lang), "action": _msg_action(
+                "what taxes will my business pay" if lang == "en" else "ንግዴ ምን ግብሮች ይከፍላል")})
+        chips += [
             {"label": chip("tin", lang), "action": _msg_action("TIN certificate")},
             {"label": chip("commercial_registration", lang), "action": _msg_action("commercial registration")},
             {"label": chip("trade_license", lang), "action": _msg_action("trade license")},
             {"label": chip("advisor", lang), "action": _msg_action("find me a business advisor")},
-        ])
+        ]
+        reply = _reply(state, "\n\n".join(parts), quick_replies=chips)
     elif intent == "no_investment_advice":
         reply = _reply(state, t("no_investment_advice", lang), quick_replies=[
             {"label": chip("advisor", lang), "action": _msg_action("find me a tax agent")},
@@ -254,6 +279,17 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
     info["service"] = (state.get("service") or {}).get("key")
     info["routed_intent"] = intent
     return reply, info
+
+
+def _about_starting(text: str, state: dict) -> bool:
+    """While we talk about starting a business, a cost or tax question is about the start-up unless it
+    clearly names some other service (a passport, say)."""
+    probe = resolver.resolve(entities.want_text(text), state["lang"])
+    if probe["status"] == "resolved":
+        return probe["candidate"].key in START_STEPS
+    if probe["status"] == "ambiguous":
+        return any(o["key"] in START_STEPS for o in probe.get("options") or [])
+    return True  # names no service: "how much will it all cost", "what taxes will I pay"
 
 
 def _handle_action(state: dict, action: dict, user, ctx: dict | None = None) -> dict:

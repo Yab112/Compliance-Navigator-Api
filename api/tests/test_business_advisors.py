@@ -115,3 +115,33 @@ def test_an_expired_licence_takes_the_advisor_off_the_list(client, make_user):
             "where provider_id = %s and kind = 'audit_licence'", (p["id"],))
     provider_service.refresh_readiness(p["id"])
     assert client.get(f"{API}/providers/{p['slug']}").status_code == 404
+
+
+def test_the_users_real_conversation_gets_steps_then_costs_and_taxes(client):
+    # Reported on 2026-11-01: the follow-up repeated our source line and was sent into one service instead
+    p = _turn(client, message="i want to start business and what are the truth i need to know about the tax , "
+                              "licence and harsh truth right now")
+    first = p["reply"]
+    assert first["intent"] == "start_business"
+    assert "Category A" in first["text"] and "15%" in first["text"]  # the tax part was asked for
+    p = _turn(client, p["conversationId"], message=(
+        "Source: Commercial Registration and Business Licensing Proclamation No. 980/2016, amended by No. 1150/2019. "
+        "can i get more data about this man and how much the goverment will charge me starting from what etcc"))
+    reply = p["reply"]
+    assert reply["intent"] == "start_business_more"
+    assert "not been confirmed" in reply["text"] or "confirmed by the office" in reply["text"]
+    assert "TIN" in reply["text"] and "Trade license" in reply["text"]
+    assert "never to a person" in reply["text"]
+    labels = [q["label"] for q in reply["quick_replies"]]
+    assert "Taxes I'll pay" in labels
+
+
+def test_a_cost_question_about_another_service_leaves_the_business_topic(client):
+    p = _turn(client, message="I want to open a business")
+    p = _turn(client, p["conversationId"], message="how much is a passport")
+    assert p["reply"]["intent"] != "start_business_more"
+
+
+def test_unconfirmed_path_fees_say_so(client):
+    p = _turn(client, message="how much is commercial registration")
+    assert "not yet confirmed by the office" in p["reply"]["text"]

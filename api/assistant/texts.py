@@ -98,6 +98,54 @@ T: dict[str, dict[str, str]] = {
               "በአጋሮችዎ፣ በካፒታልዎና በሚከፍሉት ግብር ይወሰናል፤ ፈቃድ ያለው የታክስ ወኪል ወይም የሂሳብ ባለሙያ ጉዳይዎን "
               "ሊያይልዎ ይችላል። ሰነዶቹን፣ ክፍያዎቹንና ቢሮዎቹን ለማየት አንድ ደረጃ ይምረጡ።",
     },
+    "start_costs_head": {
+        "en": "What the offices charge for each step, from our records. None of these amounts has been confirmed "
+              "by the office yet, so check the fee at the window before you pay:",
+        "am": "እያንዳንዱ ደረጃ በቢሮዎቹ የሚያስከፍለው፣ ከመዝገባችን። ከእነዚህ ክፍያዎች አንዳቸውም ገና በቢሮው አልተረጋገጡም፤ "
+              "ከመክፈልዎ በፊት በመስኮቱ ላይ ያረጋግጡ፦",
+    },
+    "start_costs_tail": {
+        "en": "Fees can differ between sub-cities and with your capital and activity. A PLC also pays to authenticate "
+              "its memorandum and articles at the Documents Authentication and Registration Service. Budget too for a "
+              "notarised lease for your premises, any sector certificate of competence, and an accountant.\n"
+              "Pay official fees only at the office window or through the office's own payment channel, never to a person.",
+        "am": "ክፍያዎቹ በክፍለ ከተማና በካፒታልዎና በሥራ ዘርፍዎ ሊለያዩ ይችላሉ። ኃ/የተ/የግ/ማ የመመስረቻ ጽሑፉንና መተዳደሪያ "
+              "ደንቡን በሰነዶች ማረጋገጫና ምዝገባ አገልግሎት ለማስረጋገጥም ይከፍላል። ለሥራ ቦታዎ የተረጋገጠ የኪራይ ውል፣ "
+              "ለዘርፍዎ የብቃት ማረጋገጫ ካስፈለገ፣ እና ለሂሳብ ባለሙያም በጀት ይያዙ።\n"
+              "ኦፊሴላዊ ክፍያዎችን በቢሮው መስኮት ወይም በቢሮው የራሱ የክፍያ መንገድ ብቻ ይክፈሉ፤ ለግለሰብ በፍጹም አይክፈሉ።",
+    },
+    # Checked against Income Tax (Amendment) Proclamation No. 1395/2025, VAT Proclamation No. 1341/2024 and the
+    # private-sector pension law on 2026-11-01. Rates and thresholds change: review this text every year.
+    "business_taxes": {
+        "en": "The taxes a new business has to deal with (general information, checked 1 Nov 2026):\n"
+              "• Every company (PLC, share company) is a Category A taxpayer from the first day: it keeps proper books "
+              "and pays 30% tax on its profit. A sole proprietor becomes Category A once yearly sales pass 2 million ETB.\n"
+              "• Smaller sole proprietors (Category B) pay a presumptive tax worked out from their yearly sales, "
+              "instead of keeping full books.\n"
+              "• VAT is 15%. You must register once your taxable sales pass 2 million ETB in any 12 months. A "
+              "VAT-registered business files a return every month, including months with no sales.\n"
+              "• If you employ people, you withhold their income tax every month and pay their pension: 7% from "
+              "the employee and 11% from you.\n"
+              "• The trade licence is renewed every year. Late renewals and late tax filings bring penalties and interest.\n"
+              "• Stopping work does not end these duties. Close the business formally and settle your TIN account.\n"
+              "Sources: Income Tax (Amendment) Proclamation No. 1395/2025, VAT Proclamation No. 1341/2024, Private "
+              "Organization Employees' Pension Proclamation No. 715/2011.\n\n"
+              "This is general information, not tax advice. What applies to you depends on your business, so a "
+              "licensed tax agent should check your case before you register.",
+        "am": "አዲስ ንግድ የሚመለከታቸው ግብሮች (አጠቃላይ መረጃ፣ ኖቬምበር 1 ቀን 2026 የተረጋገጠ)፦\n"
+              "• ማንኛውም ድርጅት (ኃ/የተ/የግ/ማ፣ አክሲዮን ማህበር) ከመጀመሪያው ቀን የደረጃ ሀ ግብር ከፋይ ነው፤ ትክክለኛ የሂሳብ "
+              "መዝገብ ይይዛል፤ ከትርፉ 30% ግብር ይከፍላል። የግል ነጋዴ ዓመታዊ ሽያጩ ከ2 ሚሊዮን ብር ሲያልፍ ደረጃ ሀ ይሆናል።\n"
+              "• አነስተኛ የግል ነጋዴዎች (ደረጃ ለ) ሙሉ መዝገብ ከመያዝ ይልቅ ከዓመታዊ ሽያጫቸው በሚሰላ የግምት ግብር ይከፍላሉ።\n"
+              "• ተጨማሪ እሴት ታክስ (ቫት) 15% ነው። በማንኛውም 12 ወራት ውስጥ ታክስ የሚከፈልበት ሽያጭዎ ከ2 ሚሊዮን ብር ካለፈ "
+              "መመዝገብ ግዴታ ነው። በቫት የተመዘገበ ንግድ ሽያጭ በሌለበት ወርም ጭምር በየወሩ ያሳውቃል።\n"
+              "• ሠራተኛ ከቀጠሩ የገቢ ግብራቸውን በየወሩ ቀንሰው ያስገባሉ፤ የጡረታ መዋጮም ይከፍላሉ፦ ከሠራተኛው 7%፣ ከእርስዎ 11%።\n"
+              "• የንግድ ፈቃድ በየዓመቱ ይታደሳል። ዘግይቶ ማደስና ዘግይቶ ግብር ማሳወቅ ቅጣትና ወለድ ያስከትላል።\n"
+              "• ሥራ ማቆም እነዚህን ግዴታዎች አያስቀርም። ንግዱን በሕጋዊ መንገድ ይዝጉ፤ የቲን ሂሳብዎን ያወራርዱ።\n"
+              "ምንጭ፦ የገቢ ግብር (ማሻሻያ) አዋጅ ቁጥር 1395/2017፣ የተጨማሪ እሴት ታክስ አዋጅ ቁጥር 1341/2016፣ የግል ድርጅት "
+              "ሠራተኞች የጡረታ አዋጅ ቁጥር 715/2003።\n\n"
+              "ይህ አጠቃላይ መረጃ ነው እንጂ የግብር ምክር አይደለም። የሚመለከትዎ በንግድዎ ይወሰናል፤ ከመመዝገብዎ በፊት ፈቃድ ያለው "
+              "የታክስ ወኪል ጉዳይዎን ይመልከት።",
+    },
     # Investment advice needs a licence from the Ethiopian Capital Market Authority (Proclamation No.
     # 1248/2021), and automated advice a separate robo-adviser licence. The assistant never gives it.
     "no_investment_advice": {
@@ -126,6 +174,8 @@ CHIPS: dict[str, dict[str, str]] = {
     "kebele_id": {"en": "Kebele ID", "am": "የቀበሌ መታወቂያ"},
     "hire": {"en": "Hire an agent", "am": "ወኪል ልቅጠር"},
     "advisor": {"en": "Find a tax or business advisor", "am": "የታክስ ወይም የንግድ አማካሪ ፈልግ"},
+    "start_costs": {"en": "What will it cost?", "am": "ስንት ያስከፍላል?"},
+    "business_taxes": {"en": "Taxes I'll pay", "am": "የምከፍላቸው ግብሮች"},
     "commercial_registration": {"en": "Commercial registration", "am": "የንግድ ምዝገባ"},
     "fee": {"en": "How much is it?", "am": "ስንት ያስከፍላል?"},
     "documents": {"en": "What do I bring?", "am": "ምን ይዤ ልሂድ?"},
