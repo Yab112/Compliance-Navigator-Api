@@ -63,7 +63,9 @@ def _resolve_and_start(text: str, state: dict, user, prefix: str | None = None) 
         }, quick_replies=[{"label": chip("start_over", lang), "action": {"type": "start_over"}}])
     # Quote a short name back; a whole sentence quoted reads like a parrot
     short = len(text.split()) <= 4 and len(text) <= 40
-    return _missed(state, t("not_found", lang, text=text) if short else t("not_found_long", lang))
+    reply = _missed(state, t("not_found", lang, text=text) if short else t("not_found_long", lang))
+    reply["gap"] = "not_found"  # the learning run groups these into "add this service" findings
+    return reply
 
 
 def _missed(state: dict, text: str) -> dict:
@@ -307,6 +309,7 @@ def handle(state: dict, *, message: str | None, action: dict | None, user, ctx: 
         reply = _reply(state, t("start_over", lang), quick_replies=_popular_chips(lang))
     elif intent == "out_of_scope":
         reply = _missed(state, t("out_of_scope", lang))
+        reply["gap"] = "out_of_scope"
     elif intent == "smalltalk_other":
         reply = _reply(state, t("smalltalk", lang), quick_replies=_popular_chips(lang))
     elif intent == "multi_entity":

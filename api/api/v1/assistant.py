@@ -88,7 +88,7 @@ def turn(body: TurnBody, request: Request, user: AuthUser | None = Depends(get_o
     store.save_state(conversation["id"], state["lang"], state)
     if body.message:
         store.log_turn(conversation["id"], body.message, state["lang"], info["intent"], info["confidence"],
-                       info["ranked"], info["service"], info["version"])
+                       info["ranked"], info["service"], info["version"], gap=reply.pop("gap", None))
     return _ok({"conversationId": conversation["id"], "language": state["lang"], "reply": reply,
                 "channel": state.get("channel") or "agent", "ticket": _ticket(state),
                 "service": state.get("service"), "subCity": state.get("sub_city"), "held": state.get("held") or []})

@@ -61,15 +61,16 @@ def history(conversation_id: str, limit: int = 100, after: int | None = None) ->
 
 
 def log_turn(conversation_id: str, message: str, language: str, intent: str | None, confidence: float | None,
-             ranked: list | None, resolved_service: str | None, model_version: str | None) -> None:
+             ranked: list | None, resolved_service: str | None, model_version: str | None,
+             gap: str | None = None) -> None:
     execute(
         """
         insert into assistant_turns
-          (conversation_id, message_redacted, language, intent, confidence, ranked, resolved_service, model_version)
-        values (%s, %s, %s, %s, %s, %s, %s, %s)
+          (conversation_id, message_redacted, language, intent, confidence, ranked, resolved_service, model_version, gap)
+        values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (conversation_id, redact(message)[:500], language, intent, confidence,
-         Jsonb(ranked) if ranked is not None else None, resolved_service, model_version),
+         Jsonb(ranked) if ranked is not None else None, resolved_service, model_version, gap),
     )
 
 

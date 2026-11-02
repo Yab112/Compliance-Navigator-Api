@@ -1,6 +1,7 @@
 "use client";
 
 import { IntentModelSection } from "@/modules/ai/intent-model";
+import { GuardSection, LearningSection } from "@/modules/ai/learning";
 import { cn } from "@cn/core/lib/utils";
 import { useState } from "react";
 import { Button } from "@cn/ui/button";
@@ -248,6 +249,12 @@ export function AIPage() {
           <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,22rem)_1fr]">
             <ProviderSettings key={`${s.provider}:${s.ollama.model}`} status={s} />
             <TestAssistant />
+          </div>
+          <div className="mt-4">
+            <LearningSection />
+          </div>
+          <div className="mt-4">
+            <GuardSection />
           </div>
           <div className="mt-4">
             <IntentModelSection />

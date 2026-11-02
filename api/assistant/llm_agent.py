@@ -53,6 +53,9 @@ it as an office's official requirement.
 - Boundaries: you give general information, not legal or tax advice; for a personal case suggest a \
 licensed tax agent, accountant or lawyer (find_providers). Never advise on what to invest in or which \
 shares to buy (only ECMA-licensed advisers may). We do not list property or car brokers (delala).
+- Money questions (costs, taxes, budgets, loans, profit, pricing): explain fully with our data, then \
+always end by recommending they confirm with a verified finance or tax advisor, and call \
+find_providers(provider_type="advisor") so real people are listed under your reply.
 - If the person is upset, reports a problem or wants a person, call offer_person.
 - Reply in the person's language: Amharic if they write Amharic (Ge'ez script), otherwise English. \
 Keep replies short and plain, for a phone screen: a few sentences or a short list. No em dashes. \
@@ -119,6 +122,9 @@ WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search", "max_uses": W
               "user_location": {"type": "approximate", "country": "ET", "city": "Addis Ababa", "timezone": "Africa/Addis_Ababa"}}
 
 _NUM = re.compile(r"\d[\d,.]*\d|\d")
+# What the guard allows: each tool's own schema, and how often one turn may ask for it
+_LIMITS = {"search_services": 4, "get_service": 3, "build_path": 1, "business_guide": 2, "find_providers": 2,
+           "offer_person": 1}
 
 
 def enabled() -> bool:
@@ -143,8 +149,12 @@ def _get_client():
 class _Turn:
     """What the tools found this turn: the text the reply may draw facts from, and what to show."""
 
-    def __init__(self, state: dict, user) -> None:
+    def __init__(self, state: dict, user, conversation_id: str | None = None) -> None:
+        from assistant.guard import Guard, Rule
+
         self.state, self.user = state, user
+        self.guard = Guard({t["name"]: Rule(t["input_schema"], _LIMITS[t["name"]], t["description"][:80])
+                            for t in TOOLS}, conversation_id)
         self.evidence: list[str] = []
         self.cards: list[dict] = []
         self.actions: list[dict] = []
@@ -152,13 +162,17 @@ class _Turn:
         self.tools_used: list[str] = []
 
     def run(self, name: str, args: dict) -> str:
+        """Every request goes through the guard; only what it lets back counts as evidence."""
         self.tools_used.append(name)
         handler = getattr(self, f"_{name}", None)
-        if not handler:
-            return json.dumps({"error": f"unknown tool {name}"})
-        out = handler(**args)
-        text = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, default=str)
-        self.evidence.append(text)
+
+        def call() -> str:
+            out = handler(**args)
+            return out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, default=str)
+
+        text = self.guard.request(name, args, call)
+        if '"denied"' not in text[:20]:
+            self.evidence.append(text)
         return text
 
     def _search_services(self, query: str) -> dict:
@@ -322,7 +336,7 @@ def _create(messages: list[dict]):
 def run(state: dict, text: str, user, ctx: dict | None, reply_fn) -> dict | None:
     """One agentic turn. Returns a reply, or None to let the template assistant answer."""
     ctx = ctx or {}
-    turn = _Turn(state, user)
+    turn = _Turn(state, user, ctx.get("conversation_id"))
     messages = _history(ctx.get("conversation_id"), text)
     evidence_user = [m["content"] for m in messages if m["role"] == "user"]
     try:
@@ -365,6 +379,8 @@ def run(state: dict, text: str, user, ctx: dict | None, reply_fn) -> dict | None
                 continue
             if bad or not reply_text:
                 log.warning("Assistant reply failed the grounding check (%s); template answers", sorted(bad))
+                turn.guard._record("grounding_check", {"numbers": sorted(bad)[:10]}, "denied",
+                                   "numbers not in any tool result: " + ", ".join(sorted(bad)[:10]), 0.0, 0)
                 return None
             break
         else:
