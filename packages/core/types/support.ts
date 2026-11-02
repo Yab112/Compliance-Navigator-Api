@@ -120,6 +120,8 @@ export type SupportSummary = {
 export type AdminTicketDetail = TicketThread & {
   transcript: { role: "user" | "assistant" | "staff"; text: string; created_at: string }[];
   staff: { id: string; name: string }[];
+  /** The team's suggested opening, signed with the viewer's name; null once the team has answered */
+  suggested_reply: string | null;
 };
 
 export type TicketSort = "triage" | "newest" | "oldest" | "updated";
@@ -213,6 +215,8 @@ export type TicketPatch = {
   priority?: TicketPriority;
   queue?: SupportQueue;
   assignee_id?: string | null;
+  /** Shown only to staff, for the team the request moves to */
+  handover_note?: string;
 };
 
 export const QUEUE_LABELS: Record<SupportQueue, string> = {

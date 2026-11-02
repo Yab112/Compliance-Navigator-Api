@@ -56,6 +56,8 @@ function Controls({ ticket, staff }: { ticket: SupportTicket; staff: { id: strin
   const me = useUserStore((s) => s.user);
   const { update, isPending } = useSupportDesk();
   const [error, setError] = useState<string | null>(null);
+  const [moveTo, setMoveTo] = useState<SupportQueue | null>(null);
+  const [handover, setHandover] = useState("");
   const patch = async (body: TicketPatch) => {
     setError(null);
     try {
@@ -89,7 +91,14 @@ function Controls({ ticket, staff }: { ticket: SupportTicket; staff: { id: strin
         </label>
         <label className="grid gap-1">
           <span className="text-muted-foreground">Queue</span>
-          <NativeSelect value={ticket.queue} disabled={isPending} onChange={(e) => patch({ queue: e.target.value as SupportQueue })}>
+          <NativeSelect
+            value={moveTo ?? ticket.queue}
+            disabled={isPending}
+            onChange={(e) => {
+              const q = e.target.value as SupportQueue;
+              setMoveTo(q === ticket.queue ? null : q);
+            }}
+          >
             {(Object.keys(QUEUE_LABELS) as SupportQueue[]).map((q) => (
               <option key={q} value={q}>
                 {QUEUE_LABELS[q]}
@@ -97,6 +106,38 @@ function Controls({ ticket, staff }: { ticket: SupportTicket; staff: { id: strin
             ))}
           </NativeSelect>
         </label>
+        {moveTo && (
+          <div className="border-border grid gap-1.5 rounded-md border border-dashed p-2">
+            <span className="text-muted-foreground">
+              Handover note for {QUEUE_LABELS[moveTo]} (only staff see it). They also see the whole thread and the chat.
+            </span>
+            <textarea
+              value={handover}
+              onChange={(e) => setHandover(e.target.value)}
+              rows={3}
+              maxLength={2000}
+              aria-label="Handover note"
+              placeholder="What you found, what you already tried, what they should do next"
+              className="border-input bg-background rounded-md border px-2 py-1.5 text-xs"
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                loading={isPending}
+                onClick={async () => {
+                  await patch({ queue: moveTo, ...(handover.trim() ? { handover_note: handover.trim() } : {}) });
+                  setMoveTo(null);
+                  setHandover("");
+                }}
+              >
+                Move to {QUEUE_LABELS[moveTo]}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => { setMoveTo(null); setHandover(""); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
         <label className="grid gap-1">
           <span className="text-muted-foreground">Assignee</span>
           <NativeSelect
@@ -148,9 +189,10 @@ function CannedPicker({ ticketId, onPick }: { ticketId: string; onPick: (text: s
   );
 }
 
-function ReplyBox({ ticket }: { ticket: SupportTicket }) {
+function ReplyBox({ ticket, suggested }: { ticket: SupportTicket; suggested: string | null }) {
   const { reply, isPending } = useSupportDesk();
-  const [body, setBody] = useState("");
+  // Until the team has answered, start from the team's suggested opening; staff edit it before sending
+  const [body, setBody] = useState(suggested ?? "");
   const [cannedId, setCannedId] = useState<string | null>(null);
   const [internal, setInternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -207,6 +249,11 @@ function ReplyBox({ ticket }: { ticket: SupportTicket }) {
         aria-describedby={error ? "staff-reply-error" : undefined}
         onChange={(e) => setBody(e.target.value)}
       />
+      {suggested && body === suggested && !internal && (
+        <p className="text-[11px] text-amber-700">
+          Suggested first reply for this team, signed with your name. Edit it before sending.
+        </p>
+      )}
       {!internal && (
         <p className="text-muted-foreground text-[11px]">
           {fromChat
@@ -401,7 +448,7 @@ export function SupportTicketDetail({ id }: { id: string }) {
           <div className="border-border bg-background border p-4">
             <TicketThread messages={messages} viewer="staff" />
           </div>
-          <ReplyBox ticket={t} />
+          <ReplyBox key={`${t.id}:${payload.suggested_reply ? "first" : "later"}`} ticket={t} suggested={payload.suggested_reply ?? null} />
           {transcript.length > 0 && (
             <details className="border-border bg-card border">
               <summary className="cursor-pointer px-3 py-2 text-xs font-medium">

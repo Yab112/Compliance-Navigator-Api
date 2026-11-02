@@ -59,7 +59,9 @@ def test_handoff_asks_what_it_needs_then_staff_reply_reaches_the_chat(client, ma
     assert p["reply"] is None and p["delivered"] is True
     detail = client.get(f"{API}/admin/support/tickets/{tid}", headers=admin["headers"]).json()["payload"]
     assert detail["ticket"]["queue"] == "compliance" and detail["ticket"]["contact_phone"] == "0911223344"
-    assert [m["author_kind"] for m in detail["messages"]] == ["customer", "customer"]
+    # The desk acknowledged it at once; that is not counted as the team's first answer
+    assert [m["author_kind"] for m in detail["messages"]] == ["customer", "assistant", "customer"]
+    assert "Compliance and requirements team has it" in detail["messages"][1]["body"]
     assert detail["ticket"]["context"]["summary"] and detail["transcript"]
 
     # Staff: internal note stays internal, the reply reaches the chat and the bell
@@ -74,7 +76,7 @@ def test_handoff_asks_what_it_needs_then_staff_reply_reaches_the_chat(client, ma
     newer = client.get(f"{API}/assistant/conversations/{cid}", params={"after": staff[0]["id"]}, headers=h).json()["payload"]
     assert newer["messages"] == []
     mine = client.get(f"{API}/support/tickets/{tid}", headers=h).json()["payload"]
-    assert all(not m["internal"] for m in mine["messages"]) and len(mine["messages"]) == 3
+    assert all(not m["internal"] for m in mine["messages"]) and len(mine["messages"]) == 4
     bell = client.get(f"{API}/notifications", headers=h).json()["payload"]["items"]
     assert any(n["kind"] == "support_reply" for n in bell)
 
@@ -191,9 +193,11 @@ def test_send_and_resolve_is_one_step_and_the_reply_clock_restarts(client, make_
     assert r.status_code == 200, r.text
     detail = r.json()["payload"]
     assert detail["ticket"]["status"] == "resolved" and detail["ticket"]["next_response_due_at"] is None
-    assert [m["author_kind"] for m in detail["messages"]] == ["customer", "staff", "system"]
+    assert [m["author_kind"] for m in detail["messages"]] == ["customer", "assistant", "staff", "system"]
     bell = client.get(f"{API}/notifications", headers=uh).json()["payload"]["items"]
-    assert sum(n["kind"] == "support_reply" for n in bell) == 1 and "resolved" in bell[0]["title"]
+    assert [n["title"] for n in bell if n["kind"] == "support_reply" and not n["title"].startswith("We received")] \
+        and "resolved" in bell[0]["title"]
+    assert sum(n["kind"] == "support_reply" and "resolved" in n["title"] for n in bell) == 1
 
     # The customer writes again inside the window: it reopens and we owe an answer again
     mine = client.get(f"{API}/support/tickets/{t['id']}", headers=uh).json()["payload"]["ticket"]
@@ -238,7 +242,11 @@ def test_assignment_and_status_changes_are_audited_and_the_customer_hears_what_m
                                   "and target = %s", (t["ref"],))]]
     assert rows[0]["c"] == 2
     bell = client.get(f"{API}/notifications", headers=user["headers"]).json()["payload"]["items"]
-    assert [n["title"] for n in bell] == [f"{t['ref']} moved to Account and website"]  # assignment stays internal
+    # The acknowledgement, then the move; assignment stays internal
+    assert [n["title"] for n in bell] == [f"{t['ref']} moved to Account and website", f"We received {t['ref']}"]
+    detail = client.get(url, headers=admin["headers"]).json()["payload"]
+    assert detail["ticket"]["assignee_id"] is None  # the new team picks it up fresh
+    assert "don't need to repeat it" in detail["messages"][-1]["body"] and not detail["messages"][-1]["internal"]
     _cleanup_audit(admin["id"])
 
 
@@ -340,3 +348,32 @@ def test_a_refund_described_after_tapping_compliance_goes_to_providers_and_hires
     detail = client.get(f"{API}/admin/support/tickets/{tid}", headers=admin["headers"]).json()["payload"]
     assert detail["ticket"]["queue"] == "marketplace"
     execute("delete from support_tickets where id = %s", (tid,))  # keep the per-address count for later test files
+
+
+
+def test_a_moved_request_carries_a_handover_note_and_the_first_reply_is_suggested(client, make_user):
+    admin, user = make_user("admin"), make_user()
+    t = _ticket(client, user["headers"], queue="compliance")
+    url = f"{API}/admin/support/tickets/{t['id']}"
+    detail = client.get(url, headers=admin["headers"]).json()["payload"]
+    suggested = detail["suggested_reply"]
+    assert "I'll be handling your request" in suggested and t["ref"] in suggested
+    assert "give me a little time to review" in suggested
+
+    r = client.patch(url, json={"queue": "marketplace", "handover_note": "Provider kept 2,000 ETB, see hire H-1"},
+                     headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    msgs = r.json()["payload"]["messages"]
+    handover = next(m for m in msgs if m["body"].startswith("Handover to Providers and hires"))
+    assert handover["internal"]  # only staff see the handover note
+    customer_view = client.get(f"{API}/support/tickets/{t['id']}", headers=user["headers"]).json()["payload"]
+    bodies = " ".join(m["body"] for m in customer_view["messages"])
+    assert "Handover" not in bodies and "Providers and hires team" in bodies
+    # The marketplace team's suggestion speaks about the hire and payments
+    again = client.get(url, headers=admin["headers"]).json()["payload"]["suggested_reply"]
+    assert "the hire, the payments" in again
+
+    client.post(f"{API}/admin/support/tickets/{t['id']}/messages", json={"body": "Looking at it now."},
+                headers=admin["headers"])
+    assert client.get(url, headers=admin["headers"]).json()["payload"]["suggested_reply"] is None
+    _cleanup_audit(admin["id"])

@@ -65,6 +65,7 @@ class TicketUpdate(BaseModel):
     priority: Literal["low", "normal", "high", "urgent"] | None = None
     queue: Queue | None = None
     assignee_id: str | None = None
+    handover_note: str | None = Field(None, max_length=2000)  # for the next team when the request moves
 
 
 @router.get("/meta")
@@ -172,8 +173,8 @@ def export_tickets(request: Request, filters: dict = Depends(_list_filters), use
 
 
 @admin_router.get("/tickets/{ticket_id}")
-def ticket_detail(ticket_id: str):
-    detail = svc.admin_detail(ticket_id)
+def ticket_detail(ticket_id: str, user: StaffActor = Depends(require_admin)):
+    detail = svc.admin_detail(ticket_id, agent_name=user.fullname or None)
     if not detail:
         raise HTTPException(status_code=404, detail="Request not found")
     return _ok(detail)

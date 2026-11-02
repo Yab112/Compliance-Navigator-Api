@@ -68,7 +68,24 @@ def create_ticket(
         ).fetchone()
         ticket_id = row["id"]
         _add_message(conn, ticket_id, "customer", body[:4000], user_id)
+    ticket = get(ticket_id)
+    _acknowledge(ticket)
     return get(ticket_id)
+
+
+def _acknowledge(ticket: dict) -> None:
+    """Every new request hears back at once that a team has it (not counted as the team's first response)."""
+    from services import notifications
+
+    from .auto_messages import acknowledgement
+
+    text = acknowledgement(ticket)
+    with connection() as conn:
+        _add_message(conn, ticket["id"], "assistant", text)
+    # The chat already says it was sent; requests from the contact form or a report hear it under the bell
+    if ticket["user_id"] and ticket["source"] != "assistant":
+        notifications.notify([ticket["user_id"]], kind="support_reply", title=f"We received {ticket['ref']}",
+                             body=text[:140], link=f"/account/support/{ticket['id']}")
 
 
 def list_for_user(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
