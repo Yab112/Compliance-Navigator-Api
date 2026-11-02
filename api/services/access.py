@@ -276,6 +276,11 @@ ROUTE_POLICY: dict[str, Policy] = {
     "POST /admin/assistant/turns/{turn_id}/label": P("ai.manage"),
     "POST /admin/assistant/retrain": P("ai.manage"),
     "POST /admin/assistant/activate/{version}": P("ai.manage"),
+    "GET /admin/assistant/guard": P("ai.view"),
+    "POST /admin/assistant/learn": P("ai.manage"),
+    "GET /admin/assistant/learn/runs": P("ai.view"),
+    "GET /admin/assistant/findings": P("ai.view"),
+    "PATCH /admin/assistant/findings/{finding_id}": P("ai.manage"),
     # platform settings
     "GET /admin/settings": P("settings.view"),
     "GET /admin/settings/history": P("settings.view"),

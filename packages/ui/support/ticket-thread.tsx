@@ -6,7 +6,7 @@ const WHO: Record<TicketMessage["author_kind"], string> = {
   customer: "Customer",
   staff: "Support team",
   system: "System",
-  assistant: "Assistant",
+  assistant: "Compliance Navigator",
 };
 
 /** A ticket conversation. `viewer` decides which side is "mine"; internal notes only reach staff. */

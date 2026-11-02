@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from assistant import entities
 from assistant.dialogue.base import _fmt_money, _qa_chips, _reply, log
 from assistant.dialogue.data import _service_card, _source_line, _title
@@ -29,8 +31,10 @@ def _present(rec: dict, state: dict, user) -> dict:
         steps = roadmap.get("steps") or []
         offices = len({(s.get("office") or {}).get("name") or s.get("issuingAuthority") for s in steps})
         where = f" ({entities.SUB_CITIES[sub_city]['am' if lang == 'am' else 'en']})" if sub_city in entities.SUB_CITIES else ""
-        days = f", about {roadmap['totalEstimatedDays']} days" if roadmap.get("totalEstimatedDays") and lang == "en" else (
-            f"፣ በግምት {roadmap['totalEstimatedDays']} ቀናት" if roadmap.get("totalEstimatedDays") else "")
+        # totalEstimatedDays is a display string ("~25+ business days remaining"); say it with the number only
+        found = re.search(r"\d+", str(roadmap.get("totalEstimatedDays") or ""))
+        days = "" if not found else (f", about {found.group()} working days or more" if lang == "en"
+                                     else f"፣ በግምት {found.group()} የሥራ ቀናት ወይም ከዚያ በላይ")
         text = t("path_intro", lang, title=title, where=where, steps=len(steps), offices=offices, days=days) if steps else t("path_done", lang)
         cards.append({
             "kind": "path", "title": title, "href": f"/roadmap/{state['roadmap_id']}" if state.get("roadmap_id") else None,
@@ -97,7 +101,11 @@ def _present(rec: dict, state: dict, user) -> dict:
         actions.append({"kind": "link", "label": chip("view_service", lang), "href": f"/services/{rec['ref']}"})
     actions.append({"kind": "action", "label": chip("hire_for", lang), "action": {"type": "hire"}})
     actions.append({"kind": "link", "label": chip("report", lang), "href": _report_href(rec)})
-    return _reply(state, text, cards=cards, actions=actions, quick_replies=_qa_chips(state), source=_source_line(rec, lang))
+    remind = {"label": "Remind me in a week" if lang == "en" else "ከሳምንት በኋላ አስታውሰኝ",
+              "action": {"type": "propose", "value": "remind_path"}}
+    chips = _qa_chips(state)
+    return _reply(state, text, cards=cards, actions=actions, quick_replies=[*chips[:4], remind, *chips[4:]],
+                  source=_source_line(rec, lang))
 
 
 def _report_href(rec: dict) -> str:

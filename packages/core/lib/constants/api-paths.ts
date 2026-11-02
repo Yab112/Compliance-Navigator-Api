@@ -25,6 +25,8 @@ export const apiPaths = {
   notifications: {
     list: "notifications",
     read: "notifications/read",
+    reminders: "notifications/reminders",
+    reminder: (id: string) => `notifications/reminders/${id}`,
   },
   organizations: {
     directory: "organizations",
@@ -212,6 +214,11 @@ export const apiPaths = {
     assistantLabel: (id: number) => `admin/assistant/turns/${id}/label`,
     assistantRetrain: "admin/assistant/retrain",
     assistantActivate: (version: string) => `admin/assistant/activate/${version}`,
+    assistantGuard: "admin/assistant/guard",
+    assistantLearn: "admin/assistant/learn",
+    assistantLearnRuns: "admin/assistant/learn/runs",
+    assistantFindings: "admin/assistant/findings",
+    assistantFinding: (id: number) => `admin/assistant/findings/${id}`,
     feedback: "admin/feedback",
     feedbackItem: (id: string) => `admin/feedback/${id}`,
     supportSummary: "admin/support/summary",

@@ -161,12 +161,17 @@ def transcript(conversation_id: str | None) -> list[dict]:
     ]
 
 
-def admin_detail(ticket_id: str) -> dict | None:
+def admin_detail(ticket_id: str, agent_name: str | None = None) -> dict | None:
+    from .auto_messages import suggested_first_reply
+
     ticket = get(ticket_id)
     if not ticket:
         return None
+    # Until the team has answered, offer the team's opening, signed with the viewer's name
+    suggested = (suggested_first_reply(ticket, agent_name)
+                 if not ticket["first_response_at"] and ticket["status"] not in ("resolved", "closed") else None)
     return {"ticket": ticket, "messages": messages(ticket_id, include_internal=True),
-            "transcript": transcript(ticket["conversation_id"]), "staff": staff()}
+            "transcript": transcript(ticket["conversation_id"]), "staff": staff(), "suggested_reply": suggested}
 
 
 def _tell(ticket: dict, kind: str, title: str, body: str | None) -> None:
@@ -261,8 +266,12 @@ def update(ticket_id: str, data: dict, *, author: dict, client=None) -> dict:
             raise SupportError("Unknown team")
         sets.append("queue = %s")
         params.append(data["queue"])
-        notes.append(f"Moved to {queue_label(data['queue'])}")
+        notes.append(f"Moved from {ticket['queue_label']} to {queue_label(data['queue'])}")
         changes["queue"] = [ticket["queue"], data["queue"]]
+        # The new team picks it up fresh, unless the mover hands it to someone by name
+        if "assignee_id" not in data and ticket["assignee_id"]:
+            sets.append("assignee_id = null")
+            changes["assignee"] = [ticket["assignee_name"], None]
     if "assignee_id" in data and data["assignee_id"] != ticket["assignee_id"]:
         people = staff()
         if data["assignee_id"] and not any(s["id"] == data["assignee_id"] for s in people):
@@ -279,6 +288,15 @@ def update(ticket_id: str, data: dict, *, author: dict, client=None) -> dict:
             conn.execute(f"update support_tickets set {', '.join(sets)}, updated_at = now() where id = %s",
                          (*params, ticket_id))
             _add_message(conn, ticket_id, "system", f"{'. '.join(notes)} by {author['name']}.", author["id"], True)
+            if "queue" in changes:
+                from .auto_messages import moved
+
+                handover = (data.get("handover_note") or "").strip()
+                if handover:  # what the next team should know, from the person who moved it
+                    _add_message(conn, ticket_id, "staff", f"Handover to {queue_label(data['queue'])}: {handover[:2000]}",
+                                 author["id"], True)
+                if new_status not in ("resolved", "closed"):
+                    _add_message(conn, ticket_id, "assistant", moved(ticket, data["queue"]))
         log_staff_action("support.ticket.update", author, ticket["ref"], changes, client)
         # Tell the customer about changes that matter to them; assignment and priority stay internal
         was_done = ticket["status"] in ("resolved", "closed")
@@ -289,6 +307,13 @@ def update(ticket_id: str, data: dict, *, author: dict, client=None) -> dict:
         elif was_done and new_status in ("new", "open", "waiting_customer"):
             _tell(ticket, "support_reply", f"{ticket['ref']} was reopened", "Our team is looking at it again.")
         if "queue" in changes and new_status not in ("resolved", "closed"):
-            _tell(ticket, "support_reply", f"{ticket['ref']} moved to {queue_label(data['queue'])}",
-                  "That team will answer you from now on.")
+            from .auto_messages import moved
+
+            note = moved(ticket, data["queue"])
+            _tell(ticket, "support_reply", f"{ticket['ref']} moved to {queue_label(data['queue'])}", note[:140])
+            if ticket["conversation_id"]:
+                from assistant import store
+
+                store.add_message(ticket["conversation_id"], "staff", note,
+                                  {"staff": {"name": None, "team": queue_label(data["queue"])}, "ticket": ticket["ref"]})
     return admin_detail(ticket_id)

@@ -314,6 +314,12 @@ def fill(state: dict, user, reply_fn, *, value) -> dict:
             slots[slot] = text
             if slot == "service":
                 slots.pop("service_key", None)
+            # A team tapped before describing the problem gives way to what the description is clearly about:
+            # "Compliance" then "refund the money the guday geday took" belongs with Providers and hires
+            if slot == "details" and slots.get("queue"):
+                better = classify_queue(text, state)
+                if better and better != slots["queue"] and better in ("marketplace", "technical", "organizations"):
+                    slots["queue"] = better
     task["awaiting"] = None
     return _next(state, user, reply_fn)
 

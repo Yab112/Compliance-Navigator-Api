@@ -114,3 +114,75 @@ def activate(version: str, admin: AuthUser = Depends(require_admin)):
     (nlu.STORE / "ACTIVE").write_text(version)
     log.info("assistant model %s activated by %s", version, admin.email)
     return _ok({"active": version})
+
+
+# ---------------------------------------------------------------- the guard between the AI and our data
+
+
+@router.get("/guard")
+def guard_log(decision: str | None = Query(None, pattern="^(allowed|denied|error)$"),
+              conversation_id: str | None = Query(None, pattern="^[0-9a-f-]{36}$"),
+              limit: int = Query(100, ge=1, le=500)):
+    """Every request the AI made for data or an action, and what the guard decided."""
+    where, params = [], []
+    if decision:
+        where.append("decision = %s")
+        params.append(decision)
+    if conversation_id:
+        where.append("conversation_id = %s")
+        params.append(conversation_id)
+    rows = fetch_all(
+        "select id, conversation_id, tool, args, decision, reason, result_chars, duration_ms, created_at"
+        " from assistant_guard_log" + (" where " + " and ".join(where) if where else "")
+        + " order by id desc limit %s", (*params, limit))
+    stats = fetch_all(
+        "select tool, decision, count(*)::int as n from assistant_guard_log"
+        " where created_at > now() - interval '7 days' group by tool, decision order by tool, decision")
+    return _ok({"items": rows, "last7Days": stats})
+
+
+# ---------------------------------------------------------------- learning: findings and next actions
+
+
+class FindingReview(BaseModel):
+    status: str = Field(pattern="^(approved|rejected|done|new)$")
+    note: str | None = Field(None, max_length=1000)
+
+
+@router.post("/learn")
+def learn(user: AuthUser = Depends(require_admin)):
+    """Read conversations since the last run, group what went wrong, propose next actions."""
+    from assistant import learning
+
+    return _ok(learning.run(triggered_by=user.email or str(user.id)))
+
+
+@router.get("/learn/runs")
+def learn_runs(limit: int = Query(20, ge=1, le=100)):
+    return _ok({"items": fetch_all("select * from assistant_learning_runs order by id desc limit %s", (limit,))})
+
+
+@router.get("/findings")
+def findings(status: str | None = Query(None, pattern="^(new|approved|rejected|done)$"),
+             kind: str | None = Query(None, max_length=40), limit: int = Query(100, ge=1, le=500)):
+    where, params = [], []
+    if status:
+        where.append("status = %s")
+        params.append(status)
+    if kind:
+        where.append("kind = %s")
+        params.append(kind)
+    rows = fetch_all("select * from assistant_findings" + (" where " + " and ".join(where) if where else "")
+                     + " order by (status = 'new') desc, seen_count desc, last_seen desc limit %s", (*params, limit))
+    totals = fetch_all("select status, count(*)::int as n from assistant_findings group by status")
+    return _ok({"items": rows, "totals": {r["status"]: r["n"] for r in totals}})
+
+
+@router.patch("/findings/{finding_id}")
+def review_finding(finding_id: int, body: FindingReview, user: AuthUser = Depends(require_admin)):
+    from assistant import learning
+
+    row = learning.review(finding_id, body.status, user.email or str(user.id), body.note)
+    if not row:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return _ok(row)

@@ -51,6 +51,10 @@ celery_app.conf.beat_schedule = {
         "schedule": 60 * 15,
     },
     # Staff-added sources with a daily or weekly schedule; each one runs only when it is due
+    "reminders-hourly": {
+        "task": "worker.tasks.deliver_due_reminders",
+        "schedule": 60 * 60,
+    },
     "custom-sources-hourly": {
         "task": "worker.tasks.run_scheduled_custom_sources",
         "schedule": 60 * 60,

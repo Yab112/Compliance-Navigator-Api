@@ -17,8 +17,13 @@ T: dict[str, dict[str, str]] = {
     },
     "start_over": {"en": "Sure, let's start again. What do you need to get done?", "am": "እሺ፣ እንደገና እንጀምር። ምን ማስፈጸም ይፈልጋሉ?"},
     "not_found": {
-        "en": "I couldn't find a service matching \"{text}\". Could you say it another way, or pick one of these?",
-        "am": "\"{text}\" የሚል አገልግሎት አላገኘሁም። በሌላ መንገድ ሊገልጹት ወይም ከእነዚህ አንዱን ሊመርጡ ይችላሉ?",
+        "en": "I don't have \"{text}\" in my guide yet, so I won't guess at it. Try saying it another way, ask a person on our team, or pick one of these:",
+        "am": "\"{text}\" እስካሁን በመመሪያዬ ውስጥ የለም፤ ስለዚህ አልገምትም። በሌላ መንገድ ይግለጹት፣ የቡድናችንን ሰው ይጠይቁ፣ ወይም ከእነዚህ አንዱን ይምረጡ፦",
+    },
+    "did_you_mean": {"en": "Did you mean {title}?", "am": "{title} ማለትዎ ነው?"},
+    "not_found_long": {
+        "en": "I don't have that service in my guide yet, so I won't guess at it. Try naming just the service (for example \"trade license\"), ask a person on our team, or pick one of these:",
+        "am": "ያንን አገልግሎት እስካሁን በመመሪያዬ ውስጥ የለም፤ ስለዚህ አልገምትም። የአገልግሎቱን ስም ብቻ ይጻፉ (ለምሳሌ \"የንግድ ፈቃድ\")፣ የቡድናችንን ሰው ይጠይቁ፣ ወይም ከእነዚህ አንዱን ይምረጡ፦",
     },
     "which_service": {"en": "Which service do you mean?", "am": "የትኛውን አገልግሎት ማለትዎ ነው?"},
     "which_passport": {"en": "Which passport service do you need?", "am": "የትኛው የፓስፖርት አገልግሎት ያስፈልግዎታል?"},
@@ -66,6 +71,32 @@ T: dict[str, dict[str, str]] = {
         "en": "We don't list property or car brokers (delala). Compliance Navigator is for getting things done with offices: licences, permits, IDs, tax and documents. If you're buying or renting, I can still show you the office side, for example a title deed transfer, a lease registration or a vehicle ownership transfer.",
         "am": "የቤት ወይም የመኪና ደላሎችን አንዘረዝርም። ኮምፕላያንስ ናቪጌተር ከቢሮዎች ጋር ጉዳይ ለማስፈጸም ነው፦ ፈቃዶች፣ መታወቂያዎች፣ ግብር እና ሰነዶች። እየገዙ ወይም እየተከራዩ ከሆነ የቢሮውን ክፍል ላሳይዎ እችላለሁ፤ ለምሳሌ የካርታ ስም ዝውውር፣ የኪራይ ውል ምዝገባ ወይም የተሽከርካሪ ባለቤትነት ዝውውር።",
     },
+    "hire_none_type": {
+        "en": "No verified {plural} are listed yet, and I won't send you to someone we haven't checked. Post a request on the Hire page, or ask our team to find one for you.",
+        "am": "እስካሁን የተረጋገጡ {plural} አልተመዘገቡም፤ ያልፈተሽነውን ሰው አልጠቁምዎትም። በቅጥር ገጹ ላይ ጥያቄ ያቅርቡ፣ ወይም ቡድናችን እንዲያገኝልዎ ይጠይቁ።",
+    },
+    "business_forms": {
+        "en": "The main business forms, in short (general information from the Commercial Code, Proclamation 1243/2021):\n"
+              "• Sole proprietor: you alone own the business. Simplest to register, but you are personally liable "
+              "for its debts, including with your own property. While yearly sales stay under 2 million ETB you "
+              "may be taxed on the simpler presumptive (Category B) rules.\n"
+              "• Private limited company (PLC): a company separate from you, with one owner (one-member PLC) or "
+              "several. Owners risk only what they put in. It reserves a trade name, has its memorandum and articles "
+              "authenticated, keeps proper books from day one and pays 30% tax on profit.\n"
+              "• Share company: for larger businesses that raise money from many shareholders. More rules, "
+              "usually set up with a lawyer.\n"
+              "Which one fits depends on your risk, partners, capital and plans. This is general information, "
+              "not legal or tax advice; a licensed advisor can look at your case.",
+        "am": "ዋና ዋናዎቹ የንግድ አደረጃጀቶች በአጭሩ (አጠቃላይ መረጃ ከንግድ ሕግ፣ አዋጅ ቁጥር 1243/2013)፦\n"
+              "• የግል ነጋዴ፦ ንግዱ የእርስዎ ብቻ ነው። ለመመዝገብ ቀላሉ ነው፤ ግን ለንግዱ ዕዳ በግል ንብረትዎ ጭምር ኃላፊ ነዎት። "
+              "ዓመታዊ ሽያጭዎ ከ2 ሚሊዮን ብር በታች እስከሆነ በቀላሉ የግምት (ደረጃ ለ) ግብር ሊከፍሉ ይችላሉ።\n"
+              "• ኃላፊነቱ የተወሰነ የግል ማህበር (ኃ/የተ/የግ/ማ)፦ ከእርስዎ የተለየ ድርጅት ነው፤ አንድ ባለቤት (የአንድ ሰው ኃ/የተ/የግ/ማ) "
+              "ወይም ብዙ ሊኖሩት ይችላል። ባለቤቶች የሚያጡት ያዋጡትን ብቻ ነው። የንግድ ስም ያስይዛል፣ የመመስረቻ ጽሑፉንና መተዳደሪያ ደንቡን "
+              "ያስረጋግጣል፣ ከመጀመሪያው ቀን ትክክለኛ የሂሳብ መዝገብ ይይዛል፣ ከትርፉ 30% ግብር ይከፍላል።\n"
+              "• አክሲዮን ማህበር፦ ከብዙ ባለአክሲዮኖች ገንዘብ ለሚያሰባስቡ ትላልቅ ንግዶች። ብዙ ደንቦች አሉት፤ ብዙውን ጊዜ በጠበቃ ይቋቋማል።\n"
+              "የሚስማማዎት እንደ አደጋው፣ አጋሮችዎ፣ ካፒታልዎና ዕቅድዎ ይወሰናል። ይህ አጠቃላይ መረጃ እንጂ የሕግ ወይም የግብር ምክር አይደለም፤ "
+              "ፈቃድ ያለው አማካሪ ጉዳይዎን ሊያይ ይችላል።",
+    },
     "hire_none": {"en": "No verified provider lists this service yet. You can still post a request on the Hire page.", "am": "ይህን አገልግሎት የሚሰጥ የተረጋገጠ አገልግሎት ሰጪ እስካሁን የለም። በቅጥር ገጹ ላይ ጥያቄ ማቅረብ ይችላሉ።"},
     "multi_entity": {
         "en": "For two or more linked companies, each company is registered on its own (commercial registration, TIN, trade license), and the link between them is recorded in the memorandum of association. I can show the commercial registration path, or find an agency that handles group structures.",
@@ -98,6 +129,54 @@ T: dict[str, dict[str, str]] = {
               "በአጋሮችዎ፣ በካፒታልዎና በሚከፍሉት ግብር ይወሰናል፤ ፈቃድ ያለው የታክስ ወኪል ወይም የሂሳብ ባለሙያ ጉዳይዎን "
               "ሊያይልዎ ይችላል። ሰነዶቹን፣ ክፍያዎቹንና ቢሮዎቹን ለማየት አንድ ደረጃ ይምረጡ።",
     },
+    "start_costs_head": {
+        "en": "What the offices charge for each step, from our records. None of these amounts has been confirmed "
+              "by the office yet, so check the fee at the window before you pay:",
+        "am": "እያንዳንዱ ደረጃ በቢሮዎቹ የሚያስከፍለው፣ ከመዝገባችን። ከእነዚህ ክፍያዎች አንዳቸውም ገና በቢሮው አልተረጋገጡም፤ "
+              "ከመክፈልዎ በፊት በመስኮቱ ላይ ያረጋግጡ፦",
+    },
+    "start_costs_tail": {
+        "en": "Fees can differ between sub-cities and with your capital and activity. A PLC also pays to authenticate "
+              "its memorandum and articles at the Documents Authentication and Registration Service. Budget too for a "
+              "notarised lease for your premises, any sector certificate of competence, and an accountant.\n"
+              "Pay official fees only at the office window or through the office's own payment channel, never to a person.",
+        "am": "ክፍያዎቹ በክፍለ ከተማና በካፒታልዎና በሥራ ዘርፍዎ ሊለያዩ ይችላሉ። ኃ/የተ/የግ/ማ የመመስረቻ ጽሑፉንና መተዳደሪያ "
+              "ደንቡን በሰነዶች ማረጋገጫና ምዝገባ አገልግሎት ለማስረጋገጥም ይከፍላል። ለሥራ ቦታዎ የተረጋገጠ የኪራይ ውል፣ "
+              "ለዘርፍዎ የብቃት ማረጋገጫ ካስፈለገ፣ እና ለሂሳብ ባለሙያም በጀት ይያዙ።\n"
+              "ኦፊሴላዊ ክፍያዎችን በቢሮው መስኮት ወይም በቢሮው የራሱ የክፍያ መንገድ ብቻ ይክፈሉ፤ ለግለሰብ በፍጹም አይክፈሉ።",
+    },
+    # Checked against Income Tax (Amendment) Proclamation No. 1395/2025, VAT Proclamation No. 1341/2024 and the
+    # private-sector pension law on 2026-11-01. Rates and thresholds change: review this text every year.
+    "business_taxes": {
+        "en": "The taxes a new business has to deal with (general information, checked 1 Nov 2026):\n"
+              "• Every company (PLC, share company) is a Category A taxpayer from the first day: it keeps proper books "
+              "and pays 30% tax on its profit. A sole proprietor becomes Category A once yearly sales pass 2 million ETB.\n"
+              "• Smaller sole proprietors (Category B) pay a presumptive tax worked out from their yearly sales, "
+              "instead of keeping full books.\n"
+              "• VAT is 15%. You must register once your taxable sales pass 2 million ETB in any 12 months. A "
+              "VAT-registered business files a return every month, including months with no sales.\n"
+              "• If you employ people, you withhold their income tax every month and pay their pension: 7% from "
+              "the employee and 11% from you.\n"
+              "• The trade licence is renewed every year. Late renewals and late tax filings bring penalties and interest.\n"
+              "• Stopping work does not end these duties. Close the business formally and settle your TIN account.\n"
+              "Sources: Income Tax (Amendment) Proclamation No. 1395/2025, VAT Proclamation No. 1341/2024, Private "
+              "Organization Employees' Pension Proclamation No. 715/2011.\n\n"
+              "This is general information, not tax advice. What applies to you depends on your business, so a "
+              "licensed tax agent should check your case before you register.",
+        "am": "አዲስ ንግድ የሚመለከታቸው ግብሮች (አጠቃላይ መረጃ፣ ኖቬምበር 1 ቀን 2026 የተረጋገጠ)፦\n"
+              "• ማንኛውም ድርጅት (ኃ/የተ/የግ/ማ፣ አክሲዮን ማህበር) ከመጀመሪያው ቀን የደረጃ ሀ ግብር ከፋይ ነው፤ ትክክለኛ የሂሳብ "
+              "መዝገብ ይይዛል፤ ከትርፉ 30% ግብር ይከፍላል። የግል ነጋዴ ዓመታዊ ሽያጩ ከ2 ሚሊዮን ብር ሲያልፍ ደረጃ ሀ ይሆናል።\n"
+              "• አነስተኛ የግል ነጋዴዎች (ደረጃ ለ) ሙሉ መዝገብ ከመያዝ ይልቅ ከዓመታዊ ሽያጫቸው በሚሰላ የግምት ግብር ይከፍላሉ።\n"
+              "• ተጨማሪ እሴት ታክስ (ቫት) 15% ነው። በማንኛውም 12 ወራት ውስጥ ታክስ የሚከፈልበት ሽያጭዎ ከ2 ሚሊዮን ብር ካለፈ "
+              "መመዝገብ ግዴታ ነው። በቫት የተመዘገበ ንግድ ሽያጭ በሌለበት ወርም ጭምር በየወሩ ያሳውቃል።\n"
+              "• ሠራተኛ ከቀጠሩ የገቢ ግብራቸውን በየወሩ ቀንሰው ያስገባሉ፤ የጡረታ መዋጮም ይከፍላሉ፦ ከሠራተኛው 7%፣ ከእርስዎ 11%።\n"
+              "• የንግድ ፈቃድ በየዓመቱ ይታደሳል። ዘግይቶ ማደስና ዘግይቶ ግብር ማሳወቅ ቅጣትና ወለድ ያስከትላል።\n"
+              "• ሥራ ማቆም እነዚህን ግዴታዎች አያስቀርም። ንግዱን በሕጋዊ መንገድ ይዝጉ፤ የቲን ሂሳብዎን ያወራርዱ።\n"
+              "ምንጭ፦ የገቢ ግብር (ማሻሻያ) አዋጅ ቁጥር 1395/2017፣ የተጨማሪ እሴት ታክስ አዋጅ ቁጥር 1341/2016፣ የግል ድርጅት "
+              "ሠራተኞች የጡረታ አዋጅ ቁጥር 715/2003።\n\n"
+              "ይህ አጠቃላይ መረጃ ነው እንጂ የግብር ምክር አይደለም። የሚመለከትዎ በንግድዎ ይወሰናል፤ ከመመዝገብዎ በፊት ፈቃድ ያለው "
+              "የታክስ ወኪል ጉዳይዎን ይመልከት።",
+    },
     # Investment advice needs a licence from the Ethiopian Capital Market Authority (Proclamation No.
     # 1248/2021), and automated advice a separate robo-adviser licence. The assistant never gives it.
     "no_investment_advice": {
@@ -126,6 +205,11 @@ CHIPS: dict[str, dict[str, str]] = {
     "kebele_id": {"en": "Kebele ID", "am": "የቀበሌ መታወቂያ"},
     "hire": {"en": "Hire an agent", "am": "ወኪል ልቅጠር"},
     "advisor": {"en": "Find a tax or business advisor", "am": "የታክስ ወይም የንግድ አማካሪ ፈልግ"},
+    "start_costs": {"en": "What will it cost?", "am": "ስንት ያስከፍላል?"},
+    "business_forms": {"en": "PLC or sole proprietor?", "am": "ኃ/የተ/የግ/ማ ወይስ የግል ነጋዴ?"},
+    "vat_registration": {"en": "VAT registration", "am": "የተጨማሪ እሴት ታክስ ምዝገባ"},
+    "talk_to_person": {"en": "Ask a person", "am": "ሰው ልጠይቅ"},
+    "business_taxes": {"en": "Taxes I'll pay", "am": "የምከፍላቸው ግብሮች"},
     "commercial_registration": {"en": "Commercial registration", "am": "የንግድ ምዝገባ"},
     "fee": {"en": "How much is it?", "am": "ስንት ያስከፍላል?"},
     "documents": {"en": "What do I bring?", "am": "ምን ይዤ ልሂድ?"},

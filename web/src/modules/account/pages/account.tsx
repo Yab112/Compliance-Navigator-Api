@@ -380,6 +380,7 @@ export function AccountPage() {
         <Link href="/account/requests" className={link}>My hires</Link>
         <Link href="/account/paths" className={link}>My saved paths</Link>
         <Link href="/account/support" className={link}>My support requests</Link>
+        <Link href="/account/reminders" className={link}>My reminders</Link>
         <Link href="/org" className={link}>My organization</Link>
         {isProvider && (
           <>

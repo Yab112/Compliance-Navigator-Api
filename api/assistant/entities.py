@@ -28,6 +28,9 @@ DOCUMENTS: dict[str, dict] = {
     "commercial_registration": {"en": "Commercial registration", "am": "የንግድ ምዝገባ", "aliases": ["commercial registration", "business registration", "የንግድ ምዝገባ"]},
     "trade_license": {"en": "Trade license", "am": "የንግድ ፈቃድ", "aliases": ["trade license", "business license", "የንግድ ፈቃድ", "nigd fekad"]},
     "passport": {"en": "Passport", "am": "ፓስፖርት", "aliases": ["passport", "ፓስፖርት", "pasport"]},
+    "nbe_fintech_permit": {"en": "NBE fintech permit", "am": "የብሔራዊ ባንክ የፊንቴክ ፈቃድ",
+                           "aliases": ["fintech", "fintech license", "mobile money", "e-wallet", "digital wallet",
+                                       "payment instrument issuer", "payment system", "ፊንቴክ", "ሞባይል ገንዘብ"]},
 }
 
 _HELD = re.compile(

@@ -25,6 +25,8 @@ EMPTY_STATE = {
     "task": None, "channel": "agent", "ticket_id": None, "misses": 0,
     # providers last shown and the one being discussed, for "what did Meron do" / "her reviews"
     "shown_providers": [], "focus_provider": None, "topic": None,
+    # what the last reply offered (options and chips), so typed answers can pick them
+    "offered": None,
 }
 
 
@@ -45,7 +47,25 @@ def _msg_action(text: str) -> dict:
 def _reply(state: dict, text: str, **extra) -> dict:
     out = {"text": _no_em_dash(text), "quick_replies": [], "widget": None, "cards": [], "actions": [], "source": None}
     out.update(extra)
+    _remember_offered(state, out)
     return out
+
+
+def _remember_offered(state: dict, reply: dict) -> None:
+    """Keep what this reply offered, so a typed "new", "2" or "Bole" picks it like a tap would.
+    People on phones type more than they tap, and SMS or Telegram have no buttons at all."""
+    widget = reply.get("widget") or {}
+    options = []
+    if widget.get("kind") in ("choice", "sub_city"):
+        for o in widget.get("options") or []:
+            action = ({"type": "sub_city", "value": o["value"]} if widget["kind"] == "sub_city"
+                      else {"type": "choice", "key": widget.get("key"), "value": o["value"]})
+            options.append({"label": o["label"], "action": action})
+    elif widget.get("kind") == "checklist":
+        options = [{"label": o["label"], "action": {"type": "documents", "value": [o["value"]]}}
+                   for o in widget.get("options") or []]
+    chips = [{"label": q["label"], "action": q["action"]} for q in reply.get("quick_replies") or [] if q.get("action")]
+    state["offered"] = {"widget": widget.get("kind"), "options": options, "chips": chips}
 
 
 def _popular_chips(lang: str) -> list[dict]:
