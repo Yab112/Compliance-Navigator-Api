@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+from datetime import date
 
 from config.config import settings
 
@@ -56,6 +57,9 @@ shares to buy (only ECMA-licensed advisers may). We do not list property or car 
 - Money questions (costs, taxes, budgets, loans, profit, pricing): explain fully with our data, then \
 always end by recommending they confirm with a verified finance or tax advisor, and call \
 find_providers(provider_type="advisor") so real people are listed under your reply.
+- When a deadline or follow-up matters (licence renewal, VAT or tax filing, "come back after 5 days"), \
+offer a reminder with propose_action; when they want to hire someone you listed, propose_action kind hire. \
+You never carry out an action yourself: the person confirms it with a button.
 - If the person is upset, reports a problem or wants a person, call offer_person.
 - Reply in the person's language: Amharic if they write Amharic (Ge'ez script), otherwise English. \
 Keep replies short and plain, for a phone screen: a few sentences or a short list. No em dashes. \
@@ -112,6 +116,19 @@ TOOLS = [
                              "sub_city": {"type": "string"}}},
     },
     {
+        "name": "propose_action",
+        "description": "Offer an action the person confirms with a button before anything happens: 'remind' (a "
+                       "reminder on their bell on a date, e.g. a licence renewal or a filing deadline; needs "
+                       "title and due_on) or 'hire' (open a verified provider's page to hire them; needs "
+                       "provider_slug from find_providers). Nothing is done until they tap Confirm.",
+        "input_schema": {"type": "object", "additionalProperties": False, "required": ["kind"],
+                         "properties": {
+                             "kind": {"type": "string", "enum": ["remind", "hire"]},
+                             "title": {"type": "string", "description": "What to remind them of"},
+                             "due_on": {"type": "string", "description": "Date as YYYY-MM-DD"},
+                             "provider_slug": {"type": "string"}}},
+    },
+    {
         "name": "offer_person",
         "description": "Offer to hand the conversation to a person on our team (a button the person taps to confirm).",
         "input_schema": {"type": "object", "additionalProperties": False, "required": ["reason"],
@@ -124,7 +141,7 @@ WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search", "max_uses": W
 _NUM = re.compile(r"\d[\d,.]*\d|\d")
 # What the guard allows: each tool's own schema, and how often one turn may ask for it
 _LIMITS = {"search_services": 4, "get_service": 3, "build_path": 1, "business_guide": 2, "find_providers": 2,
-           "offer_person": 1}
+           "offer_person": 1, "propose_action": 1}
 
 
 def enabled() -> bool:
@@ -249,6 +266,23 @@ class _Turn:
         return {"providers": [{k: p.get(k) for k in ("name", "headline", "type", "score", "rating", "reviews", "verified")}
                               for p in items], "note": reply["text"]}
 
+    def _propose_action(self, kind: str, title: str | None = None, due_on: str | None = None,
+                        provider_slug: str | None = None) -> dict:
+        from assistant import actions
+
+        link = f"/roadmap/{self.state['roadmap_id']}" if self.state.get("roadmap_id") else None
+        try:
+            out = actions.propose(self.state, self.user, kind, title=title, due_on=due_on, link=link,
+                                  provider_slug=provider_slug)
+        except actions.ActionError as exc:
+            return {"error": str(exc)}
+        self.cards.extend(out["cards"])
+        self.actions.extend(out["actions"])
+        if out.get("needs_sign_in"):
+            return {"needs_sign_in": True, "note": "They must sign in first; a sign-in button is shown."}
+        return {"proposed": True, "note": "A card with Confirm and Cancel is shown under your reply. Nothing "
+                                          "happens until they tap Confirm; tell them that."}
+
     def _offer_person(self, reason: str) -> dict:
         from assistant import agent
 
@@ -325,7 +359,9 @@ def _create(messages: list[dict]):
     return client.beta.messages.create(
         model=MODEL,
         max_tokens=4000,
-        system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        # The date goes after the cached instructions, so the cache still holds for the stable part
+        system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": f"Today is {date.today().isoformat()} (Addis Ababa)."}],
         tools=[*TOOLS, WEB_SEARCH],
         messages=messages,
         betas=["server-side-fallback-2026-07-01"],

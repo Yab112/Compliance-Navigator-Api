@@ -383,6 +383,8 @@ def _handle_action(state: dict, action: dict, user, ctx: dict | None = None) -> 
         return agent.cancel(state, _reply, _popular_chips(lang))
     if kind == "channel":
         return agent.switch_channel(state, value, _reply)
+    if kind in ("propose", "confirm_proposal", "cancel_proposal"):
+        return _proposal_action(state, kind, value, user, ctx)
     if agent.active(state):
         if kind == "confirm":
             return agent.execute(state, user, _reply, conversation_id=ctx.get("conversation_id"), ip=ctx.get("ip"))
@@ -441,3 +443,27 @@ def adopt_context(state: dict, key: str) -> None:
 
 def welcome(state: dict) -> dict:
     return _reply(state, t("welcome", state["lang"]), quick_replies=_popular_chips(state["lang"]))
+
+
+def _proposal_action(state: dict, kind: str, value, user, ctx: dict) -> dict:
+    """Actions the person confirms first: propose shows Confirm and Cancel, confirm carries it out."""
+    from datetime import date, timedelta
+
+    from assistant import actions
+
+    lang = state["lang"]
+    if kind == "cancel_proposal":
+        return _reply(state, actions.cancel(state), quick_replies=_popular_chips(lang))
+    if kind == "confirm_proposal":
+        out = actions.confirm(state, user, str(value or ""), ctx.get("conversation_id"))
+        return _reply(state, out["text"], cards=out["cards"], actions=out["actions"],
+                      quick_replies=_qa_chips(state) if state.get("service") else _popular_chips(lang))
+    # "Remind me in a week" under a path: about the service being worked on
+    title = (state.get("service") or {}).get("title") or ("your application" if lang == "en" else "ማመልከቻዎ")
+    link = f"/roadmap/{state['roadmap_id']}" if state.get("roadmap_id") else None
+    try:
+        out = actions.propose(state, user, "remind", title=f"Continue: {title}"[:200],
+                              due_on=(date.today() + timedelta(days=7)).isoformat(), link=link)
+    except actions.ActionError as exc:
+        return _reply(state, actions.TEXT["am" if lang == "am" else "en"]["bad"].format(why=str(exc)))
+    return _reply(state, out["text"], cards=out["cards"], actions=out["actions"])

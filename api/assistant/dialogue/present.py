@@ -101,7 +101,11 @@ def _present(rec: dict, state: dict, user) -> dict:
         actions.append({"kind": "link", "label": chip("view_service", lang), "href": f"/services/{rec['ref']}"})
     actions.append({"kind": "action", "label": chip("hire_for", lang), "action": {"type": "hire"}})
     actions.append({"kind": "link", "label": chip("report", lang), "href": _report_href(rec)})
-    return _reply(state, text, cards=cards, actions=actions, quick_replies=_qa_chips(state), source=_source_line(rec, lang))
+    remind = {"label": "Remind me in a week" if lang == "en" else "ከሳምንት በኋላ አስታውሰኝ",
+              "action": {"type": "propose", "value": "remind_path"}}
+    chips = _qa_chips(state)
+    return _reply(state, text, cards=cards, actions=actions, quick_replies=[*chips[:4], remind, *chips[4:]],
+                  source=_source_line(rec, lang))
 
 
 def _report_href(rec: dict) -> str:

@@ -25,6 +25,8 @@ export const apiPaths = {
   notifications: {
     list: "notifications",
     read: "notifications/read",
+    reminders: "notifications/reminders",
+    reminder: (id: string) => `notifications/reminders/${id}`,
   },
   organizations: {
     directory: "organizations",

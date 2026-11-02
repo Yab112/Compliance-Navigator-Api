@@ -48,6 +48,14 @@ def flag_stale_graph_nodes(self) -> dict:
     return _run_source("stale_check", f"celery:{self.request.id}")
 
 
+@celery_app.task(name="worker.tasks.deliver_due_reminders", bind=True)
+def deliver_due_reminders(self) -> dict:
+    """Reminders people asked for, onto their bell on the due date (the bell also delivers them on load)."""
+    from services import reminders
+
+    return {"delivered": reminders.deliver_due()}
+
+
 @celery_app.task(name="worker.tasks.run_scheduled_custom_sources", bind=True)
 def run_scheduled_custom_sources(self) -> dict:
     """Refresh staff-added data sources whose daily or weekly schedule is due."""
