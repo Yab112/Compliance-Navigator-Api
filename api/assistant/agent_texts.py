@@ -29,7 +29,8 @@ REPORT = re.compile(
 )
 CANCEL = re.compile(r"^\s*(cancel|stop|never ?mind|forget it|no thanks)\s*[.!]?\s*$|^\s*(ተው|ይቅር|ተወው|ሰርዝ)\s*$", re.I)
 
-_MARKET = re.compile(r"\b(agent|provider|guday|hire|hired|agency)\b|ወኪል|ጉዳይ ገዳይ", re.I)
+_MARKET = re.compile(r"\b(agent|provider|guday|geday|hire|hired|agency|refund\w*|money back|payout|commission|chapa)\b"
+                     r"|ወኪል|ጉዳይ ገዳይ|ገንዘቤ(ን)? (ይመለስ|መልሱ)|ተመላሽ", re.I)
 _TECH = re.compile(r"\b(log ?in|sign ?in|password|otp|fayda|account|website|site|app|bug|error|not working|broken|page)\b"
                    r"|መግባት|የይለፍ ቃል|መለያ|ድረ ገጽ", re.I)
 _ORG = re.compile(r"\b(organization|organisation|our office|publish|register (our|my) (office|organization))\b|ተቋም", re.I)

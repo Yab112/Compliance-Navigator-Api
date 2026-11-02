@@ -323,3 +323,20 @@ def test_csv_export_is_filtered_and_safe_in_spreadsheets(client, make_user):
                      (admin["id"],))["c"] == 1
     assert client.get(f"{API}/admin/support/tickets.csv", headers={}).status_code == 401
     _cleanup_audit(admin["id"])
+
+
+def test_a_refund_described_after_tapping_compliance_goes_to_providers_and_hires(client, make_user):
+    """The real case CN-002133: the team was tapped first, then the problem said it was about a guday geday."""
+    admin, user = make_user("admin"), make_user()
+    h = user["headers"]
+    p = _turn(client, message="I want to talk to a person", headers=h)
+    cid = p["conversationId"]
+    _turn(client, cid, action={"type": "choice", "key": "queue", "value": "compliance"}, headers=h)
+    _form(client, cid, "details", {"details": "i want refund the money that the last guday geday took from me"}, headers=h)
+    p = _form(client, cid, "contact", {"phone": "0911 22 33 44"}, headers=h)
+    assert "Providers and hires" in p["reply"]["text"]  # the confirmation names the team before sending
+    p = _turn(client, cid, action={"type": "confirm", "value": "handoff"}, headers=h)
+    tid = p["reply"]["cards"][0]["id"]
+    detail = client.get(f"{API}/admin/support/tickets/{tid}", headers=admin["headers"]).json()["payload"]
+    assert detail["ticket"]["queue"] == "marketplace"
+    execute("delete from support_tickets where id = %s", (tid,))  # keep the per-address count for later test files
